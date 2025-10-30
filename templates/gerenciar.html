@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerenciar Chamados</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Adiciona os Ícones do Bootstrap (para as setas de ordenação) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    
+    <style>
+        /* Faz o cursor virar uma "mãozinha" ao passar sobre a tabela */
+        .table-hover tbody tr { cursor: pointer; }
+        
+        /* Garante que a barra de rolagem horizontal apareça em telas pequenas */
+        .table-responsive { max-height: 80vh; }
+
+        /* Remove o sublinhado dos links do cabeçalho da tabela */
+        .table-primary a.sort-link { /* ATUALIZADO DE .table-dark */
+            text-decoration: none;
+            color: white;
+        }
+        .table-primary a.sort-link:hover { /* ATUALIZADO DE .table-dark */
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body class="bg-light">
+
+    <!-- BARRA DE NAVEGAÇÃO ATUALIZADA -->
+    <nav class="navbar navbar-dark bg-primary shadow-sm mb-4">
+        <div class="container">
+            <span class="navbar-brand mb-0 h1">Sistema de OS</span>
+            <div>
+                <a href="/" class="btn btn-outline-light">Abrir Novo Chamado</a>
+                <a href="/dashboard" class="btn btn-outline-light">Ver Dashboard</a>
+            </div>
+        </div>
+    </nav>
+    <!-- FIM DA BARRA DE NAVEGAÇÃO -->
+
+    <main class="container">
+        
+        <h2 class="mb-3">Todos os Chamados</h2>
+
+        <!-- CAMPO DE FILTRO -->
+        <div class="mb-3">
+            <input type="text" id="filtroTabela" class="form-control" placeholder="Filtrar chamados por qualquer coluna...">
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped mb-0" id="tabelaChamados">
+                        <thead class="table-dark"> <!-- Mantemos a tabela escura para contraste, ou mudamos para primary? -->
+                            <tr>
+                                <!-- Cabeçalhos clicáveis para ordenação -->
+                                <th scope="col">
+                                    <a href="{{ url_for('gerenciar', sort_by='Carimbo de data/hora', order='desc' if current_order == 'asc' else 'asc') }}" class="sort-link">
+                                        Data Solicitação <i class="bi bi-arrow-down-up ms-1"></i>
+                                    </a>
+                                </th>
+                                <th scope="col">
+                                    <a href="{{ url_for('gerenciar', sort_by='Nome do solicitante', order='desc' if current_order == 'asc' else 'asc') }}" class="sort-link">
+                                        Solicitante <i class="bi bi-arrow-down-up ms-1"></i>
+                                    </a>
+                                </th>
+                                <th scope="col">
+                                    <a href="{{ url_for('gerenciar', sort_by='Setor em que será realizado o serviço', order='desc' if current_order == 'asc' else 'asc') }}" class="sort-link">
+                                        Setor <i class="bi bi-arrow-down-up ms-1"></i>
+                                    </a>
+                                </th>
+                                <th scope="col">Descrição</th>
+                                <th scope="col">Equipamento</th>
+                                <th scope="col">
+                                    <a href="{{ url_for('gerenciar', sort_by='Status da OS', order='desc' if current_order == 'asc' else 'asc') }}" class="sort-link">
+                                        Status Atual <i class="bi bi-arrow-down-up ms-1"></i>
+                                    </a>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody id="corpoTabela">
+                            {% if chamados %}
+                                {% for chamado in chamados %}
+                                <!-- 
+                                  Cada linha da tabela é um "botão" que abre o modal.
+                                  Usamos atributos 'data-*' para passar todos os dados da linha
+                                  para o JavaScript que preenche o modal.
+                                -->
+                                <tr data-bs-toggle="modal" data-bs-target="#modalEdicao" 
+                                    data-row-id="{{ chamado['row_id'] }}"
+                                    data-solicitante="{{ chamado['Nome do solicitante'] }}"
+                                    data-setor="{{ chamado['Setor em que será realizado o serviço'] }}"
+                                    data-data-solicitacao="{{ chamado['Data da Solicitação'] }}"
+                                    data-descricao="{{ chamado['Descrição do Problema ou Serviço Solicitado'] }}"
+                                    data-equipamento="{{ chamado['Equipamento ou Local afetado'] }}"
+                                    data-prioridade="{{ chamado['Nível de prioridade'] }}"
+                                    data-status="{{ chamado['Status da OS'] }}"
+                                    data-info-adicional="{{ chamado['Informações adicionais (Opcional)'] }}"
+                                    data-servico-realizado="{{ chamado['Serviço realizado'] }}"
+                                    data-horario-inicio="{{ chamado['Horario de Inicio'] }}"
+                                    data-horario-termino="{{ chamado['Horario de Término'] }}"
+                                    data-horas-trabalhadas="{{ chamado['Horas trabalhadas'] }}"
+                                    >
+                                    
+                                    <td>{{ chamado['Data da Solicitação'] }}</td>
+                                    <td>{{ chamado['Nome do solicitante'] }}</td>
+                                    <td>{{ chamado['Setor em que será realizado o serviço'] }}</td>
+                                    <td>{{ chamado['Descrição do Problema ou Serviço Solicitado'] | truncate(40) }}</td>
+                                    <td>{{ chamado['Equipamento ou Local afetado'] | truncate(30) }}</td>
+                                    <td>
+                                        <!-- Lógica para colorir o 'badge' de status -->
+                                        {% set status = chamado['Status da OS'] %}
+                                        <span class="badge 
+                                            {% if status == 'Finalizada' %} bg-success
+                                            {% elif status == 'Em Andamento' %} bg-primary
+                                            {% elif status == 'Aguardando Compra' %} bg-warning text-dark
+                                            {% elif status == 'Cancelada' %} bg-danger
+                                            {% else %} bg-secondary
+                                            {% endif %}">
+                                            {{ status if status else 'Sem Status' }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="6" class="text-center">Nenhum chamado encontrado!</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 
+      MODAL DE EDIÇÃO
+      Este é o popup que abre ao clicar em uma linha da tabela.
+      Ele é preenchido dinamicamente pelo JavaScript mais abaixo.
+    -->
+    <div class="modal fade" id="modalEdicao" tabindex="-1" aria-labelledby="modalEdicaoLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <!-- O formulário envia os dados para a rota '/atualizar_chamado' -->
+                <form action="/atualizar_chamado" method="POST">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="modalEdicaoLabel">Editar Chamado</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <!-- ID da Linha (oculto, mas essencial) -->
+                        <input type="hidden" id="edit-row-id" name="row_id">
+
+                        <!-- === SEÇÃO DE DADOS DO SOLICITANTE (Apenas Leitura) === -->
+                        <h6 class="text-muted">Informações da Solicitação</h6>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="edit-solicitante" class="form-label">Solicitante:</label>
+                                <input type="text" class="form-control-plaintext" id="edit-solicitante" name="nome_solicitante" readonly>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="edit-setor" class="form-label">Setor:</label>
+                                <input type="text" class="form-control-plaintext" id="edit-setor" name="setor" readonly>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="edit-data-solicitacao" class="form-label">Data da Solicitação:</label>
+                                <input type="text" class="form-control-plaintext" id="edit-data-solicitacao" name="data_solicitacao" readonly>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="edit-prioridade" class="form-label">Prioridade:</label>
+                                <input type="text" class="form-control-plaintext" id="edit-prioridade" name="prioridade" readonly>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="edit-descricao" class="form-label">Descrição do Problema:</label>
+                                <textarea class="form-control-plaintext" id="edit-descricao" name="descricao" rows="3" readonly></textarea>
+                            </div>
+                             <div class="col-md-6">
+                                <label for="edit-equipamento" class="form-label">Equipamento/Local:</label>
+                                <textarea class="form-control-plaintext" id="edit-equipamento" name="equipamento" rows="3" readonly></textarea>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                             <label for="edit-info-adicional" class="form-label">Informações Adicionais (Solicitante):</label>
+                             <textarea class="form-control-plaintext" id="edit-info-adicional" name="info_adicional" rows="2" readonly></textarea>
+                        </div>
+                        <!-- ====================================================== -->
+
+                        <hr> <!-- Divisor -->
+
+                        <!-- === SEÇÃO DE DADOS DA MANUTENÇÃO (Editável) === -->
+                        <h5 class="mb-3">Dados da Manutenção (Editável)</h5>
+                        
+                        <div class="mb-3">
+                            <label for="edit-status" class="form-label">Status da OS:</label>
+                            <select class="form-select" id="edit-status" name="status_os">
+                                <option value="Aberto">Aberto</option>
+                                <option value="Em Andamento">Em Andamento</option>
+                                <option value="Aguardando Compra">Aguardando Compra</option>
+                                <option value="Finalizada">Finalizada</option>
+                                <option value="Cancelada">Cancelada</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="edit-servico-realizado" class="form-label">Serviço Realizado:</label>
+                            <textarea class="form-control" id="edit-servico-realizado" name="servico_realizado" rows="3"></textarea>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="edit-horario-inicio" class="form-label">Horário Início:</label>
+                                <input type="text" class="form-control" id="edit-horario-inicio" name="horario_inicio">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="edit-horario-termino" class="form-label">Horário Término:</label>
+                                <input type="text" class="form-control" id="edit-horario-termino" name="horario_termino">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="edit-horas-trabalhadas" class="form-label">Horas Trabalhadas:</label>
+                                <input type="text" class="form-control" id="edit-horas-trabalhadas" name="horas_trabalhadas">
+                            </div>
+                        </div>
+                        <!-- ============================================= -->
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                        <button type="submit" class="btn btn-primary">Salvar Alterações</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- JavaScript do Bootstrap (Sempre no final) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- JavaScript para o Filtro da Tabela -->
+    <script>
+        // Adiciona um "ouvinte" ao campo de filtro que dispara a cada tecla digitada
+        document.getElementById('filtroTabela').addEventListener('keyup', function() {
+            let filtro = this.value.toLowerCase(); // Pega o texto do filtro em minúsculas
+            let tabela = document.getElementById('corpoTabela');
+            let linhas = tabela.getElementsByTagName('tr');
+            
+            // Itera por todas as linhas da tabela
+            for (let i = 0; i < linhas.length; i++) {
+                // Pega o texto completo da linha
+                let textoLinha = linhas[i].textContent || linhas[i].innerText;
+                
+                // Se o texto da linha incluir o texto do filtro, mostra a linha
+                if (textoLinha.toLowerCase().indexOf(filtro) > -1) {
+                    linhas[i].style.display = '';
+                } else {
+                    // Caso contrário, esconde a linha
+                    linhas[i].style.display = 'none';
+                }
+            }
+        });
+    </script>
+    
+    <!-- JavaScript para o Modal de Edição -->
+    <script>
+        // Adiciona um "ouvinte" ao modal que dispara ANTES dele ser exibido
+        var modalEdicao = document.getElementById('modalEdicao');
+        modalEdicao.addEventListener('show.bs.modal', function (event) {
+            
+            // Identifica qual linha da tabela acionou o modal
+            var triggerElement = event.relatedTarget;
+            
+            // Função auxiliar para pegar o atributo de forma segura
+            var getData = (attr) => triggerElement.getAttribute('data-' + attr);
+
+            // Extrai todos os dados dos atributos 'data-*' da linha
+            var dadosChamado = {
+                rowId: getData('row-id'),
+                solicitante: getData('solicitante'),
+                setor: getData('setor'),
+                dataSolicitacao: getData('data-solicitacao'),
+                descricao: getData('descricao'),
+                equipamento: getData('equipamento'),
+                prioridade: getData('prioridade'),
+                status: getData('status'),
+                infoAdicional: getData('info-adicional'),
+                servicoRealizado: getData('servico-realizado'),
+                horarioInicio: getData('horario-inicio'),
+                horarioTermino: getData('horario-termino'),
+                horasTrabalhadas: getData('horas-trabalhadas')
+            };
+
+            // Função auxiliar para preencher o campo do modal
+            var setModalValue = (id, value) => {
+                var element = modalEdicao.querySelector('#edit-' + id);
+                if (element) element.value = value;
+            };
+
+            // Atualiza os valores de todos os campos do formulário no modal
+            setModalValue('row-id', dadosChamado.rowId);
+            setModalValue('solicitante', dadosChamado.solicitante);
+            setModalValue('setor', dadosChamado.setor);
+            setModalValue('data-solicitacao', dadosChamado.dataSolicitacao);
+            setModalValue('descricao', dadosChamado.descricao);
+            setModalValue('equipamento', dadosChamado.equipamento);
+            setModalValue('prioridade', dadosChamado.prioridade);
+            setModalValue('status', dadosChamado.status);
+            setModalValue('info-adicional', dadosChamado.infoAdicional);
+            setModalValue('servico-realizado', dadosChamado.servicoRealizado);
+            setModalValue('horario-inicio', dadosChamado.horarioInicio);
+            setModalValue('horario-termino', dadosChamado.horarioTermino);
+            setModalValue('horas-trabalhadas', dadosChamado.horasTrabalhadas);
+        });
+    </script>
+        <!-- NOVO RODAPÉ -->
+    <footer class="mt-5 py-3 bg-primary text-white">
+        <div class="container">
+            <p class="text-end mb-0">
+                <small>&copy; Paulo Vieira 2025</small>
+            </p>
+        </div>
+    </footer>
+    <!-- FIM DO RODAPÉ -->
+</body>
+</html>
+

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Chamados</title>
+    <!-- Bootstrap para o layout -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Chart.js para os gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .chart-container {
+            /* Damos mais espaço de altura para o gráfico de barras */
+            max-width: 900px; 
+            max-height: 500px;
+            margin: 0 auto 40px auto;
+        }
+    </style>
+</head>
+<body class="bg-light">
+
+    <!-- BARRA DE NAVEGAÇÃO ATUALIZADA -->
+    <nav class="navbar navbar-dark bg-primary shadow-sm mb-4">
+        <div class="container">
+            <span class="navbar-brand mb-0 h1">Sistema de OS</span>
+            <div>
+                <a href="/" class="btn btn-outline-light">Abrir Novo Chamado</a>
+                <a href="/gerenciar" class="btn btn-outline-light">Gerenciar Chamados</a>
+            </div>
+        </div>
+    </nav>
+    <!-- FIM DA BARRA DE NAVEGAÇÃO -->
+
+    <main class="container py-5">
+        <div class="row">
+            <!-- Gráfico 1: Status (Agora em tela cheia) -->
+            <div class="col-lg-12">
+                <div class="p-4 border rounded-3 bg-white shadow-sm">
+                    <h3 class="text-center mb-3">Status de Chamados por Mês</h3>
+                    <div class="chart-container">
+                        <canvas id="graficoStatusPorMes"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // --- GRÁFICO 1: STATUS POR MÊS (Gráfico de Barras Agrupado) ---
+
+        // Os dados vêm do backend em Python e são convertidos para JSON
+        /* eslint-disable */
+        const labels_meses = JSON.parse('{{ labels_meses | tojson | safe }}');
+        const datasets_status = JSON.parse('{{ datasets_status | tojson | safe }}');
+        /* eslint-enable */
+
+        const ctx_status = document.getElementById('graficoStatusPorMes').getContext('2d');
+        new Chart(ctx_status, {
+            type: 'bar', // Tipo: Barras
+            data: {
+                labels: labels_meses,   // Eixo X: ['2025-09', '2025-10', ...]
+                datasets: datasets_status // Eixo Y: [{ label: 'Aberto', data: [5, 8], ...}, { label: 'Fechado', data: [10, 3], ...}]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top', // Legenda no topo
+                    },
+                    title: {
+                        display: true,
+                        text: 'Total de chamados por status e mês'
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: true, // Agrupa as barras no eixo X
+                    },
+                    y: {
+                        stacked: true, // Agrupa as barras no eixo Y
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    </script>
+        <!-- NOVO RODAPÉ -->
+    <footer class="mt-5 py-3 bg-primary text-white">
+        <div class="container">
+            <p class="text-end mb-0">
+                <small>&copy; Paulo Vieira 2025</small>
+            </p>
+        </div>
+    </footer>
+    <!-- FIM DO RODAPÉ -->
+</body>
+</html>
+
