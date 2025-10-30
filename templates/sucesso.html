@@ -16,22 +16,33 @@
                     
                     <h1 class="text-success">Obrigado, {{ nome }}!</h1>
                     <p class="lead">Seu requerimento foi enviado com sucesso.</p>
-                    <p>Nossa equipe já foi notificada e entrará em contato em breve.</p>
+
+                    <!-- MOSTRA O NÚMERO DO PEDIDO -->
+                    <div class="alert alert-info mt-4">
+                        <strong>O número do seu pedido é:</strong>
+                        <h2 class="display-4 m-0">{{ os_numero }}</h2>
+                    </div>
+                    <!-- FIM DO NÚMERO DO PEDIDO -->
+
+                    <p class="mt-4">Nossa equipe já foi notificada.</p>
+                    
+                    <!-- LINK ATUALIZADO/ADICIONADO -->
                     <a href="/" class="btn btn-outline-primary mt-3">Fazer um novo requerimento</a>
-                    <a href="/dashboard" class="btn btn-secondary mt-3">Ver Dashboard</a>
+                    <a href="{{ url_for('consultar_pedido', numero_pedido=os_numero) }}" class="btn btn-info mt-3">
+                        Consultar Status
+                    </a>
                 </div>
             </div>
         </div>
     </main>
-        <!-- NOVO RODAPÉ -->
-    <footer class="mt-5 py-3 bg-primary text-white">
-        <div class="container">
-            <p class="text-end mb-0">
-                <small>&copy; Paulo Vieira 2025</small>
-            </p>
+    
+    <!-- Rodapé -->
+    <footer class="footer fixed-bottom mt-auto py-3 bg-primary">
+        <div class="container text-end">
+            <span class="text-white small">Paulo Vieira 2025</span>
         </div>
     </footer>
-    <!-- FIM DO RODAPÉ -->
 
 </body>
 </html>
+
