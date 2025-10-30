@@ -1,4 +1,1 @@
-Flask
-gspread
-google-auth
-pandas
+
