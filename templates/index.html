@@ -9,21 +9,16 @@
     <style>
         /* Remove o padding extra que o body tinha */
         body { background-color: #f8f9fa; } 
+
+        /* Adiciona um espaçamento no topo, já que a barra foi removida */
+        .container {
+            padding-top: 40px;
+        }
     </style>
 </head>
 <body class="bg-light">
 
-    <!-- BARRA DE NAVEGAÇÃO ATUALIZADA -->
-    <nav class="navbar navbar-dark bg-primary shadow-sm mb-4">
-        <div class="container">
-            <span class="navbar-brand mb-0 h1">Sistema de OS</span>
-            <div>
-                <a href="/dashboard" class="btn btn-outline-light">Ver Dashboard</a>
-                <a href="/gerenciar" class="btn btn-outline-light">Gerenciar Chamados</a>
-            </div>
-        </div>
-    </nav>
-    <!-- FIM DA BARRA DE NAVEGAÇÃO -->
+    <!-- BARRA DE NAVEGAÇÃO REMOVIDA -->
 
     <main class="container">
         <div class="row justify-content-center">
@@ -33,6 +28,13 @@
                 <div class="p-4 p-md-5 border rounded-3 bg-white shadow-sm mb-5">
                     
                     <h2 class="mb-4 text-center">Formulário de Abertura de OS</h2>
+                    
+                    <!-- LINK ADICIONADO PARA A PÁGINA DE CONSULTA -->
+                    <p class="text-center text-muted mb-4" style="margin-top: -1.5rem;">
+                        Já abriu um chamado? 
+                        <a href="{{ url_for('consultar_pedido') }}">Consulte o status aqui.</a>
+                    </p>
+                    
                 
                     <form action="/enviar" method="POST">
                         
@@ -82,15 +84,12 @@
         </div>
     </main>
 
-    <!-- NOVO RODAPÉ -->
-    <footer class="mt-5 py-3 bg-primary text-white">
-        <div class="container">
-            <p class="text-end mb-0">
-                <small>&copy; Paulo Vieira 2025</small>
-            </p>
+    <!-- Rodapé -->
+    <footer class="footer mt-auto py-3 bg-primary"> <!-- Removido 'fixed-bottom' -->
+        <div class="container text-end">
+            <span class="text-white small">Paulo Vieira 2025</span>
         </div>
     </footer>
-    <!-- FIM DO RODAPÉ -->
 
 </body>
 </html>

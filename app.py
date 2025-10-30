@@ -4,42 +4,45 @@ from flask import Flask, render_template, request, redirect, url_for
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
+import re 
+import os 
 
 # --- 1. CONFIGURAÇÃO INICIAL (Google Sheets & Flask) ---
 
-# Define os escopos (permissões) que a API necessita
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive.file'
 ]
 
-# Encontra o ficheiro 'credentials.json' na MESMA pasta que este script
+# --- LÓGICA DE CREDENCIAIS SIMPLIFICADA (Lê o ficheiro 'credentials.json') ---
 try:
     CREDS_FILE = Path(__file__).parent / 'credentials.json'
     creds = Credentials.from_service_account_file(CREDS_FILE, scopes=SCOPES)
+    print("Credenciais carregadas com sucesso a partir do ficheiro (local ou Secret File).")
+    
 except FileNotFoundError:
     print("ERRO: Ficheiro 'credentials.json' não encontrado na pasta do projeto.")
     print("Por favor, baixe o JSON do Google Cloud e coloque-o na mesma pasta do 'app.py'")
+    print("Se estiver no Render, certifique-se que o 'Secret File' está configurado.")
     exit()
+except Exception as e:
+    print(f"ERRO CRÍTICO AO CARREGAR CREDENCIAIS: {e}")
+    exit()
+# --- FIM DA LÓGICA DE CREDENCIAIS ---
 
-# Autoriza o cliente gspread
 client = gspread.authorize(creds)
 
-# ID da Planilha (da URL)
 SHEET_ID = '1qs3cxlklTnzCp4RpQGhxIrEF4CbeUvid1S0Cp2tC3Xg'
-# Nome exato da Aba (Guia)
 SHEET_TAB_NAME = 'Respostas ao formulário 3' 
 
-# Tenta conectar-se à planilha
 try:
     spreadsheet = client.open_by_key(SHEET_ID)
     sheet = spreadsheet.worksheet(SHEET_TAB_NAME)
     print(f"Conectado com sucesso à planilha '{SHEET_TAB_NAME}'!")
 except Exception as e:
-    print(f"Erro ao conectar na planilha: {e}")
+    print(f"Erro ao conectar na planilha (verifique permissões de partilha): {e}")
     exit()
 
-# Inicializa a aplicação Flask
 app = Flask(__name__)
 
 # --- 2. ROTA PRINCIPAL (Formulário de Abertura) ---
@@ -55,32 +58,26 @@ def homepage():
 def receber_requerimento():
     """Recebe os dados do formulário e adiciona como uma nova linha na planilha."""
     try:
-        # --- 3a. Coleta de dados do formulário ---
         solicitante = request.form.get('nome_solicitante')
         setor = request.form.get('setor')
         descricao = request.form.get('descricao')
         equipamento = request.form.get('equipamento')
         prioridade = request.form.get('prioridade')
-        info_adicional = request.form.get('info_adicional', '') # Opcional
+        info_adicional = request.form.get('info_adicional', '') 
 
-        # --- 3b. Geração de dados automáticos ---
         agora = datetime.datetime.now()
-        # Formato PT-BR (dd/mm/AAAA) para a coluna 'Data da Solicitação'
         data_solicitacao = agora.strftime("%d/%m/%Y")
-        # Formato completo para o 'Carimbo de data/hora'
         timestamp = agora.strftime("%d/%m/%Y %H:%M:%S")
-        status_os = "Aberto" # Define o status padrão para novos chamados
+        status_os = "Aberto"
         
-        # --- 3c. Campos em branco (para manutenção) ---
-        coluna_barra = ""
+        coluna_id_temporaria = "" 
         servico_realizado = ""
         horario_inicio = ""
         horario_termino = ""
         horas_trabalhadas = ""
 
-        # --- 3d. Montagem da linha (na ordem exata da planilha) ---
         nova_linha = [
-            coluna_barra,       # A: /
+            coluna_id_temporaria, # A: / (Será preenchido abaixo)
             timestamp,          # B: Carimbo de data/hora
             solicitante,        # C: Nome do solicitante
             setor,              # D: Setor em que será realizado o serviço
@@ -96,13 +93,20 @@ def receber_requerimento():
             horas_trabalhadas   # N: Horas trabalhadas
         ]
 
-        # 5. Adiciona a nova linha na planilha
-        sheet.append_row(nova_linha)
+        result = sheet.append_row(nova_linha)
 
-        print(f"Nova OS adicionada por: {solicitante}")
+        range_updated = result['updates']['updatedRange']
+        cell_start = range_updated.split('!')[1].split(':')[0]
+        row_number = int("".join(filter(str.isdigit, cell_start)))
+        
+        # Fórmula: numero_pedido = numero_linha - 2
+        numero_pedido = row_number - 2 
+        
+        sheet.update_cell(row_number, 1, numero_pedido) # (linha, coluna, valor)
 
-        # 6. Redireciona para a página de sucesso
-        return render_template('sucesso.html', nome=solicitante)
+        print(f"Nova OS (Pedido #{numero_pedido}) adicionada por: {solicitante}")
+
+        return render_template('sucesso.html', nome=solicitante, os_numero=numero_pedido)
 
     except Exception as e:
         print(f"Erro ao salvar dados: {e}")
@@ -114,52 +118,42 @@ def receber_requerimento():
 def dashboard():
     """Exibe o dashboard com gráficos de análise dos chamados."""
     try:
-        # 1. Puxa TODOS os dados da planilha
         data = sheet.get_all_values()
         if not data or len(data) < 2:
             return render_template('dashboard.html', labels_meses=[], datasets_status=[])
 
-        # 2. Converte os dados para um DataFrame do Pandas
         headers = data.pop(0) 
         df = pd.DataFrame(data, columns=headers)
 
-        # 3. Verifica se as colunas essenciais existem
         if 'Carimbo de data/hora' not in df.columns or 'Status da OS' not in df.columns:
             raise Exception("Planilha não contém 'Carimbo de data/hora' ou 'Status da OS'.")
 
-        # 4. Limpa e processa os dados de data
-        # Converte a coluna de data (formato dd/mm/YYYY H:M:S)
         df['Carimbo de data/hora'] = pd.to_datetime(df['Carimbo de data/hora'], format='%d/%m/%Y %H:%M:%S', errors='coerce')
-        df = df.dropna(subset=['Carimbo de data/hora']) # Remove linhas com datas inválidas
+        df = df.dropna(subset=['Carimbo de data/hora'])
         
-        # Cria uma nova coluna 'MesAno' (ex: '2025-10') para agrupar
         df['MesAno'] = df['Carimbo de data/hora'].dt.to_period('M').astype(str)
 
-        # 5. Agrupa os dados para o gráfico
         status_por_mes = df.groupby(['MesAno', 'Status da OS']).size().unstack(fill_value=0)
 
-        # 6. Formata os dados para o Chart.js
         labels_meses = status_por_mes.index.tolist()
         
         datasets_status = []
-        # Dicionário de cores para os status
         cores = {
             'Finalizada': 'rgba(75, 192, 192, 0.7)',  # Verde
-            'Em andamento': 'rgba(54, 162, 235, 0.7)', # Azul
-            'Aguardando compra': 'rgba(255, 159, 64, 0.7)', # Laranja
+            'Em Andamento': 'rgba(54, 162, 235, 0.7)', # Azul
+            'Aguardando Compra': 'rgba(255, 159, 64, 0.7)', # Laranja
             'Cancelada': 'rgba(217, 83, 79, 0.7)', # Vermelho
-            'Aguardando liberação': 'rgba(52, 21, 57, 0.7)' # Roxo   
+            'Aberto': 'rgba(108, 117, 125, 0.7)' # Cinza
          }
 
         for status in status_por_mes.columns:
             dataset = {
                 'label': status,
                 'data': status_por_mes[status].values.tolist(),
-                'backgroundColor': cores.get(status, 'rgba(201, 203, 207, 0.7)') # Cor cinza padrão
+                'backgroundColor': cores.get(status, 'rgba(201, 203, 207, 0.7)')
             }
             datasets_status.append(dataset)
         
-        # 7. Envia os dados para a página do dashboard
         return render_template(
             'dashboard.html',
             labels_meses=labels_meses,
@@ -175,60 +169,46 @@ def dashboard():
 def gerenciar():
     """Exibe a página de gerenciamento com a lista de todos os chamados."""
     try:
-        # 1. Obtém parâmetros de ordenação da URL
-        sort_by = request.args.get('sort_by', 'Carimbo de data/hora') # Padrão
-        order = request.args.get('order', 'desc') # Padrão (mais novos primeiro)
+        sort_by = request.args.get('sort_by', 'Carimbo de data/hora')
+        order = request.args.get('order', 'desc')
         
-        # 2. Busca todos os dados da planilha
         data = sheet.get_all_values()
         if not data or len(data) < 2:
             return render_template('gerenciar.html', chamados=[], current_sort=sort_by, current_order=order)
 
         headers = data.pop(0)
         
-        # --- INÍCIO DA CORREÇÃO ---
-        # 3. Verifica se a coluna de status vital existe
         if 'Status da OS' not in headers:
             raise ValueError("A coluna 'Status da OS' não foi encontrada na planilha. Verifique o cabeçalho.")
         
         status_index = headers.index('Status da OS')
-        # --- FIM DA CORREÇÃO ---
         
-        # 3b. Filtra chamados e converte para dicionários
         chamados_filtrados = []
         
         for i, row in enumerate(data):
-            # Ignora linhas que estão completamente vazias
             if not any(row):
                 continue
 
-            # --- INÍCIO DA CORREÇÃO 2 ---
-            # Regra: Não mostrar chamados 'Cancelada'
-            # Verifica se a linha tem dados suficientes ANTES de ler o status
             if len(row) > status_index and row[status_index] == 'Cancelada':
                 continue
-            # --- FIM DA CORREÇÃO 2 ---
                 
-            chamado = {'row_id': i + 2} # +2 (índice 1-based + cabeçalho)
-            chamado.update(zip(headers, row))
+            chamado = {'row_id': i + 2}
+            
+            full_row = row + [''] * (len(headers) - len(row))
+            
+            chamado.update(zip(headers, full_row))
             chamados_filtrados.append(chamado)
 
-        # 4. Lógica de Ordenação
-        # Converte a data de string (dd/mm/YYYY H:M:S) para um objeto datetime real
         def sort_key(item):
             try:
-                # Ordena pela data/hora real, não pelo texto
                 if sort_by == 'Carimbo de data/hora':
                     return datetime.datetime.strptime(item.get(sort_by, ''), '%d/%m/%Y %H:%M:%S')
-                # Ordenação padrão para outras colunas (texto)
                 return item.get(sort_by, '').lower()
             except ValueError:
-                # Retorna um valor padrão se a data estiver mal formatada
                 return datetime.datetime.min
 
         chamados_ordenados = sorted(chamados_filtrados, key=sort_key, reverse=(order == 'desc'))
         
-        # 5. Renderiza a página
         return render_template(
             'gerenciar.html',
             chamados=chamados_ordenados,
@@ -245,8 +225,6 @@ def gerenciar():
 def atualizar_chamado():
     """Atualiza uma linha inteira na planilha com os dados do modal de edição."""
     try:
-        # 1. Coleta TODOS os campos (usando .get() para segurança)
-        # Campos "readonly" (originais da solicitação)
         solicitante = request.form.get('nome_solicitante', '')
         setor = request.form.get('setor', '')
         data_solicitacao = request.form.get('data_solicitacao', '')
@@ -255,23 +233,19 @@ def atualizar_chamado():
         prioridade = request.form.get('prioridade', '')
         info_adicional = request.form.get('info_adicional', '')
         
-        # Campos "editáveis" (da manutenção)
         status_os = request.form.get('status_os', '')
         servico_realizado = request.form.get('servico_realizado', '')
         horario_inicio = request.form.get('horario_inicio', '')
         horario_termino = request.form.get('horario_termino', '')
         horas_trabalhadas = request.form.get('horas_trabalhadas', '')
         
-        # Identificador da Linha (essencial)
         row_id = int(request.form.get('row_id'))
         
-        # O 'Carimbo de data/hora' não está no formulário,
-        # precisamos de o ir buscar à planilha para não o apagar.
         timestamp = sheet.cell(row_id, 2).value # Coluna B = 2
+        os_id = sheet.cell(row_id, 1).value # Coluna A = 1
 
-        # 2. Monta a linha completa na ordem correta
         linha_atualizada = [
-            "",                 # A: /
+            os_id,              # A: / (Preservado)
             timestamp,          # B: Carimbo de data/hora (Preservado)
             solicitante,        # C: Nome do solicitante
             setor,              # D: Setor
@@ -287,13 +261,10 @@ def atualizar_chamado():
             horas_trabalhadas   # N: Horas Trabalhadas (Atualizado)
         ]
 
-        # 3. Atualiza a linha inteira na planilha
-        # [linha_atualizada] -> Coloca a lista dentro de outra lista
         sheet.update(f'A{row_id}:N{row_id}', [linha_atualizada])
 
         print(f"Chamado (Linha {row_id}) atualizado com status: {status_os}")
 
-        # 4. Redireciona de volta para a página de gerenciamento
         return redirect(url_for('gerenciar'))
         
     except Exception as e:
@@ -305,11 +276,58 @@ def atualizar_chamado():
 @app.route('/sucesso')
 def sucesso():
     """Página de sucesso (para caso o /enviar fosse GET)."""
-    # Esta rota não é usada diretamente pelo POST, mas é bom tê-la
-    # O render_template() é chamado diretamente no /enviar
     return render_template('sucesso.html', nome="Usuário")
+
+
+# --- 8. ROTA DE CONSULTA DE STATUS (NOVA) ---
+
+@app.route('/consultar', methods=['GET', 'POST'])
+def consultar_pedido():
+    """Página pública para um solicitante consultar o status de um pedido."""
+    resultado = None
+    pedido_buscado = None
+
+    if request.method == 'POST':
+        # Usuário enviou o formulário de consulta
+        pedido_buscado = request.form.get('numero_pedido')
+    elif request.method == 'GET' and 'numero_pedido' in request.args:
+        # Usuário clicou no link da página de sucesso (pré-preenchido)
+        pedido_buscado = request.args.get('numero_pedido')
+    
+    if pedido_buscado:
+        try:
+            # Tenta encontrar o pedido na Coluna A (in_column=1)
+            # sheet.find() procura pela string formatada, o que é perfeito para nós
+            cell = sheet.find(str(pedido_buscado), in_column=1) 
+            
+            if cell:
+                # Se encontrou, pega os dados daquela linha
+                all_data = sheet.row_values(cell.row)
+                
+                # Monta o dicionário de resultado
+                resultado = {
+                    'id': all_data[0],       # Col A (ID)
+                    'data': all_data[4],     # Col E (Data Solicitação)
+                    'descricao': all_data[5], # Col F (Descrição)
+                    'status': all_data[8]    # Col I (Status)
+                }
+            else:
+                # Se não encontrou, define uma mensagem de erro
+                resultado = {'erro': f"Pedido número '{pedido_buscado}' não encontrado."}
+        
+        except Exception as e:
+            # Captura erros de conexão ou outros problemas
+            print(f"Erro ao buscar pedido: {e}")
+            resultado = {'erro': 'Ocorreu um erro ao consultar o pedido.'}
+    
+    # Renderiza a página de consulta, passando o resultado e o número buscado
+    return render_template('consultar.html', resultado=resultado, pedido_buscado=pedido_buscado)
+
 
 # --- Ponto de Entrada Principal ---
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    # debug=False é crucial para produção
+    # host='0.0.0.0' permite que o Render se conecte
+    app.run(host='0.0.0.0', port=port, debug=False)
 
