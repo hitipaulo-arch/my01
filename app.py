@@ -99,7 +99,7 @@ def receber_requerimento():
         cell_start = range_updated.split('!')[1].split(':')[0]
         row_number = int("".join(filter(str.isdigit, cell_start)))
         
-        # Fórmula: numero_pedido = numero_linha - 2
+        # Fórmula: numero_pedido = numero_linha 
         numero_pedido = row_number - 2 
         
         sheet.update_cell(row_number, 1, numero_pedido) # (linha, coluna, valor)
@@ -330,4 +330,5 @@ if __name__ == '__main__':
     # debug=False é crucial para produção
     # host='0.0.0.0' permite que o Render se conecte
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
