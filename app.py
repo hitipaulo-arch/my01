@@ -6,24 +6,27 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 import re 
 import os 
+# import base64 # Removido
+import json   # Mantido para a rota do dashboard
 
 # --- 1. CONFIGURAÇÃO INICIAL (Google Sheets & Flask) ---
 
 SCOPES = [
-    'https://www.googleapis.com/auth/spreadsheets',
+    'https.www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive.file'
 ]
 
-# --- LÓGICA DE CREDENCIAIS SIMPLIFICADA (Lê o ficheiro 'credentials.json') ---
+# --- LÓGICA DE CREDENCIAIS (Leitura Direta do Ficheiro) ---
 try:
+    # Lê diretamente o ficheiro 'credentials.json'
+    # (Funciona localmente ou com o "Secret File" do Render)
     CREDS_FILE = Path(__file__).parent / 'credentials.json'
     creds = Credentials.from_service_account_file(CREDS_FILE, scopes=SCOPES)
-    print("Credenciais carregadas com sucesso a partir do ficheiro (local ou Secret File).")
-    
+    print("Credenciais carregadas com sucesso a partir do ficheiro (credentials.json).")
+
 except FileNotFoundError:
-    print("ERRO: Ficheiro 'credentials.json' não encontrado na pasta do projeto.")
-    print("Por favor, baixe o JSON do Google Cloud e coloque-o na mesma pasta do 'app.py'")
-    print("Se estiver no Render, certifique-se que o 'Secret File' está configurado.")
+    print("ERRO: Ficheiro 'credentials.json' não encontrado.")
+    print("Verifique se o ficheiro está na pasta ou se o 'Secret File' do Render está configurado.")
     exit()
 except Exception as e:
     print(f"ERRO CRÍTICO AO CARREGAR CREDENCIAIS: {e}")
@@ -93,15 +96,18 @@ def receber_requerimento():
             horas_trabalhadas   # N: Horas trabalhadas
         ]
 
+        # 5a. Adiciona a nova linha na planilha e captura o resultado
         result = sheet.append_row(nova_linha)
 
-        range_updated = result['updates']['updatedRange']
-        cell_start = range_updated.split('!')[1].split(':')[0]
-        row_number = int("".join(filter(str.isdigit, cell_start)))
+        # 5b. Pega o número da linha que acabou de ser criada
+        # Esta é a forma mais robusta: lê todos os dados e conta as linhas
+        all_data = sheet.get_all_values()
+        row_number = len(all_data) # O número da linha recém-adicionada
         
-        # Fórmula: numero_pedido = numero_linha 
+        # 5c. Cria o ID do Pedido (Número da Linha - 2)
         numero_pedido = row_number - 2 
         
+        # 5d. Atualiza a Coluna A com o número do pedido
         sheet.update_cell(row_number, 1, numero_pedido) # (linha, coluna, valor)
 
         print(f"Nova OS (Pedido #{numero_pedido}) adicionada por: {solicitante}")
@@ -110,7 +116,7 @@ def receber_requerimento():
 
     except Exception as e:
         print(f"Erro ao salvar dados: {e}")
-        return f"<h1>Erro ao salvar seu requerimento.</h1><p>{e}</p>"
+        return f"<h1>Erro ao salvar seu requerimento.</h1><p>Por favor, tente novamente. Erro: {e}</p>"
 
 # --- 4. ROTA DO DASHBOARD (Gráficos) ---
 
@@ -120,7 +126,7 @@ def dashboard():
     try:
         data = sheet.get_all_values()
         if not data or len(data) < 2:
-            return render_template('dashboard.html', labels_meses=[], datasets_status=[])
+            return render_template('dashboard.html', labels_meses="[]", datasets_status="[]") # Envia JSON vazio
 
         headers = data.pop(0) 
         df = pd.DataFrame(data, columns=headers)
@@ -154,10 +160,14 @@ def dashboard():
             }
             datasets_status.append(dataset)
         
+        # Converte para JSON aqui para evitar erros no template
+        labels_meses_json = json.dumps(labels_meses)
+        datasets_status_json = json.dumps(datasets_status)
+
         return render_template(
             'dashboard.html',
-            labels_meses=labels_meses,
-            datasets_status=datasets_status
+            labels_meses=labels_meses_json,
+            datasets_status=datasets_status_json
         )
     except Exception as e:
         print(f"Erro ao carregar dashboard: {e}")
@@ -288,23 +298,18 @@ def consultar_pedido():
     pedido_buscado = None
 
     if request.method == 'POST':
-        # Usuário enviou o formulário de consulta
         pedido_buscado = request.form.get('numero_pedido')
     elif request.method == 'GET' and 'numero_pedido' in request.args:
-        # Usuário clicou no link da página de sucesso (pré-preenchido)
         pedido_buscado = request.args.get('numero_pedido')
     
     if pedido_buscado:
         try:
-            # Tenta encontrar o pedido na Coluna A (in_column=1)
             # sheet.find() procura pela string formatada, o que é perfeito para nós
             cell = sheet.find(str(pedido_buscado), in_column=1) 
             
             if cell:
-                # Se encontrou, pega os dados daquela linha
                 all_data = sheet.row_values(cell.row)
                 
-                # Monta o dicionário de resultado
                 resultado = {
                     'id': all_data[0],       # Col A (ID)
                     'data': all_data[4],     # Col E (Data Solicitação)
@@ -312,15 +317,12 @@ def consultar_pedido():
                     'status': all_data[8]    # Col I (Status)
                 }
             else:
-                # Se não encontrou, define uma mensagem de erro
                 resultado = {'erro': f"Pedido número '{pedido_buscado}' não encontrado."}
         
         except Exception as e:
-            # Captura erros de conexão ou outros problemas
             print(f"Erro ao buscar pedido: {e}")
             resultado = {'erro': 'Ocorreu um erro ao consultar o pedido.'}
     
-    # Renderiza a página de consulta, passando o resultado e o número buscado
     return render_template('consultar.html', resultado=resultado, pedido_buscado=pedido_buscado)
 
 
@@ -330,5 +332,6 @@ if __name__ == '__main__':
     # debug=False é crucial para produção
     # host='0.0.0.0' permite que o Render se conecte
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
 
