@@ -9,41 +9,233 @@
     <!-- Chart.js para os gráficos -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .nav-links {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .nav-links a {
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            margin: 0 10px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.3s;
+            display: inline-block;
+        }
+        
+        .nav-links a:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+        
+        .welcome-section {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 30px;
+            box-shadow: 0 15px 50px rgba(0,0,0,0.15);
+            animation: fadeIn 0.7s ease;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+        
+        .welcome-section h1 {
+            color: #2c3e50;
+            font-size: 36px;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .welcome-section p {
+            color: #7f8c8d;
+            font-size: 18px;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 15px 50px rgba(0,0,0,0.15);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-card::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 5px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+        
+        .stat-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        
+        .stat-value {
+            font-size: 36px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            color: #7f8c8d;
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .chart-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 15px 50px rgba(0,0,0,0.15);
+            animation: fadeIn 0.9s ease;
+        }
+        
+        .chart-card h3 {
+            color: #2c3e50;
+            margin-bottom: 30px;
+            font-size: 28px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .chart-card h3::before {
+            content: "📈";
+            font-size: 32px;
+        }
+        
         .chart-container {
-            /* Damos mais espaço de altura para o gráfico de barras */
-            max-width: 900px; 
-            max-height: 500px;
-            margin: 0 auto 40px auto;
+            max-width: 100%; 
+            max-height: 600px;
+            margin: 0 auto;
+            position: relative;
+        }
+        
+        footer {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            margin-top: 40px;
+            padding: 20px;
+            text-align: center;
+            color: white;
+            font-size: 16px;
+        }
+        
+        /* Animação de loading */
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
         }
     </style>
 </head>
-<body class="bg-light">
+<body>
 
-    <!-- BARRA DE NAVEGAÇÃO ATUALIZADA -->
-    <nav class="navbar navbar-dark bg-primary shadow-sm mb-4">
-        <div class="container">
-            <span class="navbar-brand mb-0 h1">Sistema de OS</span>
-            <div>
-                <a href="/" class="btn btn-outline-light">Abrir Novo Chamado</a>
-                <a href="/gerenciar" class="btn btn-outline-light">Gerenciar Chamados</a>
+    <div class="container">
+        <div class="nav-links">
+            <a href="/">🏠 Início</a>
+            <a href="/gerenciar">📋 Gerenciar</a>
+            <a href="/controle-horario">⏰ Controle de Horário</a>
+        </div>
+
+        <!-- SEÇÃO DE BOAS-VINDAS -->
+        <div class="welcome-section">
+            <h1>📊 Dashboard de Chamados</h1>
+            <p>Visualize e acompanhe o desempenho do sistema em tempo real</p>
+        </div>
+
+        <!-- CARDS DE ESTATÍSTICAS -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">📊</div>
+                <div class="stat-value" id="totalChamados">-</div>
+                <div class="stat-label">Total de Chamados</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">✅</div>
+                <div class="stat-value" id="totalFechados">-</div>
+                <div class="stat-label">Chamados Fechados</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🔄</div>
+                <div class="stat-value" id="totalAbertos">-</div>
+                <div class="stat-label">Chamados Abertos</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">⚡</div>
+                <div class="stat-value" id="percentualConclusao">-</div>
+                <div class="stat-label">Taxa de Conclusão</div>
             </div>
         </div>
-    </nav>
-    <!-- FIM DA BARRA DE NAVEGAÇÃO -->
 
-    <main class="container py-5">
-        <div class="row">
-            <!-- Gráfico 1: Status (Agora em tela cheia) -->
-            <div class="col-lg-12">
-                <div class="p-4 border rounded-3 bg-white shadow-sm">
-                    <h3 class="text-center mb-3">Status de Chamados por Mês</h3>
-                    <div class="chart-container">
-                        <canvas id="graficoStatusPorMes"></canvas>
-                    </div>
-                </div>
+        <!-- GRÁFICO -->
+        <div class="chart-card">
+            <h3>Status de Chamados por Mês</h3>
+            <div class="chart-container">
+                <canvas id="graficoStatusPorMes"></canvas>
             </div>
         </div>
-    </main>
+    </div>
 
     <script>
         // --- GRÁFICO 1: STATUS POR MÊS (Gráfico de Barras Agrupado) ---
@@ -56,42 +248,127 @@
 
         const ctx_status = document.getElementById('graficoStatusPorMes').getContext('2d');
         new Chart(ctx_status, {
-            type: 'bar', // Tipo: Barras
+            type: 'bar',
             data: {
-                labels: labels_meses,   // Eixo X: ['2025-09', '2025-10', ...]
-                datasets: datasets_status // Eixo Y: [{ label: 'Aberto', data: [5, 8], ...}, { label: 'Fechado', data: [10, 3], ...}]
+                labels: labels_meses,
+                datasets: datasets_status
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {
-                        position: 'top', // Legenda no topo
+                        position: 'top',
+                        labels: {
+                            font: {
+                                size: 14,
+                                weight: 'bold'
+                            },
+                            padding: 20,
+                            usePointStyle: true,
+                            pointStyle: 'circle'
+                        }
                     },
                     title: {
-                        display: true,
-                        text: 'Total de chamados por status e mês'
+                        display: false
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        padding: 15,
+                        cornerRadius: 10,
+                        titleFont: {
+                            size: 16,
+                            weight: 'bold'
+                        },
+                        bodyFont: {
+                            size: 14
+                        }
                     }
                 },
                 scales: {
                     x: {
-                        stacked: true, // Agrupa as barras no eixo X
+                        stacked: true,
+                        grid: {
+                            display: false
+                        },
+                        ticks: {
+                            font: {
+                                size: 13,
+                                weight: 'bold'
+                            }
+                        }
                     },
                     y: {
-                        stacked: true, // Agrupa as barras no eixo Y
-                        beginAtZero: true
+                        stacked: true,
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.05)'
+                        },
+                        ticks: {
+                            font: {
+                                size: 13,
+                                weight: 'bold'
+                            }
+                        }
                     }
+                },
+                animation: {
+                    duration: 1500,
+                    easing: 'easeInOutQuart'
                 }
             }
         });
+        
+        // Calcular estatísticas
+        function calcularEstatisticas() {
+            let totalChamados = 0;
+            let totalFechados = 0;
+            let totalAbertos = 0;
+            
+            datasets_status.forEach(dataset => {
+                const soma = dataset.data.reduce((a, b) => a + b, 0);
+                totalChamados += soma;
+                
+                if (dataset.label.toLowerCase().includes('fechado')) {
+                    totalFechados += soma;
+                } else if (dataset.label.toLowerCase().includes('aberto')) {
+                    totalAbertos += soma;
+                }
+            });
+            
+            const percentual = totalChamados > 0 
+                ? ((totalFechados / totalChamados) * 100).toFixed(1) 
+                : 0;
+            
+            // Animação de contagem
+            animarNumero('totalChamados', totalChamados);
+            animarNumero('totalFechados', totalFechados);
+            animarNumero('totalAbertos', totalAbertos);
+            document.getElementById('percentualConclusao').textContent = percentual + '%';
+        }
+        
+        function animarNumero(elementId, valorFinal) {
+            const elemento = document.getElementById(elementId);
+            let atual = 0;
+            const incremento = valorFinal / 50;
+            const intervalo = setInterval(() => {
+                atual += incremento;
+                if (atual >= valorFinal) {
+                    elemento.textContent = valorFinal;
+                    clearInterval(intervalo);
+                } else {
+                    elemento.textContent = Math.floor(atual);
+                }
+            }, 20);
+        }
+        
+        // Executar cálculos após carregar
+        calcularEstatisticas();
     </script>
-        <!-- NOVO RODAPÉ -->
-    <footer class="mt-5 py-3 bg-primary text-white">
-        <div class="container">
-            <p class="text-end mb-0">
-                <small>&copy; Paulo Vieira 2025</small>
-            </p>
-        </div>
+    
+    <!-- RODAPÉ -->
+    <footer>
+        <span>Paulo Vieira 2025</span>
     </footer>
     <!-- FIM DO RODAPÉ -->
 </body>

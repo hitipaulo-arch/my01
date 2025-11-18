@@ -23,6 +23,28 @@
             margin: 0 auto;
         }
         
+        .nav-links {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .nav-links a {
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            margin: 0 10px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.3s;
+            display: inline-block;
+        }
+        
+        .nav-links a:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+        
         .header {
             background: white;
             border-radius: 15px;
@@ -256,24 +278,24 @@
         .registro-item .tipo.saida { background: #e74c3c; }
         
         .nav-links {
-            display: flex;
-            gap: 15px;
+            text-align: center;
             margin-bottom: 20px;
         }
         
-        .nav-link {
-            padding: 10px 20px;
-            background: white;
-            color: #667eea;
+        .nav-links a {
+            color: white;
             text-decoration: none;
+            padding: 10px 20px;
+            margin: 0 10px;
+            background: rgba(255, 255, 255, 0.2);
             border-radius: 8px;
             font-weight: 600;
             transition: all 0.3s;
+            display: inline-block;
         }
         
-        .nav-link:hover {
-            background: #667eea;
-            color: white;
+        .nav-links a:hover {
+            background: rgba(255, 255, 255, 0.3);
             transform: translateY(-2px);
         }
         
@@ -299,9 +321,9 @@
 <body>
     <div class="container">
         <div class="nav-links">
-            <a href="{{ url_for('homepage') }}" class="nav-link">🏠 Início</a>
-            <a href="{{ url_for('dashboard') }}" class="nav-link">📊 Dashboard</a>
-            <a href="{{ url_for('gerenciar') }}" class="nav-link">🔧 Gerenciar</a>
+            <a href="{{ url_for('homepage') }}">🏠 Início</a>
+            <a href="{{ url_for('dashboard') }}">📊 Dashboard</a>
+            <a href="{{ url_for('gerenciar') }}">🔧 Gerenciar</a>
         </div>
 
         {% if mensagem %}
@@ -331,6 +353,16 @@
             </div>
 
             <form method="POST" action="{{ url_for('controle_horario') }}">
+                <div class="form-group">
+                    <label for="nome_usuario">Nome do Funcionário:</label>
+                    <input type="text" id="nome_usuario" name="nome_usuario" placeholder="Digite seu nome" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="pedido_os">Número do Pedido/OS (Opcional):</label>
+                    <input type="text" id="pedido_os" name="pedido_os" placeholder="Ex: 1234">
+                </div>
+                
                 <div class="controls">
                     <button type="submit" name="acao" value="entrada" 
                             class="btn btn-entrada" 
@@ -385,6 +417,9 @@
                 <div class="registro-item">
                     <div>
                         <span class="tipo {{ registro.tipo }}">{{ registro.tipo_nome }}</span>
+                        {% if registro.pedido_os %}
+                        <span style="margin-left: 15px; color: #667eea; font-weight: bold;">OS #{{ registro.pedido_os }}</span>
+                        {% endif %}
                         <span style="margin-left: 15px; color: #7f8c8d;">{{ registro.observacao or '' }}</span>
                     </div>
                     <div style="font-weight: bold; color: #2c3e50;">
