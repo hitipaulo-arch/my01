@@ -1,12 +1,13 @@
 import datetime
 from pathlib import Path
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 import os
 import logging
-from threading import Lock 
+from threading import Lock
+import secrets 
 
 # --- 1. CONFIGURAÇÃO INICIAL (Google Sheets & Flask) ---
 
@@ -66,7 +67,7 @@ if creds:
             # Cria aba se não existir
             sheet_horario = spreadsheet.add_worksheet(title=SHEET_HORARIO_TAB, rows=1000, cols=10)
             # Adiciona cabeçalho
-            sheet_horario.append_row(['Data', 'Funcionário', 'Tipo', 'Horário', 'Observação'])
+            sheet_horario.append_row(['Data', 'Funcionário', 'Pedido/OS', 'Tipo', 'Horário', 'Observação'])
             logger.info(f"Aba '{SHEET_HORARIO_TAB}' criada com sucesso")
             
     except Exception as e:
@@ -75,7 +76,11 @@ if creds:
 # --- FIM DA LÓGICA DE CREDENCIAIS ---
 
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
+# Gera chave secreta segura se não definida
+app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
+app.config['SESSION_COOKIE_SECURE'] = os.getenv('FLASK_ENV') == 'production'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 # --- CONFIGURAÇÃO DE CACHE ---
 CACHE_TTL = int(os.getenv('CACHE_TTL_SECONDS', 300))  # 5 minutos padrão
@@ -538,6 +543,8 @@ def controle_horario():
         # Processa ação se for POST
         if request.method == 'POST':
             acao = request.form.get('acao')
+            nome_usuario = request.form.get('nome_usuario', 'Usuário').strip() or 'Usuário'
+            pedido_os = request.form.get('pedido_os', '').strip()
             horario_registro = agora.strftime('%H:%M:%S')
             
             tipo_map = {
@@ -550,7 +557,8 @@ def controle_horario():
             # Registra na planilha
             nova_linha = [
                 hoje,
-                'Sistema',  # Pode ser substituído por nome do usuário logado
+                nome_usuario,
+                pedido_os,
                 tipo_map.get(acao, acao),
                 horario_registro,
                 ''  # Observação
@@ -575,10 +583,11 @@ def controle_horario():
                     registros_hoje.append({
                         'data': row[0],
                         'funcionario': row[1] if len(row) > 1 else '',
-                        'tipo': row[2].lower() if len(row) > 2 else '',
-                        'tipo_nome': row[2] if len(row) > 2 else '',
-                        'horario': row[3] if len(row) > 3 else '',
-                        'observacao': row[4] if len(row) > 4 else ''
+                        'pedido_os': row[2] if len(row) > 2 else '',
+                        'tipo': row[3].lower() if len(row) > 3 else '',
+                        'tipo_nome': row[3] if len(row) > 3 else '',
+                        'horario': row[4] if len(row) > 4 else '',
+                        'observacao': row[5] if len(row) > 5 else ''
                     })
             
             registros = sorted(registros_hoje, key=lambda x: x['horario'], reverse=True)
@@ -665,7 +674,20 @@ def controle_horario():
         return render_template('erro.html',
             mensagem=f"Erro ao processar controle de horário: {e}"), 500
 
-# --- 9. ROTA DE CONSULTA DE STATUS ---
+# --- 9. ENDPOINT DE HEALTHCHECK ---
+
+@app.route('/health')
+def health_check():
+    """Endpoint para monitoramento de saúde da aplicação."""
+    status = {
+        'status': 'healthy',
+        'timestamp': datetime.datetime.now().isoformat(),
+        'sheets_connected': sheet is not None,
+        'cache_enabled': True
+    }
+    return jsonify(status), 200
+
+# --- 10. ROTA DE CONSULTA DE STATUS ---
 
 @app.route('/consultar', methods=['GET', 'POST'])
 def consultar_pedido():
@@ -714,6 +736,13 @@ def consultar_pedido():
     # Renderiza a página de consulta, passando o resultado e o número buscado
     return render_template('consultar.html', resultado=resultado, pedido_buscado=pedido_buscado)
 
+
+# --- 11. ROTA PARA FAVICON ---
+
+@app.route('/favicon.ico')
+def favicon():
+    """Retorna um favicon vazio para evitar erro 404."""
+    return '', 204
 
 # --- Ponto de Entrada Principal ---
 if __name__ == '__main__':
