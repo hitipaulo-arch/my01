@@ -45,6 +45,10 @@ except Exception as e:
 # Variáveis de ambiente para configuração (permite substituir via env vars)
 SHEET_ID = os.getenv('GOOGLE_SHEET_ID', '1qs3cxlklTnzCp4RpQGhxIrEF4CbeUvid1S0Cp2tC3Xg')
 SHEET_TAB_NAME = os.getenv('GOOGLE_SHEET_TAB', 'Respostas ao formulário 3')
+SHEET_HORARIO_TAB = os.getenv('GOOGLE_SHEET_HORARIO_TAB', 'Controle de Horário')
+
+# Variável para planilha de controle de horário
+sheet_horario = None
 
 # Só tenta conectar se as credenciais foram carregadas
 if creds:
@@ -53,6 +57,18 @@ if creds:
         spreadsheet = client.open_by_key(SHEET_ID)
         sheet = spreadsheet.worksheet(SHEET_TAB_NAME)
         logger.info(f"Conectado com sucesso à planilha '{SHEET_TAB_NAME}'!")
+        
+        # Tenta conectar à aba de controle de horário (cria se não existir)
+        try:
+            sheet_horario = spreadsheet.worksheet(SHEET_HORARIO_TAB)
+            logger.info(f"Conectado à aba '{SHEET_HORARIO_TAB}'")
+        except:
+            # Cria aba se não existir
+            sheet_horario = spreadsheet.add_worksheet(title=SHEET_HORARIO_TAB, rows=1000, cols=10)
+            # Adiciona cabeçalho
+            sheet_horario.append_row(['Data', 'Funcionário', 'Tipo', 'Horário', 'Observação'])
+            logger.info(f"Aba '{SHEET_HORARIO_TAB}' criada com sucesso")
+            
     except Exception as e:
         logger.error(f"Erro ao conectar na planilha (verifique permissões de partilha): {e}")
         sheet_error = f"Erro ao conectar à planilha: {e}"
@@ -487,7 +503,169 @@ def admin_limpar_cache():
         return render_template('erro.html', mensagem=f"Erro ao limpar cache: {e}"), 500
 
 
-# --- 8. ROTA DE CONSULTA DE STATUS (NOVA) ---
+# --- 8. ROTA DE CONTROLE DE HORÁRIO ---
+
+@app.route('/controle-horario', methods=['GET', 'POST'])
+def controle_horario():
+    """Página de controle de ponto com registros de entrada, saída e pausas."""
+    disponivel, erro_msg = verificar_sheet_disponivel()
+    
+    # Inicializa variáveis
+    status_atual = 'inativo'
+    horario_entrada = None
+    horario_saida = None
+    tempo_trabalhado = '0h 0m'
+    tempo_pausa = '0h 0m'
+    registros = []
+    mensagem = None
+    tipo_mensagem = 'success'
+    
+    if not disponivel or sheet_horario is None:
+        return render_template('controle_horario.html',
+            status_atual=status_atual,
+            registros=[],
+            mensagem="Sistema de controle de horário indisponível. Verifique a conexão com Google Sheets.",
+            tipo_mensagem='error',
+            horario_entrada=horario_entrada,
+            horario_saida=horario_saida,
+            tempo_trabalhado=tempo_trabalhado,
+            tempo_pausa=tempo_pausa)
+    
+    try:
+        hoje = datetime.datetime.now().strftime('%d/%m/%Y')
+        agora = datetime.datetime.now()
+        
+        # Processa ação se for POST
+        if request.method == 'POST':
+            acao = request.form.get('acao')
+            horario_registro = agora.strftime('%H:%M:%S')
+            
+            tipo_map = {
+                'entrada': 'Entrada',
+                'saida': 'Saída',
+                'pausa': 'Pausa',
+                'retorno': 'Retorno'
+            }
+            
+            # Registra na planilha
+            nova_linha = [
+                hoje,
+                'Sistema',  # Pode ser substituído por nome do usuário logado
+                tipo_map.get(acao, acao),
+                horario_registro,
+                ''  # Observação
+            ]
+            
+            sheet_horario.append_row(nova_linha, value_input_option='USER_ENTERED')
+            logger.info(f"Registro de {acao} às {horario_registro}")
+            
+            mensagem = f"{tipo_map.get(acao, acao)} registrada com sucesso às {horario_registro}"
+            limpar_cache()  # Invalida cache se houver
+        
+        # Busca registros de hoje
+        all_data = sheet_horario.get_all_values()
+        if len(all_data) > 1:
+            headers = all_data[0]
+            registros_raw = all_data[1:]
+            
+            # Filtra registros de hoje
+            registros_hoje = []
+            for row in registros_raw:
+                if len(row) > 0 and row[0] == hoje:
+                    registros_hoje.append({
+                        'data': row[0],
+                        'funcionario': row[1] if len(row) > 1 else '',
+                        'tipo': row[2].lower() if len(row) > 2 else '',
+                        'tipo_nome': row[2] if len(row) > 2 else '',
+                        'horario': row[3] if len(row) > 3 else '',
+                        'observacao': row[4] if len(row) > 4 else ''
+                    })
+            
+            registros = sorted(registros_hoje, key=lambda x: x['horario'], reverse=True)
+            
+            # Calcula status atual e tempos
+            if registros_hoje:
+                ultimo_registro = registros_hoje[-1]['tipo']
+                
+                if ultimo_registro == 'entrada' or ultimo_registro == 'retorno':
+                    status_atual = 'ativo'
+                elif ultimo_registro == 'pausa':
+                    status_atual = 'pausa'
+                elif ultimo_registro == 'saída':
+                    status_atual = 'inativo'
+                
+                # Calcula horários
+                entradas = [r for r in registros_hoje if r['tipo'] in ['entrada', 'retorno']]
+                saidas = [r for r in registros_hoje if r['tipo'] in ['saída', 'pausa']]
+                
+                if entradas:
+                    horario_entrada = entradas[0]['horario']
+                if saidas and saidas[-1]['tipo'] == 'saída':
+                    horario_saida = saidas[-1]['horario']
+                
+                # Calcula tempo trabalhado e pausas
+                total_trabalho = datetime.timedelta()
+                total_pausa = datetime.timedelta()
+                
+                tempo_inicio = None
+                em_pausa = False
+                pausa_inicio = None
+                
+                for reg in sorted(registros_hoje, key=lambda x: x['horario']):
+                    horario = datetime.datetime.strptime(reg['horario'], '%H:%M:%S')
+                    
+                    if reg['tipo'] == 'entrada':
+                        tempo_inicio = horario
+                        em_pausa = False
+                    elif reg['tipo'] == 'pausa' and tempo_inicio:
+                        if not em_pausa:
+                            total_trabalho += horario - tempo_inicio
+                            pausa_inicio = horario
+                            em_pausa = True
+                    elif reg['tipo'] == 'retorno' and pausa_inicio:
+                        total_pausa += horario - pausa_inicio
+                        tempo_inicio = horario
+                        em_pausa = False
+                    elif reg['tipo'] == 'saída' and tempo_inicio:
+                        if em_pausa and pausa_inicio:
+                            total_pausa += horario - pausa_inicio
+                        else:
+                            total_trabalho += horario - tempo_inicio
+                        tempo_inicio = None
+                
+                # Se ainda está trabalhando
+                if tempo_inicio and not em_pausa:
+                    total_trabalho += agora - tempo_inicio.replace(year=agora.year, month=agora.month, day=agora.day)
+                
+                # Se está em pausa
+                if em_pausa and pausa_inicio:
+                    total_pausa += agora - pausa_inicio.replace(year=agora.year, month=agora.month, day=agora.day)
+                
+                # Formata tempos
+                horas_trabalho = int(total_trabalho.total_seconds() // 3600)
+                minutos_trabalho = int((total_trabalho.total_seconds() % 3600) // 60)
+                tempo_trabalhado = f"{horas_trabalho}h {minutos_trabalho}m"
+                
+                horas_pausa = int(total_pausa.total_seconds() // 3600)
+                minutos_pausa = int((total_pausa.total_seconds() % 3600) // 60)
+                tempo_pausa = f"{horas_pausa}h {minutos_pausa}m"
+        
+        return render_template('controle_horario.html',
+            status_atual=status_atual,
+            registros=registros,
+            mensagem=mensagem,
+            tipo_mensagem=tipo_mensagem,
+            horario_entrada=horario_entrada,
+            horario_saida=horario_saida,
+            tempo_trabalhado=tempo_trabalhado,
+            tempo_pausa=tempo_pausa)
+            
+    except Exception as e:
+        logger.error(f"Erro no controle de horário: {e}")
+        return render_template('erro.html',
+            mensagem=f"Erro ao processar controle de horário: {e}"), 500
+
+# --- 9. ROTA DE CONSULTA DE STATUS ---
 
 @app.route('/consultar', methods=['GET', 'POST'])
 def consultar_pedido():
