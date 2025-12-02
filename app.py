@@ -726,6 +726,11 @@ def relatorios():
             format='%d/%m/%Y %H:%M:%S', errors='coerce')
         df = df.dropna(subset=['Carimbo de data/hora'])
         
+        # Filtra OS canceladas
+        if 'Status da OS' in df.columns:
+            df = df[df['Status da OS'] != 'Cancelada']
+            logger.info(f"Relatórios: {len(df)} OS após filtrar canceladas")
+        
         # 1. Gráfico de Pizza - Distribuição por Prioridade
         prioridade_count = df['Nível de prioridade'].value_counts()
         labels_prioridade = prioridade_count.index.tolist()
