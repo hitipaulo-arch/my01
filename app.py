@@ -87,7 +87,8 @@ CACHE_TTL = int(os.getenv('CACHE_TTL_SECONDS', 300))  # 5 minutos padrão
 cache_lock = Lock()
 cache_data = {
     'dashboard': {'data': None, 'timestamp': None},
-    'gerenciar': {'data': None, 'timestamp': None}
+    'gerenciar': {'data': None, 'timestamp': None},
+    'relatorios': {'data': None, 'timestamp': None}
 }
 
 # --- FUNÇÕES AUXILIARES ---
@@ -687,7 +688,123 @@ def health_check():
     }
     return jsonify(status), 200
 
-# --- 10. ROTA DE CONSULTA DE STATUS ---
+# --- 10. ROTA DE RELATÓRIOS DETALHADOS ---
+
+@app.route('/relatorios')
+def relatorios():
+    """Exibe página de relatórios com gráficos detalhados."""
+    disponivel, erro_msg = verificar_sheet_disponivel()
+    if not disponivel:
+        return render_template('relatorios.html', 
+            mensagem_erro=erro_msg,
+            labels_prioridade=[], dados_prioridade=[],
+            labels_setor=[], dados_setor=[],
+            labels_tempo_resolucao=[], dados_tempo_resolucao=[],
+            labels_dia_semana=[], dados_dia_semana=[],
+            total_os=0, tempo_medio='0 dias', taxa_conclusao='0%')
+    
+    # Tenta obter do cache primeiro
+    cache_result = obter_cache('relatorios')
+    if cache_result:
+        return render_template('relatorios.html', **cache_result)
+    
+    try:
+        data = sheet.get_all_values()
+        if not data or len(data) < 2:
+            return render_template('relatorios.html',
+                labels_prioridade=[], dados_prioridade=[],
+                labels_setor=[], dados_setor=[],
+                labels_tempo_resolucao=[], dados_tempo_resolucao=[],
+                labels_dia_semana=[], dados_dia_semana=[],
+                total_os=0, tempo_medio='0 dias', taxa_conclusao='0%')
+
+        headers = data.pop(0)
+        df = pd.DataFrame(data, columns=headers)
+
+        # Converte timestamps
+        df['Carimbo de data/hora'] = pd.to_datetime(df['Carimbo de data/hora'], 
+            format='%d/%m/%Y %H:%M:%S', errors='coerce')
+        df = df.dropna(subset=['Carimbo de data/hora'])
+        
+        # 1. Gráfico de Pizza - Distribuição por Prioridade
+        prioridade_count = df['Nível de prioridade'].value_counts()
+        labels_prioridade = prioridade_count.index.tolist()
+        dados_prioridade = prioridade_count.values.tolist()
+        
+        # 2. Gráfico de Barras Horizontal - OS por Setor
+        setor_count = df['Setor em que será realizado o serviço'].value_counts().head(10)
+        labels_setor = setor_count.index.tolist()
+        dados_setor = setor_count.values.tolist()
+        
+        # 3. Gráfico de Linha - Tempo médio de resolução por mês
+        df_finalizada = df[df['Status da OS'] == 'Finalizada'].copy()
+        if not df_finalizada.empty and 'Horário de Início' in df.columns:
+            df_finalizada['Horário de Início'] = pd.to_datetime(
+                df_finalizada['Horário de Início'], format='%H:%M', errors='coerce')
+            df_finalizada['Horário de Término'] = pd.to_datetime(
+                df_finalizada['Horário de Término'], format='%H:%M', errors='coerce')
+            
+            df_finalizada['Tempo'] = (df_finalizada['Horário de Término'] - 
+                df_finalizada['Horário de Início']).dt.total_seconds() / 3600
+            
+            df_finalizada['MesAno'] = df_finalizada['Carimbo de data/hora'].dt.to_period('M').astype(str)
+            tempo_por_mes = df_finalizada.groupby('MesAno')['Tempo'].mean()
+            
+            labels_tempo_resolucao = tempo_por_mes.index.tolist()
+            dados_tempo_resolucao = tempo_por_mes.values.tolist()
+        else:
+            labels_tempo_resolucao = []
+            dados_tempo_resolucao = []
+        
+        # 4. Gráfico de Barras - OS abertas por dia da semana
+        df['DiaSemana'] = df['Carimbo de data/hora'].dt.day_name()
+        dias_ordem = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        dias_pt = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo']
+        
+        dia_count = df['DiaSemana'].value_counts()
+        labels_dia_semana = []
+        dados_dia_semana = []
+        for dia_en, dia_pt in zip(dias_ordem, dias_pt):
+            labels_dia_semana.append(dia_pt)
+            dados_dia_semana.append(int(dia_count.get(dia_en, 0)))
+        
+        # Métricas gerais
+        total_os = len(df)
+        finalizadas = len(df[df['Status da OS'] == 'Finalizada'])
+        taxa_conclusao = f"{(finalizadas/total_os*100):.1f}%" if total_os > 0 else "0%"
+        
+        # Tempo médio de resolução
+        if not df_finalizada.empty and 'Tempo' in df_finalizada.columns:
+            tempo_medio = f"{df_finalizada['Tempo'].mean():.1f} horas"
+        else:
+            tempo_medio = "N/A"
+        
+        resultado = {
+            'labels_prioridade': labels_prioridade,
+            'dados_prioridade': dados_prioridade,
+            'labels_setor': labels_setor,
+            'dados_setor': dados_setor,
+            'labels_tempo_resolucao': labels_tempo_resolucao,
+            'dados_tempo_resolucao': dados_tempo_resolucao,
+            'labels_dia_semana': labels_dia_semana,
+            'dados_dia_semana': dados_dia_semana,
+            'total_os': total_os,
+            'tempo_medio': tempo_medio,
+            'taxa_conclusao': taxa_conclusao,
+            'total_finalizadas': finalizadas,
+            'total_abertas': len(df[df['Status da OS'] == 'Aberto']),
+            'total_andamento': len(df[df['Status da OS'] == 'Em Andamento'])
+        }
+        
+        salvar_cache('relatorios', resultado)
+        return render_template('relatorios.html', **resultado)
+        
+    except Exception as e:
+        logger.error(f"Erro ao carregar relatórios: {e}")
+        return render_template('erro.html', 
+            mensagem=f"Erro ao carregar relatórios: {e}"), 500
+
+# --- 11. ROTA DE CONSULTA DE STATUS ---
 
 @app.route('/consultar', methods=['GET', 'POST'])
 def consultar_pedido():
@@ -737,7 +854,7 @@ def consultar_pedido():
     return render_template('consultar.html', resultado=resultado, pedido_buscado=pedido_buscado)
 
 
-# --- 11. ROTA PARA FAVICON ---
+# --- 12. ROTA PARA FAVICON ---
 
 @app.route('/favicon.ico')
 def favicon():
