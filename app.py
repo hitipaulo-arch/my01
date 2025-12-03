@@ -206,7 +206,35 @@ def salvar_usuarios(usuarios):
         logger.error(f"Erro ao salvar usuários no Google Sheets (upsert): {e}")
         return False
 
+# --- DECORATOR DE AUTENTICAÇÃO ---
+def login_required(f):
+    """Decorator para proteger rotas que requerem autenticação."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'usuario' not in session:
+            flash('Por favor, faça login para acessar esta página.', 'warning')
+            return redirect(url_for('login', next=request.url))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def admin_required(f):
+    """Decorator para rotas que requerem privilégios de admin."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'usuario' not in session:
+            flash('Por favor, faça login para acessar esta página.', 'warning')
+            return redirect(url_for('login', next=request.url))
+        
+        usuario = session.get('usuario')
+        if USUARIOS.get(usuario, {}).get('role') != 'admin':
+            flash('Acesso negado. Apenas administradores podem acessar esta página.', 'danger')
+            return redirect(url_for('homepage'))
+        
+        return f(*args, **kwargs)
+    return decorated_function
+
 USUARIOS = carregar_usuarios()
+
 @app.route('/usuarios', methods=['GET', 'POST'])
 @admin_required
 def usuarios_admin():
@@ -247,33 +275,6 @@ def usuarios_admin():
     # Refresh from Sheets to show latest
     USUARIOS = carregar_usuarios()
     return render_template('usuarios.html', usuarios=USUARIOS, mensagem=mensagem, tipo_mensagem=tipo_mensagem)
-
-# --- DECORATOR DE AUTENTICAÇÃO ---
-def login_required(f):
-    """Decorator para proteger rotas que requerem autenticação."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'usuario' not in session:
-            flash('Por favor, faça login para acessar esta página.', 'warning')
-            return redirect(url_for('login', next=request.url))
-        return f(*args, **kwargs)
-    return decorated_function
-
-def admin_required(f):
-    """Decorator para rotas que requerem privilégios de admin."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'usuario' not in session:
-            flash('Por favor, faça login para acessar esta página.', 'warning')
-            return redirect(url_for('login', next=request.url))
-        
-        usuario = session.get('usuario')
-        if USUARIOS.get(usuario, {}).get('role') != 'admin':
-            flash('Acesso negado. Apenas administradores podem acessar esta página.', 'danger')
-            return redirect(url_for('homepage'))
-        
-        return f(*args, **kwargs)
-    return decorated_function
 
 # --- FUNÇÕES AUXILIARES ---
 
@@ -381,17 +382,6 @@ USUARIOS = {
     'gestor': 'gestor123',
     'operador': 'operador123'
 }
-
-# --- DECORATOR DE AUTENTICAÇÃO ---
-def login_required(f):
-    """Decorator para proteger rotas que requerem autenticação."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'usuario' not in session:
-            flash('Por favor, faça login para acessar esta página.', 'warning')
-            return redirect(url_for('login', next=request.url))
-        return f(*args, **kwargs)
-    return decorated_function
 
 # --- ROTAS DE AUTENTICAÇÃO ---
 
