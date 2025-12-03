@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gerenciar Usuários</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg,#667eea,#764ba2); padding:20px; }
+    .container { max-width: 1100px; margin: 0 auto; }
+    .card { background:#fff; border-radius:14px; padding:22px; box-shadow: 0 10px 40px rgba(0,0,0,.2); margin-bottom:20px; }
+    table { width:100%; }
+    th, td { padding:10px; }
+    .form-grid { display:grid; grid-template-columns: 1fr 1fr 1fr 120px; gap:10px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    {% include '_top_nav.html' %}
+
+    <div class="card">
+      <h1>👥 Gerenciar Usuários</h1>
+      {% if mensagem %}
+      <div class="alert alert-{{ tipo_mensagem or 'success' }}">{{ mensagem }}</div>
+      {% endif %}
+
+      <h2 class="mt-3">Adicionar / Atualizar Usuário</h2>
+      <form method="POST" class="form-grid">
+        <input type="hidden" name="acao" value="upsert">
+        <input class="form-control" type="text" name="username" placeholder="Username" required>
+        <input class="form-control" type="text" name="senha" placeholder="Senha" required>
+        <select class="form-select" name="role">
+          <option value="admin" selected>admin</option>
+          <option value="user">user</option>
+        </select>
+        <button class="btn btn-primary" type="submit">Salvar</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Lista de Usuários</h2>
+      <div class="table-responsive">
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Role</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for uname, dados in usuarios.items() %}
+            <tr>
+              <td>{{ uname }}</td>
+              <td>{{ dados.role if dados.role else 'admin' }}</td>
+              <td>
+                <form method="POST" style="display:inline-flex; gap:8px;">
+                  <input type="hidden" name="acao" value="delete">
+                  <input type="hidden" name="username" value="{{ uname }}">
+                  <button class="btn btn-danger btn-sm" type="submit">Excluir</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
