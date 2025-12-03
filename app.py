@@ -520,6 +520,14 @@ def controle_horario():
     tipo_mensagem = 'success'
     usuarios_ativos = []
     registros = []
+    total_registros = 0
+    page = int(request.args.get('page', '1'))
+    per_page = int(request.args.get('per_page', '20'))
+    usuario_filtro = request.args.get('usuario', '').strip()
+    os_filtro = request.args.get('pedido_os', '').strip()
+    data_inicio = request.args.get('data_inicio', '').strip()
+    data_fim = request.args.get('data_fim', '').strip()
+    export = request.args.get('export', '').strip().lower() == 'csv'
     
     if not disponivel or sheet_horario is None:
         return render_template('controle_horario.html',
@@ -529,8 +537,9 @@ def controle_horario():
             tipo_mensagem='error')
     
     try:
-        hoje = datetime.datetime.now().strftime('%d/%m/%Y')
-        agora = datetime.datetime.now()
+        hoje_dt = datetime.datetime.now()
+        hoje = hoje_dt.strftime('%d/%m/%Y')
+        agora = hoje_dt
         
         # Processa ação se for POST
         if request.method == 'POST':
@@ -598,31 +607,89 @@ def controle_horario():
             
             limpar_cache()
         
-        # Busca registros de hoje
+        # Busca registros de período (por padrão: hoje)
         all_data = sheet_horario.get_all_values()
         if len(all_data) > 1:
             headers = all_data[0]
             registros_raw = all_data[1:]
             
-            # Filtra registros de hoje
-            registros_hoje = []
+            # Constrói filtro de datas
+            def parse_data(d):
+                try:
+                    return datetime.datetime.strptime(d, '%d/%m/%Y')
+                except:
+                    return None
+
+            dt_inicio = parse_data(data_inicio) if data_inicio else hoje_dt
+            dt_fim = parse_data(data_fim) if data_fim else hoje_dt
+
+            # Normaliza ordem das datas
+            if dt_inicio and dt_fim and dt_inicio > dt_fim:
+                dt_inicio, dt_fim = dt_fim, dt_inicio
+
+            registros_periodo = []
             for row in registros_raw:
-                if len(row) > 0 and row[0] == hoje:
-                    registros_hoje.append({
-                        'data': row[0],
-                        'funcionario': row[1] if len(row) > 1 else '',
-                        'pedido_os': row[2] if len(row) > 2 else '',
-                        'tipo': row[3].lower() if len(row) > 3 else '',
-                        'tipo_nome': row[3] if len(row) > 3 else '',
-                        'horario': row[4] if len(row) > 4 else '',
-                        'observacao': row[5] if len(row) > 5 else ''
-                    })
+                if len(row) == 0:
+                    continue
+                data_str = row[0]
+                dreg = parse_data(data_str)
+                if not dreg:
+                    continue
+                if dt_inicio and dreg < dt_inicio:
+                    continue
+                if dt_fim and dreg > dt_fim:
+                    continue
+
+                reg = {
+                    'data': row[0],
+                    'funcionario': row[1] if len(row) > 1 else '',
+                    'pedido_os': row[2] if len(row) > 2 else '',
+                    'tipo': (row[3].lower() if len(row) > 3 else ''),
+                    'tipo_nome': row[3] if len(row) > 3 else '',
+                    'horario': row[4] if len(row) > 4 else '',
+                    'observacao': row[5] if len(row) > 5 else ''
+                }
+
+                # Filtros de usuário e OS
+                if usuario_filtro and usuario_filtro.lower() not in reg['funcionario'].lower():
+                    continue
+                if os_filtro and os_filtro.lower() not in str(reg['pedido_os']).lower():
+                    continue
+
+                registros_periodo.append(reg)
+
+            # Ordena decrescente por data e horário
+            registros_periodo.sort(key=lambda x: (x['data'], x['horario']), reverse=True)
+
+            # CSV export
+            if export:
+                import csv
+                from io import StringIO
+                si = StringIO()
+                writer = csv.DictWriter(si, fieldnames=['data','funcionario','pedido_os','tipo_nome','horario','observacao'])
+                writer.writeheader()
+                for r in registros_periodo:
+                    writer.writerow(r)
+                from flask import Response
+                filename = f"historico_{(dt_inicio or hoje_dt).strftime('%Y%m%d')}_{(dt_fim or hoje_dt).strftime('%Y%m%d')}.csv"
+                return Response(
+                    si.getvalue(),
+                    mimetype='text/csv',
+                    headers={
+                        'Content-Disposition': f'attachment; filename="{filename}"'
+                    }
+                )
+
+            # Paginação
+            total_registros = len(registros_periodo)
+            inicio = (page - 1) * per_page
+            fim = inicio + per_page
+            registros = registros_periodo[inicio:fim]
             
-            registros = sorted(registros_hoje, key=lambda x: x['horario'], reverse=True)
-            
-            # Agrupa por usuário e OS para calcular status
+            # Agrupa por usuário e OS para calcular status (apenas para o dia atual)
             os_por_usuario = {}
-            for reg in registros_hoje:
+            registros_dia_atual = [r for r in registros_periodo if r['data'] == hoje]
+            for reg in registros_dia_atual:
                 chave = f"{reg['funcionario']}|{reg['pedido_os']}"
                 if chave not in os_por_usuario:
                     os_por_usuario[chave] = []
@@ -681,6 +748,13 @@ def controle_horario():
         return render_template('controle_horario.html',
             usuarios_ativos=usuarios_ativos,
             registros=registros,
+            total_registros=total_registros,
+            page=page,
+            per_page=per_page,
+            usuario_filtro=usuario_filtro,
+            os_filtro=os_filtro,
+            data_inicio=(data_inicio or hoje),
+            data_fim=(data_fim or hoje),
             mensagem=mensagem,
             tipo_mensagem=tipo_mensagem)
             
