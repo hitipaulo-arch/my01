@@ -94,11 +94,37 @@ cache_data = {
 
 # --- CONFIGURAÇÃO DE USUÁRIOS (SIMPLIFICADO) ---
 # Em produção, use banco de dados com senhas hasheadas (bcrypt/werkzeug.security)
-USUARIOS = {
-    'admin': 'admin123',
-    'gestor': 'gestor123',
-    'operador': 'operador123'
-}
+import json
+
+USERS_FILE = Path(__file__).parent / 'users.json'
+
+# Carrega usuários do arquivo JSON ou cria arquivo inicial
+def carregar_usuarios():
+    """Carrega usuários do arquivo JSON."""
+    if USERS_FILE.exists():
+        try:
+            with open(USERS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    # Usuários padrão se arquivo não existir
+    usuarios_padrao = {
+        'admin': {'senha': 'admin123', 'role': 'admin'},
+        'gestor': {'senha': 'gestor123', 'role': 'admin'},
+        'operador': {'senha': 'operador123', 'role': 'user'}
+    }
+    salvar_usuarios(usuarios_padrao)
+    return usuarios_padrao
+
+def salvar_usuarios(usuarios):
+    """Salva usuários no arquivo JSON."""
+    try:
+        with open(USERS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(usuarios, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Erro ao salvar usuários: {e}")
+
+USUARIOS = carregar_usuarios()
 
 # --- DECORATOR DE AUTENTICAÇÃO ---
 def login_required(f):
@@ -108,6 +134,22 @@ def login_required(f):
         if 'usuario' not in session:
             flash('Por favor, faça login para acessar esta página.', 'warning')
             return redirect(url_for('login', next=request.url))
+        return f(*args, **kwargs)
+    return decorated_function
+
+def admin_required(f):
+    """Decorator para rotas que requerem privilégios de admin."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'usuario' not in session:
+            flash('Por favor, faça login para acessar esta página.', 'warning')
+            return redirect(url_for('login', next=request.url))
+        
+        usuario = session.get('usuario')
+        if USUARIOS.get(usuario, {}).get('role') != 'admin':
+            flash('Acesso negado. Apenas administradores podem acessar esta página.', 'danger')
+            return redirect(url_for('homepage'))
+        
         return f(*args, **kwargs)
     return decorated_function
 
@@ -243,8 +285,9 @@ def login():
         password = request.form.get('password', '').strip()
         
         # Valida credenciais
-        if username in USUARIOS and USUARIOS[username] == password:
+        if username in USUARIOS and USUARIOS[username]['senha'] == password:
             session['usuario'] = username
+            session['role'] = USUARIOS[username]['role']
             session.permanent = True
             flash(f'Bem-vindo, {username}!', 'success')
             
@@ -265,6 +308,39 @@ def logout():
     session.clear()
     flash(f'Logout realizado com sucesso. Até logo, {usuario}!', 'info')
     return redirect(url_for('login'))
+
+@app.route('/cadastro', methods=['GET', 'POST'])
+def cadastro():
+    """Página de cadastro de novos usuários."""
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
+        confirm_password = request.form.get('confirm_password', '').strip()
+        
+        # Validações
+        if not username or not password:
+            return render_template('cadastro.html', erro='Usuário e senha são obrigatórios.')
+        
+        if len(username) < 3:
+            return render_template('cadastro.html', erro='Usuário deve ter no mínimo 3 caracteres.')
+        
+        if len(password) < 6:
+            return render_template('cadastro.html', erro='Senha deve ter no mínimo 6 caracteres.')
+        
+        if password != confirm_password:
+            return render_template('cadastro.html', erro='As senhas não coincidem.')
+        
+        if username in USUARIOS:
+            return render_template('cadastro.html', erro='Usuário já existe. Escolha outro nome.')
+        
+        # Cria novo usuário com role 'user' (não-admin)
+        USUARIOS[username] = {'senha': password, 'role': 'user'}
+        salvar_usuarios(USUARIOS)
+        
+        flash(f'Cadastro realizado com sucesso! Você pode fazer login agora.', 'success')
+        return redirect(url_for('login'))
+    
+    return render_template('cadastro.html')
 
 # --- 2. ROTA PRINCIPAL (Formulário de Abertura) ---
 
@@ -358,7 +434,7 @@ def receber_requerimento():
 # --- 4. ROTA DO DASHBOARD (Gráficos) ---
 
 @app.route('/dashboard')
-@login_required
+@admin_required
 def dashboard():
     """Exibe o dashboard com gráficos de análise dos chamados."""
     disponivel, erro_msg = verificar_sheet_disponivel()
@@ -430,7 +506,7 @@ def dashboard():
 # --- 5. ROTA DE GERENCIAMENTO (Listar e Editar Chamados) ---
 
 @app.route('/gerenciar')
-@login_required
+@admin_required
 def gerenciar():
     """Exibe a página de gerenciamento com a lista de todos os chamados."""
     disponivel, erro_msg = verificar_sheet_disponivel()
@@ -509,7 +585,7 @@ def gerenciar():
 # --- 6. ROTA DE ATUALIZAÇÃO (Recebe dados do Modal de Edição) ---
 
 @app.route('/atualizar_chamado', methods=['POST'])
-@login_required
+@admin_required
 def atualizar_chamado():
     """Atualiza uma linha inteira na planilha com os dados do modal de edição."""
     disponivel, erro_msg = verificar_sheet_disponivel()
@@ -579,7 +655,7 @@ def sucesso():
 # --- 7.1. ROTA ADMINISTRATIVA - LIMPAR CACHE ---
 
 @app.route('/admin/limpar-cache', methods=['POST', 'GET'])
-@login_required
+@admin_required
 def admin_limpar_cache():
     """Limpa o cache manualmente (útil para admins/devs)."""
     try:
@@ -595,7 +671,7 @@ def admin_limpar_cache():
 # --- 8. ROTA DE CONTROLE DE HORÁRIO ---
 
 @app.route('/controle-horario', methods=['GET', 'POST'])
-@login_required
+@admin_required
 def controle_horario():
     """Página de controle de ponto com registros de entrada, saída e pausas para múltiplos usuários."""
     disponivel, erro_msg = verificar_sheet_disponivel()
@@ -915,7 +991,7 @@ def health_check():
 # --- 10. ROTA DE RELATÓRIOS DETALHADOS ---
 
 @app.route('/relatorios')
-@login_required
+@admin_required
 def relatorios():
     """Exibe página de relatórios com gráficos detalhados."""
     disponivel, erro_msg = verificar_sheet_disponivel()
@@ -1037,7 +1113,7 @@ def relatorios():
 # --- 10.1 ROTA TEMPO POR FUNCIONÁRIO ---
 
 @app.route('/tempo-por-funcionario')
-@login_required
+@admin_required
 def tempo_por_funcionario():
     """Exibe página com o tempo que cada funcionário trabalhou em cada OS e gráficos de urgência."""
     disponivel, erro_msg = verificar_sheet_disponivel()
