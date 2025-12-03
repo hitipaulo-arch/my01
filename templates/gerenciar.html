@@ -124,24 +124,7 @@
 <body>
 
     <div class="container">
-        <!-- Top Navigation with User Info and Logout -->
-        <div class="top-nav">
-            <div class="user-info">
-                👤 {{ session.usuario if session.usuario else 'Usuário' }}
-                {% if session.role == 'admin' %}
-                <span class="badge bg-danger ms-2">Admin</span>
-                {% endif %}
-            </div>
-            <div>
-                <a href="/" class="btn btn-sm btn-outline-primary me-2">📝 Nova OS</a>
-                <a href="/dashboard" class="btn btn-sm btn-outline-primary me-2">📊 Dashboard</a>
-                {% if session.role == 'admin' %}
-                <a href="/controle-horario" class="btn btn-sm btn-outline-primary me-2">⏱️ Controle</a>
-                <a href="/relatorios" class="btn btn-sm btn-outline-primary me-2">📈 Relatórios</a>
-                {% endif %}
-                <a href="/logout" class="btn-logout">Sair</a>
-            </div>
-        </div>
+        {% include '_top_nav.html' %}
         
         <div class="page-card">
             <h2>Gerenciar Chamados</h2>
