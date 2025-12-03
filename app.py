@@ -345,7 +345,6 @@ def cadastro():
 # --- 2. ROTA PRINCIPAL (Formulário de Abertura) ---
 
 @app.route('/')
-@login_required
 def homepage():
     """Exibe a página inicial com o formulário (index.html)."""
     return render_template('index.html')
@@ -353,7 +352,6 @@ def homepage():
 # --- 3. ROTA DE ENVIO (Recebe dados do Formulário) ---
 
 @app.route('/enviar', methods=['POST'])
-@login_required
 def receber_requerimento():
     """Recebe os dados do formulário e adiciona como uma nova linha na planilha."""
     # Verifica disponibilidade da planilha
