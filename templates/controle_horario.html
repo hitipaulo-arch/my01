@@ -399,15 +399,45 @@
             </div>
         </div>
 
-        <!-- Histórico de Hoje -->
+        <!-- Filtros & Histórico -->
         <div class="historico">
-            <h2>📋 Histórico de Hoje ({{ registros|length }} registros)</h2>
+            <h2>📋 Histórico ({{ total_registros or registros|length }} registros)</h2>
+            <form method="GET" action="{{ url_for('controle_horario') }}" style="margin-bottom: 15px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; align-items: end;">
+                <div>
+                    <label style="font-weight:600; color:#2c3e50;">Usuário</label>
+                    <input type="text" name="usuario" value="{{ usuario_filtro }}" placeholder="Nome do funcionário" style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+                </div>
+                <div>
+                    <label style="font-weight:600; color:#2c3e50;">Pedido/OS</label>
+                    <input type="text" name="pedido_os" value="{{ os_filtro }}" placeholder="Número da OS" style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+                </div>
+                <div>
+                    <label style="font-weight:600; color:#2c3e50;">Data Início</label>
+                    <input type="text" name="data_inicio" value="{{ data_inicio }}" placeholder="dd/mm/aaaa" style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+                </div>
+                <div>
+                    <label style="font-weight:600; color:#2c3e50;">Data Fim</label>
+                    <input type="text" name="data_fim" value="{{ data_fim }}" placeholder="dd/mm/aaaa" style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+                </div>
+                <div>
+                    <label style="font-weight:600; color:#2c3e50;">Por página</label>
+                    <input type="number" min="5" max="100" name="per_page" value="{{ per_page }}" style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button class="btn btn-entrada" type="submit" style="flex:1;">Filtrar</button>
+                    <a class="btn btn-pausa" href="{{ url_for('controle_horario') }}" style="text-decoration:none; display:flex; align-items:center; justify-content:center;">Limpar</a>
+                </div>
+            </form>
+
+            <div style="display:flex; justify-content: flex-end; margin-bottom:10px;">
+                <a class="btn btn-pausa" href="{{ url_for('controle_horario', usuario=usuario_filtro, pedido_os=os_filtro, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, export='csv') }}" style="text-decoration:none;">Exportar CSV</a>
+            </div>
             {% if registros %}
                 {% for reg in registros %}
                 <div class="registro-item">
                     <div>
                         <span class="tipo {{ reg.tipo }}">{{ reg.tipo_nome }}</span>
-                        <strong>{{ reg.funcionario }}</strong>
+                        <strong style="margin-left:10px;">{{ reg.funcionario }}</strong>
                         {% if reg.pedido_os %}
                         <span style="margin-left: 10px; color: #667eea; font-weight: bold;">
                             OS #{{ reg.pedido_os }}
@@ -418,16 +448,28 @@
                             {{ reg.observacao }}
                         </span>
                         {% endif %}
+                        <span style="margin-left: 10px; color: #95a5a6;">
+                            📅 {{ reg.data }}
+                        </span>
                     </div>
                     <div style="font-weight: bold; color: #2c3e50;">
                         {{ reg.horario }}
                     </div>
                 </div>
                 {% endfor %}
+                <div style="display:flex; justify-content: space-between; align-items:center; margin-top: 12px;">
+                    <div style="color:#7f8c8d;">Página {{ page }} — exibindo {{ registros|length }} de {{ total_registros }}</div>
+                    <div style="display:flex; gap:8px;">
+                        {% set prev_page = page - 1 %}
+                        {% set next_page = page + 1 %}
+                        <a class="btn btn-entrada" style="text-decoration:none; {{ 'pointer-events:none; opacity:.6;' if page <= 1 }}" href="{{ url_for('controle_horario', usuario=usuario_filtro, pedido_os=os_filtro, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, page=prev_page) }}">← Anterior</a>
+                        <a class="btn btn-entrada" style="text-decoration:none; {{ 'pointer-events:none; opacity:.6;' if (page * per_page) >= (total_registros or 0) }}" href="{{ url_for('controle_horario', usuario=usuario_filtro, pedido_os=os_filtro, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, page=next_page) }}">Próxima →</a>
+                    </div>
+                </div>
             {% else %}
                 <div class="empty-state">
                     <div class="empty-state-icon">📭</div>
-                    <p>Nenhum registro hoje</p>
+                    <p>Nenhum registro encontrado no período</p>
                 </div>
             {% endif %}
         </div>
