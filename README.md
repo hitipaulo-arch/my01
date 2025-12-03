@@ -33,10 +33,14 @@ pip install -r requirements.txt
 ```
 
 3. Configure as credenciais:
-   - Crie um Service Account no Google Cloud
-   - Baixe o arquivo JSON
-   - Renomeie para `credentials.json`
-   - Coloque na raiz do projeto
+   - Acesse [Google Cloud Console](https://console.cloud.google.com/)
+   - Crie um novo projeto ou selecione um existente
+   - Ative a API do Google Sheets
+   - Crie um Service Account em "IAM & Admin" > "Service Accounts"
+   - Gere uma chave JSON para o Service Account
+   - Copie o arquivo `credentials.json.example` para `credentials.json`
+   - Substitua os valores de exemplo pelos dados do seu Service Account
+   - **IMPORTANTE**: Compartilhe sua planilha Google Sheets com o email do Service Account (permissão de editor)
 
 4. Configure variáveis de ambiente (opcional):
 ```bash
