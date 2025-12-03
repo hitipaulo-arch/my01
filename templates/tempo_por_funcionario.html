@@ -8,8 +8,10 @@
   <style>
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg,#667eea,#764ba2); padding:20px; }
     .container { max-width: 1400px; margin: 0 auto; }
-    .nav { text-align:center; margin-bottom:20px; }
-    .nav a { color:#fff; text-decoration:none; padding:10px 18px; background: rgba(255,255,255,.2); border-radius:8px; margin:0 6px; }
+    .top-nav { background: rgba(255,255,255,0.95); border-radius:10px; padding:15px 25px; box-shadow:0 5px 15px rgba(0,0,0,.1); display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+    .user-info { font-weight:600; color:#2c3e50; }
+    .btn-logout { background:#dc3545; color:#fff; border:none; border-radius:8px; padding:8px 20px; text-decoration:none; transition:all .3s; }
+    .btn-logout:hover { background:#c82333; color:#fff; transform:translateY(-2px); }
     .card { background:#fff; border-radius:14px; padding:22px; box-shadow: 0 10px 40px rgba(0,0,0,.2); margin-bottom:20px; }
     h1 { color:#2c3e50; }
     table { width:100%; border-collapse: collapse; }
@@ -24,13 +26,7 @@
 </head>
 <body>
   <div class="container">
-    <div class="nav">
-      <a href="{{ url_for('homepage') }}">🏠 Início</a>
-      <a href="{{ url_for('dashboard') }}">📊 Dashboard</a>
-      <a href="{{ url_for('relatorios') }}">📈 Relatórios</a>
-      <a href="{{ url_for('gerenciar') }}">🔧 Gerenciar</a>
-      <a href="{{ url_for('controle_horario') }}">⏰ Controle</a>
-    </div>
+    {% include '_top_nav.html' %}
 
     <div class="card">
       <h1>⏱ Tempo por Funcionário e OS</h1>

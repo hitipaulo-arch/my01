@@ -1,0 +1,47 @@
+<style>
+  .top-nav {
+    background: rgba(255,255,255,0.95);
+    border-radius: 10px;
+    padding: 15px 25px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  .user-info { font-weight: 600; color: #2c3e50; }
+  .btn-logout {
+    background: #dc3545; color: white; border: none; border-radius: 8px;
+    padding: 8px 20px; text-decoration: none; transition: all 0.3s;
+  }
+  .btn-logout:hover { background: #c82333; color: white; transform: translateY(-2px); }
+</style>
+
+{% if session.usuario %}
+<div class="top-nav">
+  <div class="user-info">
+    👤 {{ session.usuario }}
+    {% if session.role == 'admin' %}
+    <span class="badge bg-danger ms-2">Admin</span>
+    {% endif %}
+  </div>
+  <div>
+    {% if session.role == 'admin' %}
+    <a href="/dashboard" class="btn btn-sm btn-outline-primary me-2">📊 Dashboard</a>
+    <a href="/gerenciar" class="btn btn-sm btn-outline-primary me-2">📋 Gerenciar</a>
+    <a href="/controle-horario" class="btn btn-sm btn-outline-primary me-2">⏱️ Controle</a>
+    <a href="/relatorios" class="btn btn-sm btn-outline-primary me-2">📈 Relatórios</a>
+    {% endif %}
+    <a href="/logout" class="btn-logout">Sair</a>
+  </div>
+  </div>
+{% else %}
+<div class="top-nav">
+  <div class="user-info">🔓 Acesso Público</div>
+  <div>
+    <a href="/login" class="btn btn-sm btn-outline-primary me-2">🔐 Login</a>
+    <a href="/cadastro" class="btn btn-sm btn-success me-2">📝 Cadastro</a>
+    <a href="/consultar" class="btn btn-sm btn-outline-info">🔍 Consultar OS</a>
+  </div>
+</div>
+{% endif %}

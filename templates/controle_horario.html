@@ -288,6 +288,7 @@
 </head>
 <body>
     <div class="container">
+        {% include '_top_nav.html' %}
 
         {% if mensagem %}
         <div class="alert alert-{{ tipo_mensagem or 'success' }}">
