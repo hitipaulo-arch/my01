@@ -141,6 +141,7 @@
                         <thead class="table-dark"> <!-- Mantemos a tabela escura para contraste, ou mudamos para primary? -->
                             <tr>
                                 <!-- Cabeçalhos clicáveis para ordenação -->
+                                <th scope="col">Nº OS</th>
                                 <th scope="col">
                                     <a href="{{ url_for('gerenciar', sort_by='Carimbo de data/hora', order='desc' if current_order == 'asc' else 'asc') }}" class="sort-link">
                                         Data Solicitação <i class="bi bi-arrow-down-up ms-1"></i>
@@ -189,6 +190,7 @@
                                     data-horas-trabalhadas="{{ chamado['Horas trabalhadas'] }}"
                                     >
                                     
+                                    <td><strong>#{{ chamado['row_id'] }}</strong></td>
                                     <td>{{ chamado['Data da Solicitação'] }}</td>
                                     <td>{{ chamado['Nome do solicitante'] }}</td>
                                     <td>{{ chamado['Setor em que será realizado o serviço'] }}</td>
