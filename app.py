@@ -1,13 +1,14 @@
 import datetime
 from pathlib import Path
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 import os
 import logging
 from threading import Lock
-import secrets 
+import secrets
+from functools import wraps 
 
 # --- 1. CONFIGURAÇÃO INICIAL (Google Sheets & Flask) ---
 
@@ -90,6 +91,25 @@ cache_data = {
     'gerenciar': {'data': None, 'timestamp': None},
     'relatorios': {'data': None, 'timestamp': None}
 }
+
+# --- CONFIGURAÇÃO DE USUÁRIOS (SIMPLIFICADO) ---
+# Em produção, use banco de dados com senhas hasheadas (bcrypt/werkzeug.security)
+USUARIOS = {
+    'admin': 'admin123',
+    'gestor': 'gestor123',
+    'operador': 'operador123'
+}
+
+# --- DECORATOR DE AUTENTICAÇÃO ---
+def login_required(f):
+    """Decorator para proteger rotas que requerem autenticação."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'usuario' not in session:
+            flash('Por favor, faça login para acessar esta página.', 'warning')
+            return redirect(url_for('login', next=request.url))
+        return f(*args, **kwargs)
+    return decorated_function
 
 # --- FUNÇÕES AUXILIARES ---
 
@@ -190,9 +210,66 @@ def limpar_cache(chave=None):
                 cache_data[key] = {'data': None, 'timestamp': None}
             logger.info("Todo o cache foi limpo")
 
+# --- CONFIGURAÇÃO DE USUÁRIOS (SIMPLIFICADO) ---
+# Em produção, use banco de dados com senhas hasheadas (bcrypt/werkzeug.security)
+USUARIOS = {
+    'admin': 'admin123',
+    'gestor': 'gestor123',
+    'operador': 'operador123'
+}
+
+# --- DECORATOR DE AUTENTICAÇÃO ---
+def login_required(f):
+    """Decorator para proteger rotas que requerem autenticação."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'usuario' not in session:
+            flash('Por favor, faça login para acessar esta página.', 'warning')
+            return redirect(url_for('login', next=request.url))
+        return f(*args, **kwargs)
+    return decorated_function
+
+# --- ROTAS DE AUTENTICAÇÃO ---
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Página de login do sistema."""
+    # Se já estiver logado, redireciona para dashboard
+    if 'usuario' in session:
+        return redirect(url_for('homepage'))
+    
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
+        
+        # Valida credenciais
+        if username in USUARIOS and USUARIOS[username] == password:
+            session['usuario'] = username
+            session.permanent = True
+            flash(f'Bem-vindo, {username}!', 'success')
+            
+            # Redireciona para a página solicitada ou homepage
+            next_page = request.args.get('next')
+            if next_page and next_page.startswith('/'):
+                return redirect(next_page)
+            return redirect(url_for('homepage'))
+        else:
+            return render_template('login.html', erro='Usuário ou senha inválidos.')
+    
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    """Faz logout do usuário."""
+    usuario = session.get('usuario', 'Usuário')
+    session.clear()
+    flash(f'Logout realizado com sucesso. Até logo, {usuario}!', 'info')
+    return redirect(url_for('login'))
+
 # --- 2. ROTA PRINCIPAL (Formulário de Abertura) ---
 
 @app.route('/')
+@login_required
 def homepage():
     """Exibe a página inicial com o formulário (index.html)."""
     return render_template('index.html')
@@ -200,6 +277,7 @@ def homepage():
 # --- 3. ROTA DE ENVIO (Recebe dados do Formulário) ---
 
 @app.route('/enviar', methods=['POST'])
+@login_required
 def receber_requerimento():
     """Recebe os dados do formulário e adiciona como uma nova linha na planilha."""
     # Verifica disponibilidade da planilha
@@ -280,6 +358,7 @@ def receber_requerimento():
 # --- 4. ROTA DO DASHBOARD (Gráficos) ---
 
 @app.route('/dashboard')
+@login_required
 def dashboard():
     """Exibe o dashboard com gráficos de análise dos chamados."""
     disponivel, erro_msg = verificar_sheet_disponivel()
@@ -351,6 +430,7 @@ def dashboard():
 # --- 5. ROTA DE GERENCIAMENTO (Listar e Editar Chamados) ---
 
 @app.route('/gerenciar')
+@login_required
 def gerenciar():
     """Exibe a página de gerenciamento com a lista de todos os chamados."""
     disponivel, erro_msg = verificar_sheet_disponivel()
@@ -429,6 +509,7 @@ def gerenciar():
 # --- 6. ROTA DE ATUALIZAÇÃO (Recebe dados do Modal de Edição) ---
 
 @app.route('/atualizar_chamado', methods=['POST'])
+@login_required
 def atualizar_chamado():
     """Atualiza uma linha inteira na planilha com os dados do modal de edição."""
     disponivel, erro_msg = verificar_sheet_disponivel()
@@ -490,6 +571,7 @@ def atualizar_chamado():
 # --- 7. ROTA DE SUCESSO (Página de confirmação) ---
 
 @app.route('/sucesso')
+@login_required
 def sucesso():
     """Página de sucesso (para caso o /enviar fosse GET)."""
     return render_template('sucesso.html', nome="Usuário")
@@ -497,6 +579,7 @@ def sucesso():
 # --- 7.1. ROTA ADMINISTRATIVA - LIMPAR CACHE ---
 
 @app.route('/admin/limpar-cache', methods=['POST', 'GET'])
+@login_required
 def admin_limpar_cache():
     """Limpa o cache manualmente (útil para admins/devs)."""
     try:
@@ -512,6 +595,7 @@ def admin_limpar_cache():
 # --- 8. ROTA DE CONTROLE DE HORÁRIO ---
 
 @app.route('/controle-horario', methods=['GET', 'POST'])
+@login_required
 def controle_horario():
     """Página de controle de ponto com registros de entrada, saída e pausas para múltiplos usuários."""
     disponivel, erro_msg = verificar_sheet_disponivel()
@@ -831,6 +915,7 @@ def health_check():
 # --- 10. ROTA DE RELATÓRIOS DETALHADOS ---
 
 @app.route('/relatorios')
+@login_required
 def relatorios():
     """Exibe página de relatórios com gráficos detalhados."""
     disponivel, erro_msg = verificar_sheet_disponivel()
@@ -952,17 +1037,63 @@ def relatorios():
 # --- 10.1 ROTA TEMPO POR FUNCIONÁRIO ---
 
 @app.route('/tempo-por-funcionario')
+@login_required
 def tempo_por_funcionario():
     """Exibe página com o tempo que cada funcionário trabalhou em cada OS e gráficos de urgência."""
     disponivel, erro_msg = verificar_sheet_disponivel()
     if not disponivel or sheet_horario is None:
-        return render_template('tempo_por_funcionario.html', dados=[], chart_data={}, mensagem_erro=erro_msg or "Sheets indisponível")
+        return render_template('tempo_por_funcionario.html', dados=[], chart_data={}, 
+                               mensagem_erro=erro_msg or "Sheets indisponível",
+                               funcionario='', pedido_os='', page=1, per_page=20,
+                               data_inicio='', data_fim='', data_inicio_iso='', data_fim_iso='',
+                               total_registros=0, aviso_periodo=None)
 
     try:
+        # Query params
+        funcionario_q = request.args.get('funcionario', '').strip()
+        pedido_q = request.args.get('pedido_os', '').strip()
+        page = int(request.args.get('page', '1'))
+        per_page = int(request.args.get('per_page', '20'))
+        data_inicio = request.args.get('data_inicio', '').strip()
+        data_fim = request.args.get('data_fim', '').strip()
+        export_param = request.args.get('export', '').strip().lower()
+        export_csv = export_param == 'csv'
+        export_xlsx = export_param == 'xlsx'
+
+        hoje_dt = datetime.datetime.now()
+
+        def parse_data(d):
+            if not d:
+                return None
+            for fmt in ('%d/%m/%Y', '%Y-%m-%d'):
+                try:
+                    return datetime.datetime.strptime(d, fmt)
+                except:
+                    continue
+            return None
+
+        def to_iso(dstr):
+            dt = parse_data(dstr)
+            return dt.strftime('%Y-%m-%d') if dt else hoje_dt.strftime('%Y-%m-%d')
+
+        dt_inicio = parse_data(data_inicio) or hoje_dt - datetime.timedelta(days=7)
+        dt_fim = parse_data(data_fim) or hoje_dt
+        if dt_inicio > dt_fim:
+            dt_inicio, dt_fim = dt_fim, dt_inicio
+
+        aviso_periodo = None
+        if (dt_fim - dt_inicio).days > 30:
+            dt_inicio = dt_fim - datetime.timedelta(days=30)
+            aviso_periodo = 'Período limitado aos últimos 30 dias.'
+
         # Carrega registros de controle de horário (todos)
         all_data = sheet_horario.get_all_values()
         if len(all_data) <= 1:
-            return render_template('tempo_por_funcionario.html', dados=[], chart_data={}, mensagem_erro=None)
+            return render_template('tempo_por_funcionario.html', dados=[], chart_data={}, mensagem_erro=None,
+                                   funcionario=funcionario_q, pedido_os=pedido_q, page=page, per_page=per_page,
+                                   data_inicio=dt_inicio.strftime('%d/%m/%Y'), data_fim=dt_fim.strftime('%d/%m/%Y'),
+                                   data_inicio_iso=dt_inicio.strftime('%Y-%m-%d'), data_fim_iso=dt_fim.strftime('%Y-%m-%d'),
+                                   total_registros=0, aviso_periodo=aviso_periodo)
 
         registros = []
         for row in all_data[1:]:
@@ -979,11 +1110,18 @@ def tempo_por_funcionario():
                 dt = dt_hora.replace(year=dt_data.year, month=dt_data.month, day=dt_data.day)
             except:
                 continue
+            # filtro de período bruto
+            if dt < dt_inicio or dt > dt_fim:
+                continue
+            # filtros por funcionario e pedido
+            if funcionario_q and funcionario_q.lower() not in (funcionario or '').lower():
+                continue
+            if pedido_q and pedido_q.lower() not in str(pedido_os or '').lower():
+                continue
             registros.append({'data': dt_data, 'funcionario': funcionario, 'pedido_os': pedido_os, 'tipo': tipo, 'dt': dt})
 
         # Agrega tempo por funcionário + OS
         tempo_map = {}  # {(funcionario, os): total_seconds}
-        # Para cada funcionario+OS, percorre pares Entrada->(Pausa/Retorno)->Saída somando tempo útil
         from collections import defaultdict
         regs_por_chave = defaultdict(list)
         for r in registros:
@@ -1013,7 +1151,6 @@ def tempo_por_funcionario():
                     trabalhando_inicio = None
                     em_pausa = False
                     pausa_inicio = None
-            # Se ficou aberto sem saída, ignora tempo corrente (não fechada)
             tempo_map[chave] = int(total.total_seconds())
 
         # Carrega urgência (prioridade) da planilha principal
@@ -1022,12 +1159,10 @@ def tempo_por_funcionario():
             data_main = sheet.get_all_values()
             if len(data_main) > 1:
                 headers = data_main[0]
-                # A: ID, H: Nível de prioridade (índice 8 contando de 1)
-                idx_id = headers.index('A') if 'A' in headers else 0
                 idx_prior = headers.index('Nível de prioridade') if 'Nível de prioridade' in headers else 7
                 for row in data_main[1:]:
-                    if len(row) > max(idx_id, idx_prior):
-                        os_id = str(row[0]).strip() if idx_id == 0 else str(row[idx_id]).strip()
+                    if len(row) > idx_prior:
+                        os_id = str(row[0]).strip()
                         prioridade = row[idx_prior]
                         if os_id:
                             prioridade_por_os[os_id] = prioridade
@@ -1035,25 +1170,27 @@ def tempo_por_funcionario():
             logger.warning(f"Falha ao carregar prioridade: {e}")
 
         # Monta dados para tabela e gráficos
-        dados = []
+        dados_all = []
         urg_counts = {}
         for (func, osid), secs in tempo_map.items():
             horas = secs // 3600
             mins = (secs % 3600) // 60
             urg = prioridade_por_os.get(str(osid), 'Desconhecida')
-            dados.append({'funcionario': func, 'pedido_os': osid, 'tempo': f"{horas}h {mins}m", 'segundos': secs, 'urgencia': urg})
+            dados_all.append({'funcionario': func, 'pedido_os': osid, 'tempo': f"{horas}h {mins}m", 'segundos': secs, 'urgencia': urg})
             urg_counts[urg] = urg_counts.get(urg, 0) + 1
 
         # Ordena por funcionário e tempo desc
-        dados.sort(key=lambda x: (x['funcionario'], -x['segundos']))
+        dados_all.sort(key=lambda x: (x['funcionario'], -x['segundos']))
+        total_registros = len(dados_all)
+        inicio = (page - 1) * per_page
+        fim = inicio + per_page
+        dados = dados_all[inicio:fim]
 
-        # Chart datasets
-        # 1) Bar: tempo por OS (top 20 por segundos)
-        top = sorted(dados, key=lambda x: x['segundos'], reverse=True)[:20]
+        # Chart datasets (Top 20 no conjunto filtrado)
+        top = sorted(dados_all, key=lambda x: x['segundos'], reverse=True)[:20]
         bar_labels = [f"{d['funcionario']} - OS {d['pedido_os']}" for d in top]
-        bar_values = [round(d['segundos']/3600, 2) for d in top]  # horas
+        bar_values = [round(d['segundos']/3600, 2) for d in top]
 
-        # 2) Doughnut: urgência distribuição
         urg_labels = list(urg_counts.keys())
         urg_values = [urg_counts[k] for k in urg_labels]
 
@@ -1064,11 +1201,43 @@ def tempo_por_funcionario():
             'urg_values': urg_values
         }
 
-        return render_template('tempo_por_funcionario.html', dados=dados, chart_data=chart_data, mensagem_erro=None)
+        # Exportações
+        if export_csv:
+            import csv
+            from io import StringIO
+            si = StringIO()
+            writer = csv.DictWriter(si, fieldnames=['funcionario','pedido_os','tempo','segundos','urgencia'])
+            writer.writeheader()
+            for r in dados_all:
+                writer.writerow(r)
+            from flask import Response
+            filename = f"tempo_func_{dt_inicio.strftime('%Y%m%d')}_{dt_fim.strftime('%Y%m%d')}.csv"
+            return Response(si.getvalue(), mimetype='text/csv', headers={'Content-Disposition': f'attachment; filename="{filename}"'})
+
+        if export_xlsx:
+            try:
+                from io import BytesIO
+                import pandas as pd
+                buffer = BytesIO()
+                df = pd.DataFrame(dados_all)
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    df.to_excel(writer, index=False, sheet_name='Tempo')
+                buffer.seek(0)
+                from flask import Response
+                filename = f"tempo_func_{dt_inicio.strftime('%Y%m%d')}_{dt_fim.strftime('%Y%m%d')}.xlsx"
+                return Response(buffer.read(), mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', headers={'Content-Disposition': f'attachment; filename="{filename}"'})
+            except Exception as e:
+                logger.error(f"Erro ao exportar XLSX (tempo por funcionário): {e}")
+
+        return render_template('tempo_por_funcionario.html', dados=dados, chart_data=chart_data, mensagem_erro=None,
+                               funcionario=funcionario_q, pedido_os=pedido_q, page=page, per_page=per_page,
+                               data_inicio=dt_inicio.strftime('%d/%m/%Y'), data_fim=dt_fim.strftime('%d/%m/%Y'),
+                               data_inicio_iso=dt_inicio.strftime('%Y-%m-%d'), data_fim_iso=dt_fim.strftime('%Y-%m-%d'),
+                               total_registros=total_registros, aviso_periodo=aviso_periodo)
     except Exception as e:
         logger.error(f"Erro em tempo_por_funcionario: {e}")
         return render_template('erro.html', mensagem=f"Erro ao carregar tempo por funcionário: {e}"), 500
-# --- 11. ROTA DE CONSULTA DE STATUS ---
+# --- 11. ROTA DE CONSULTA DE STATUS (PÚBLICA) ---
 
 @app.route('/consultar', methods=['GET', 'POST'])
 def consultar_pedido():

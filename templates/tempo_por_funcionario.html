@@ -51,6 +51,43 @@
     </div>
 
     <div class="card">
+      <h2>Filtros</h2>
+      <form method="GET" action="{{ url_for('tempo_por_funcionario') }}" style="display:grid; grid-template-columns: repeat(6, 1fr); gap:10px; align-items:end;">
+        <div>
+          <label>Funcionário</label>
+          <input type="text" name="funcionario" value="{{ funcionario or '' }}" style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+        </div>
+        <div>
+          <label>Pedido/OS</label>
+          <input type="text" name="pedido_os" value="{{ pedido_os or '' }}" style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+        </div>
+        <div>
+          <label>Data Início</label>
+          <input type="date" name="data_inicio" value="{{ data_inicio_iso }}" style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+        </div>
+        <div>
+          <label>Data Fim</label>
+          <input type="date" name="data_fim" value="{{ data_fim_iso }}" style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+        </div>
+        <div>
+          <label>Por página</label>
+          <input type="number" min="5" max="100" name="per_page" value="{{ per_page }}" style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-entrada" type="submit" style="flex:1;">Filtrar</button>
+          <a class="btn btn-pausa" href="{{ url_for('tempo_por_funcionario') }}" style="text-decoration:none; display:flex; align-items:center; justify-content:center;">Limpar</a>
+        </div>
+      </form>
+      {% if aviso_periodo %}
+        <div style="margin-top:10px;" class="alert alert-warning">{{ aviso_periodo }}</div>
+      {% endif %}
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:10px;">
+        <a class="btn btn-pausa" href="{{ url_for('tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, export='csv') }}" style="text-decoration:none;">Exportar CSV</a>
+        <a class="btn btn-pausa" href="{{ url_for('tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, export='xlsx') }}" style="text-decoration:none;">Exportar XLSX</a>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>Tabela Resumo</h2>
       <table>
         <thead>
@@ -83,6 +120,15 @@
           {% endfor %}
         </tbody>
       </table>
+      <div style="display:flex; justify-content: space-between; align-items:center; margin-top: 12px;">
+        <div style="color:#7f8c8d;">Página {{ page }} — exibindo {{ dados|length }} de {{ total_registros }}</div>
+        <div style="display:flex; gap:8px;">
+          {% set prev_page = page - 1 %}
+          {% set next_page = page + 1 %}
+          <a class="btn btn-entrada" style="text-decoration:none; {{ 'pointer-events:none; opacity:.6;' if page <= 1 }}" href="{{ url_for('tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, page=prev_page) }}">← Anterior</a>
+          <a class="btn btn-entrada" style="text-decoration:none; {{ 'pointer-events:none; opacity:.6;' if (page * per_page) >= (total_registros or 0) }}" href="{{ url_for('tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, page=next_page) }}">Próxima →</a>
+        </div>
+      </div>
     </div>
   </div>
 

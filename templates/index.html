@@ -14,6 +14,38 @@
             padding: 20px;
         }
         
+        .top-nav {
+            background: rgba(255,255,255,0.95);
+            border-radius: 10px;
+            padding: 15px 25px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .user-info {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .btn-logout {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 8px 20px;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+        
+        .btn-logout:hover {
+            background: #c82333;
+            color: white;
+            transform: translateY(-2px);
+        }
+        
         .container {
             max-width: 900px;
             margin: 0 auto;
@@ -113,6 +145,20 @@
 <body>
 
     <div class="container">
+        <!-- Top Navigation with User Info and Logout -->
+        <div class="top-nav">
+            <div class="user-info">
+                👤 {{ session.usuario if session.usuario else 'Usuário' }}
+            </div>
+            <div>
+                <a href="/dashboard" class="btn btn-sm btn-outline-primary me-2">📊 Dashboard</a>
+                <a href="/gerenciar" class="btn btn-sm btn-outline-primary me-2">📋 Gerenciar</a>
+                <a href="/controle-horario" class="btn btn-sm btn-outline-primary me-2">⏱️ Controle</a>
+                <a href="/relatorios" class="btn btn-sm btn-outline-primary me-2">📈 Relatórios</a>
+                <a href="/logout" class="btn-logout">Sair</a>
+            </div>
+        </div>
+        
         <div class="nav-links">
             <a href="/dashboard">📊 Dashboard</a>
             <a href="/relatorios">📈 Relatórios</a>
