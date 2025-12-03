@@ -48,9 +48,12 @@ except Exception as e:
 SHEET_ID = os.getenv('GOOGLE_SHEET_ID', '1qs3cxlklTnzCp4RpQGhxIrEF4CbeUvid1S0Cp2tC3Xg')
 SHEET_TAB_NAME = os.getenv('GOOGLE_SHEET_TAB', 'Respostas ao formulário 3')
 SHEET_HORARIO_TAB = os.getenv('GOOGLE_SHEET_HORARIO_TAB', 'Controle de Horário')
+SHEET_USUARIOS_TAB = os.getenv('GOOGLE_SHEET_USUARIOS_TAB', 'Usuários')
 
 # Variável para planilha de controle de horário
 sheet_horario = None
+# Variável para planilha de usuários
+sheet_usuarios = None
 
 # Só tenta conectar se as credenciais foram carregadas
 if creds:
@@ -70,6 +73,21 @@ if creds:
             # Adiciona cabeçalho
             sheet_horario.append_row(['Data', 'Funcionário', 'Pedido/OS', 'Tipo', 'Horário', 'Observação'])
             logger.info(f"Aba '{SHEET_HORARIO_TAB}' criada com sucesso")
+        
+        # Tenta conectar à aba de usuários (cria se não existir)
+        try:
+            sheet_usuarios = spreadsheet.worksheet(SHEET_USUARIOS_TAB)
+            logger.info(f"Conectado à aba '{SHEET_USUARIOS_TAB}'")
+        except:
+            # Cria aba se não existir
+            sheet_usuarios = spreadsheet.add_worksheet(title=SHEET_USUARIOS_TAB, rows=1000, cols=10)
+            # Adiciona cabeçalho
+            sheet_usuarios.append_row(['Username', 'Senha', 'Role'])
+            # Adiciona usuários padrão
+            sheet_usuarios.append_row(['admin', 'admin123', 'admin'])
+            sheet_usuarios.append_row(['gestor', 'gestor123', 'admin'])
+            sheet_usuarios.append_row(['operador', 'operador123', 'admin'])
+            logger.info(f"Aba '{SHEET_USUARIOS_TAB}' criada com sucesso com usuários padrão")
             
     except Exception as e:
         logger.error(f"Erro ao conectar na planilha (verifique permissões de partilha): {e}")
@@ -98,31 +116,71 @@ import json
 
 USERS_FILE = Path(__file__).parent / 'users.json'
 
-# Carrega usuários do arquivo JSON ou cria arquivo inicial
+# Carrega usuários do Google Sheets ou cria usuários padrão
 def carregar_usuarios():
-    """Carrega usuários do arquivo JSON."""
-    if USERS_FILE.exists():
-        try:
-            with open(USERS_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
-            pass
-    # Usuários padrão se arquivo não existir
-    usuarios_padrao = {
-        'admin': {'senha': 'admin123', 'role': 'admin'},
-        'gestor': {'senha': 'gestor123', 'role': 'admin'},
-        'operador': {'senha': 'operador123', 'role': 'user'}
-    }
-    salvar_usuarios(usuarios_padrao)
-    return usuarios_padrao
+    """Carrega usuários do Google Sheets."""
+    global sheet_usuarios
+    
+    if not sheet_usuarios:
+        logger.warning("Aba de usuários não disponível. Usando usuários padrão.")
+        return {
+            'admin': {'senha': 'admin123', 'role': 'admin'},
+            'gestor': {'senha': 'gestor123', 'role': 'admin'},
+            'operador': {'senha': 'operador123', 'role': 'admin'}
+        }
+    
+    try:
+        # Lê todos os registros da aba de usuários
+        records = sheet_usuarios.get_all_records()
+        usuarios = {}
+        
+        for record in records:
+            username = record.get('Username', '').strip()
+            senha = record.get('Senha', '').strip()
+            role = record.get('Role', 'admin').strip()
+            
+            if username and senha:
+                usuarios[username] = {'senha': senha, 'role': role}
+        
+        logger.info(f"Carregados {len(usuarios)} usuários do Google Sheets")
+        return usuarios if usuarios else {
+            'admin': {'senha': 'admin123', 'role': 'admin'}
+        }
+    
+    except Exception as e:
+        logger.error(f"Erro ao carregar usuários do Google Sheets: {e}")
+        # Retorna usuários padrão em caso de erro
+        return {
+            'admin': {'senha': 'admin123', 'role': 'admin'},
+            'gestor': {'senha': 'gestor123', 'role': 'admin'},
+            'operador': {'senha': 'operador123', 'role': 'admin'}
+        }
 
 def salvar_usuarios(usuarios):
-    """Salva usuários no arquivo JSON."""
+    """Salva usuários no Google Sheets."""
+    global sheet_usuarios
+    
+    if not sheet_usuarios:
+        logger.error("Aba de usuários não disponível. Não foi possível salvar.")
+        return False
+    
     try:
-        with open(USERS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(usuarios, f, ensure_ascii=False, indent=2)
+        # Limpa dados existentes (mantém cabeçalho)
+        sheet_usuarios.clear()
+        sheet_usuarios.append_row(['Username', 'Senha', 'Role'])
+        
+        # Adiciona cada usuário
+        for username, dados in usuarios.items():
+            senha = dados.get('senha', '') if isinstance(dados, dict) else dados
+            role = dados.get('role', 'admin') if isinstance(dados, dict) else 'admin'
+            sheet_usuarios.append_row([username, senha, role])
+        
+        logger.info(f"Salvos {len(usuarios)} usuários no Google Sheets")
+        return True
+    
     except Exception as e:
-        logger.error(f"Erro ao salvar usuários: {e}")
+        logger.error(f"Erro ao salvar usuários no Google Sheets: {e}")
+        return False
 
 USUARIOS = carregar_usuarios()
 
