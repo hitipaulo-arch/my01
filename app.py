@@ -157,29 +157,53 @@ def carregar_usuarios():
         }
 
 def salvar_usuarios(usuarios):
-    """Salva usuários no Google Sheets."""
+    """Realiza upsert de usuários no Google Sheets sem apagar existentes.
+    Mantém registros atuais e atualiza/inclui apenas os informados.
+    """
     global sheet_usuarios
-    
+
     if not sheet_usuarios:
         logger.error("Aba de usuários não disponível. Não foi possível salvar.")
         return False
-    
+
     try:
-        # Limpa dados existentes (mantém cabeçalho)
-        sheet_usuarios.clear()
-        sheet_usuarios.append_row(['Username', 'Senha', 'Role'])
-        
-        # Adiciona cada usuário
+        # Carrega registros existentes para mapear linha por username
+        records = sheet_usuarios.get_all_records()
+        header = sheet_usuarios.row_values(1) or ['Username', 'Senha', 'Role']
+        username_idx = header.index('Username') + 1 if 'Username' in header else 1
+        senha_idx = header.index('Senha') + 1 if 'Senha' in header else 2
+        role_idx = header.index('Role') + 1 if 'Role' in header else 3
+
+        existing_rows_by_username = {}
+        # get_all_records() skips header, so first data row is 2
+        for i, rec in enumerate(records, start=2):
+            uname = str(rec.get('Username', '')).strip()
+            if uname:
+                existing_rows_by_username[uname] = i
+
+        # Garante cabeçalho correto sem limpar toda a aba
+        sheet_usuarios.update('A1:C1', [['Username', 'Senha', 'Role']])
+
+        # Para cada usuário, atualiza linha existente ou adiciona nova
         for username, dados in usuarios.items():
             senha = dados.get('senha', '') if isinstance(dados, dict) else dados
             role = dados.get('role', 'admin') if isinstance(dados, dict) else 'admin'
-            sheet_usuarios.append_row([username, senha, role])
-        
-        logger.info(f"Salvos {len(usuarios)} usuários no Google Sheets")
+
+            if username in existing_rows_by_username:
+                row = existing_rows_by_username[username]
+                # Atualiza células específicas da linha
+                sheet_usuarios.update_cell(row, username_idx, username)
+                sheet_usuarios.update_cell(row, senha_idx, senha)
+                sheet_usuarios.update_cell(row, role_idx, role)
+            else:
+                # Append novo usuário no final
+                sheet_usuarios.append_row([username, senha, role])
+
+        logger.info(f"Upsert de {len(usuarios)} usuários concluído no Google Sheets")
         return True
-    
+
     except Exception as e:
-        logger.error(f"Erro ao salvar usuários no Google Sheets: {e}")
+        logger.error(f"Erro ao salvar usuários no Google Sheets (upsert): {e}")
         return False
 
 USUARIOS = carregar_usuarios()
