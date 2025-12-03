@@ -118,16 +118,16 @@ USERS_FILE = Path(__file__).parent / 'users.json'
 
 # Carrega usuários do Google Sheets ou cria usuários padrão
 def carregar_usuarios():
-    """Carrega usuários do Google Sheets."""
-    global sheet_usuarios
+    """Carrega usuários do Google Sheets.
+    Se a aba não estiver disponível ou ocorrer erro, retorna os usuários em memória
+    (mantendo os existentes) em vez de valores padrão.
+    """
+    global sheet_usuarios, USUARIOS
     
     if not sheet_usuarios:
-        logger.warning("Aba de usuários não disponível. Usando usuários padrão.")
-        return {
-            'admin': {'senha': 'admin123', 'role': 'admin'},
-            'gestor': {'senha': 'gestor123', 'role': 'admin'},
-            'operador': {'senha': 'operador123', 'role': 'admin'}
-        }
+        logger.warning("Aba de usuários não disponível. Mantendo usuários em memória.")
+        # Retorna os usuários já carregados em memória para evitar perda
+        return USUARIOS if isinstance(USUARIOS, dict) else {}
     
     try:
         # Lê todos os registros da aba de usuários
@@ -143,18 +143,13 @@ def carregar_usuarios():
                 usuarios[username] = {'senha': senha, 'role': role}
         
         logger.info(f"Carregados {len(usuarios)} usuários do Google Sheets")
-        return usuarios if usuarios else {
-            'admin': {'senha': 'admin123', 'role': 'admin'}
-        }
+        # Se por algum motivo não houver registros, mantém o que já está em memória
+        return usuarios if usuarios else (USUARIOS if isinstance(USUARIOS, dict) else {})
     
     except Exception as e:
         logger.error(f"Erro ao carregar usuários do Google Sheets: {e}")
-        # Retorna usuários padrão em caso de erro
-        return {
-            'admin': {'senha': 'admin123', 'role': 'admin'},
-            'gestor': {'senha': 'gestor123', 'role': 'admin'},
-            'operador': {'senha': 'operador123', 'role': 'admin'}
-        }
+        # Em caso de erro, manter usuários atuais em memória para evitar apagar novos
+        return USUARIOS if isinstance(USUARIOS, dict) else {}
 
 def salvar_usuarios(usuarios):
     """Realiza upsert de usuários no Google Sheets sem apagar existentes.
@@ -303,7 +298,7 @@ def usuarios_admin():
                     salvar_usuarios(USUARIOS)
                     mensagem = f'Usuário {username} salvo com sucesso.'
 
-    # Refresh from Sheets to show latest
+    # Refresh from Sheets to show latest (mantém em memória se indisponível)
     USUARIOS = carregar_usuarios()
     return render_template('usuarios.html', usuarios=USUARIOS, mensagem=mensagem, tipo_mensagem=tipo_mensagem)
 
