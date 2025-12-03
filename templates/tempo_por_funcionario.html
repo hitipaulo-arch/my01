@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tempo por Funcionário</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg,#667eea,#764ba2); padding:20px; }
+    .container { max-width: 1400px; margin: 0 auto; }
+    .nav { text-align:center; margin-bottom:20px; }
+    .nav a { color:#fff; text-decoration:none; padding:10px 18px; background: rgba(255,255,255,.2); border-radius:8px; margin:0 6px; }
+    .card { background:#fff; border-radius:14px; padding:22px; box-shadow: 0 10px 40px rgba(0,0,0,.2); margin-bottom:20px; }
+    h1 { color:#2c3e50; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { padding:10px 12px; border-bottom:1px solid #ecf0f1; text-align:left; }
+    th { color:#2c3e50; }
+    .badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:600; }
+    .badge-urg-alta { background:#e74c3c; color:#fff; }
+    .badge-urg-media { background:#f39c12; color:#fff; }
+    .badge-urg-baixa { background:#2ecc71; color:#fff; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:20px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="nav">
+      <a href="{{ url_for('homepage') }}">🏠 Início</a>
+      <a href="{{ url_for('dashboard') }}">📊 Dashboard</a>
+      <a href="{{ url_for('relatorios') }}">📈 Relatórios</a>
+      <a href="{{ url_for('gerenciar') }}">🔧 Gerenciar</a>
+      <a href="{{ url_for('controle_horario') }}">⏰ Controle</a>
+    </div>
+
+    <div class="card">
+      <h1>⏱ Tempo por Funcionário e OS</h1>
+      {% if mensagem_erro %}
+        <div style="padding:12px; background:#f8d7da; color:#721c24; border-left:4px solid #dc3545; border-radius:8px;">{{ mensagem_erro }}</div>
+      {% endif %}
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Top 20 - Horas por Funcionário/OS</h2>
+        <canvas id="barChart"></canvas>
+      </div>
+      <div class="card">
+        <h2>Distribuição de Urgência</h2>
+        <canvas id="urgChart"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Tabela Resumo</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Funcionário</th>
+            <th>OS</th>
+            <th>Tempo</th>
+            <th>Urgência</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in dados %}
+          <tr>
+            <td>{{ d.funcionario }}</td>
+            <td>#{{ d.pedido_os }}</td>
+            <td>{{ d.tempo }}</td>
+            <td>
+              {% set urg = (d.urgencia or 'Desconhecida')|lower %}
+              {% if 'alta' in urg %}
+                <span class="badge badge-urg-alta">Alta</span>
+              {% elif 'média' in urg or 'media' in urg %}
+                <span class="badge badge-urg-media">Média</span>
+              {% elif 'baixa' in urg %}
+                <span class="badge badge-urg-baixa">Baixa</span>
+              {% else %}
+                <span class="badge" style="background:#bdc3c7; color:#2c3e50;">{{ d.urgencia }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const barLabels = {{ chart_data.bar_labels|tojson }};
+    const barValues = {{ chart_data.bar_values|tojson }};
+    const urgLabels = {{ chart_data.urg_labels|tojson }};
+    const urgValues = {{ chart_data.urg_values|tojson }};
+
+    const ctxBar = document.getElementById('barChart').getContext('2d');
+    new Chart(ctxBar, {
+      type: 'bar',
+      data: {
+        labels: barLabels,
+        datasets: [{
+          label: 'Horas Trabalhadas',
+          data: barValues,
+          backgroundColor: 'rgba(54,162,235,0.6)'
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: { x: { title: { display: true, text: 'Horas' } } }
+      }
+    });
+
+    const ctxUrg = document.getElementById('urgChart').getContext('2d');
+    new Chart(ctxUrg, {
+      type: 'doughnut',
+      data: {
+        labels: urgLabels,
+        datasets: [{
+          data: urgValues,
+          backgroundColor: ['#e74c3c','#f39c12','#2ecc71','#8e44ad','#3498db','#95a5a6']
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'bottom' } }
+      }
+    });
+  </script>
+</body>
+</html>
