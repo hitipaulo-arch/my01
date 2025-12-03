@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Sistema de Gestão</title>
+    <title>Cadastro - Sistema de Gestão</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {
@@ -13,32 +13,32 @@
             align-items: center;
             justify-content: center;
         }
-        .login-container {
-            max-width: 400px;
+        .register-container {
+            max-width: 450px;
             width: 100%;
             padding: 20px;
         }
-        .login-card {
+        .register-card {
             background: white;
             border-radius: 15px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.2);
             padding: 40px;
         }
-        .login-header {
+        .register-header {
             text-align: center;
             margin-bottom: 30px;
         }
-        .login-header h1 {
+        .register-header h1 {
             color: #667eea;
             font-size: 28px;
             font-weight: bold;
             margin-bottom: 10px;
         }
-        .login-header p {
+        .register-header p {
             color: #6c757d;
             font-size: 14px;
         }
-        .btn-login {
+        .btn-register {
             width: 100%;
             padding: 12px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -48,7 +48,7 @@
             font-weight: 600;
             transition: transform 0.2s;
         }
-        .btn-login:hover {
+        .btn-register:hover {
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
         }
@@ -59,26 +59,26 @@
         .alert {
             border-radius: 8px;
         }
-        .register-link {
+        .login-link {
             text-align: center;
             margin-top: 20px;
         }
-        .register-link a {
+        .login-link a {
             color: #667eea;
             text-decoration: none;
             font-weight: 600;
         }
-        .register-link a:hover {
+        .login-link a:hover {
             text-decoration: underline;
         }
     </style>
 </head>
 <body>
-    <div class="login-container">
-        <div class="login-card">
-            <div class="login-header">
-                <h1>🔐 Login</h1>
-                <p>Sistema de Gestão de OS</p>
+    <div class="register-container">
+        <div class="register-card">
+            <div class="register-header">
+                <h1>📝 Cadastro</h1>
+                <p>Crie sua conta no sistema</p>
             </div>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -98,24 +98,30 @@
             </div>
             {% endif %}
 
-            <form method="POST" action="{{ url_for('login') }}">
+            <form method="POST" action="{{ url_for('cadastro') }}">
                 <div class="mb-3">
                     <label for="username" class="form-label">Usuário</label>
-                    <input type="text" class="form-control" id="username" name="username" required autofocus>
+                    <input type="text" class="form-control" id="username" name="username" required autofocus minlength="3">
+                    <small class="text-muted">Mínimo de 3 caracteres</small>
                 </div>
                 <div class="mb-3">
                     <label for="password" class="form-label">Senha</label>
-                    <input type="password" class="form-control" id="password" name="password" required>
+                    <input type="password" class="form-control" id="password" name="password" required minlength="6">
+                    <small class="text-muted">Mínimo de 6 caracteres</small>
                 </div>
-                <button type="submit" class="btn btn-login">Entrar</button>
+                <div class="mb-3">
+                    <label for="confirm_password" class="form-label">Confirmar Senha</label>
+                    <input type="password" class="form-control" id="confirm_password" name="confirm_password" required minlength="6">
+                </div>
+                <button type="submit" class="btn btn-register">Cadastrar</button>
             </form>
 
-            <div class="register-link">
-                <p>Não tem uma conta? <a href="{{ url_for('cadastro') }}">Cadastre-se</a></p>
+            <div class="login-link">
+                <p>Já tem uma conta? <a href="{{ url_for('login') }}">Fazer login</a></p>
             </div>
 
             <div class="text-center mt-3">
-                <small class="text-muted">Desenvolvido para gestão de ordens de serviço</small>
+                <small class="text-muted">Novos usuários têm acesso apenas ao formulário</small>
             </div>
         </div>
     </div>
