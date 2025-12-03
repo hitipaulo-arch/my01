@@ -402,7 +402,7 @@
         <!-- Filtros & Histórico -->
         <div class="historico">
             <h2>📋 Histórico ({{ total_registros or registros|length }} registros)</h2>
-            <form method="GET" action="{{ url_for('controle_horario') }}" style="margin-bottom: 15px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; align-items: end;">
+            <form method="GET" action="{{ url_for('controle_horario') }}" style="margin-bottom: 15px; display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; align-items: end;">
                 <div>
                     <label style="font-weight:600; color:#2c3e50;">Usuário</label>
                     <input type="text" name="usuario" value="{{ usuario_filtro }}" placeholder="Nome do funcionário" style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
@@ -410,6 +410,16 @@
                 <div>
                     <label style="font-weight:600; color:#2c3e50;">Pedido/OS</label>
                     <input type="text" name="pedido_os" value="{{ os_filtro }}" placeholder="Número da OS" style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+                </div>
+                <div>
+                    <label style="font-weight:600; color:#2c3e50;">Tipo</label>
+                    <select name="tipo" style="width:100%; padding:10px; border:2px solid #e0e0e0; border-radius:8px;">
+                        <option value="" {{ '' == (tipo_filtro or '') and 'selected' or '' }}>Todos</option>
+                        <option value="entrada" {{ 'entrada' == (tipo_filtro or '') and 'selected' or '' }}>Entrada</option>
+                        <option value="pausa" {{ 'pausa' == (tipo_filtro or '') and 'selected' or '' }}>Pausa</option>
+                        <option value="retorno" {{ 'retorno' == (tipo_filtro or '') and 'selected' or '' }}>Retorno</option>
+                        <option value="saída" {{ 'saída' == (tipo_filtro or '') and 'selected' or '' }}>Saída</option>
+                    </select>
                 </div>
                 <div>
                     <label style="font-weight:600; color:#2c3e50;">Data Início</label>
@@ -429,8 +439,13 @@
                 </div>
             </form>
 
-            <div style="display:flex; justify-content: flex-end; margin-bottom:10px;">
-                <a class="btn btn-pausa" href="{{ url_for('controle_horario', usuario=usuario_filtro, pedido_os=os_filtro, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, export='csv') }}" style="text-decoration:none;">Exportar CSV</a>
+            {% if aviso_periodo %}
+            <div class="alert alert-warning">{{ aviso_periodo }}</div>
+            {% endif %}
+
+            <div style="display:flex; justify-content: flex-end; gap:8px; margin-bottom:10px;">
+                <a class="btn btn-pausa" href="{{ url_for('controle_horario', usuario=usuario_filtro, pedido_os=os_filtro, tipo=tipo_filtro, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, export='csv') }}" style="text-decoration:none;">Exportar CSV</a>
+                <a class="btn btn-pausa" href="{{ url_for('controle_horario', usuario=usuario_filtro, pedido_os=os_filtro, tipo=tipo_filtro, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, export='xlsx') }}" style="text-decoration:none;">Exportar XLSX</a>
             </div>
             {% if registros %}
                 {% for reg in registros %}

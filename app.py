@@ -527,7 +527,10 @@ def controle_horario():
     os_filtro = request.args.get('pedido_os', '').strip()
     data_inicio = request.args.get('data_inicio', '').strip()
     data_fim = request.args.get('data_fim', '').strip()
-    export = request.args.get('export', '').strip().lower() == 'csv'
+    export_param = request.args.get('export', '').strip().lower()
+    export_csv = export_param == 'csv'
+    export_xlsx = export_param == 'xlsx'
+    tipo_filtro = request.args.get('tipo', '').strip().lower()  # entrada|pausa|retorno|saída
     
     if not disponivel or sheet_horario is None:
         return render_template('controle_horario.html',
@@ -636,6 +639,14 @@ def controle_horario():
                 dt_inicio, dt_fim = dt_fim, dt_inicio
 
             registros_periodo = []
+            aviso_periodo = None
+            # Limite de 30 dias no período
+            if dt_inicio and dt_fim:
+                delta = (dt_fim - dt_inicio).days
+                if delta > 30:
+                    # Cap período para últimos 30 dias
+                    dt_inicio = dt_fim - datetime.timedelta(days=30)
+                    aviso_periodo = 'Período limitado aos últimos 30 dias.'
             for row in registros_raw:
                 if len(row) == 0:
                     continue
@@ -658,10 +669,12 @@ def controle_horario():
                     'observacao': row[5] if len(row) > 5 else ''
                 }
 
-                # Filtros de usuário e OS
+                # Filtros de usuário, OS, tipo
                 if usuario_filtro and usuario_filtro.lower() not in reg['funcionario'].lower():
                     continue
                 if os_filtro and os_filtro.lower() not in str(reg['pedido_os']).lower():
+                    continue
+                if tipo_filtro and reg['tipo'] != tipo_filtro:
                     continue
 
                 registros_periodo.append(reg)
@@ -670,7 +683,7 @@ def controle_horario():
             registros_periodo.sort(key=lambda x: (x['data'], x['horario']), reverse=True)
 
             # CSV export
-            if export:
+            if export_csv:
                 import csv
                 from io import StringIO
                 si = StringIO()
@@ -687,6 +700,33 @@ def controle_horario():
                         'Content-Disposition': f'attachment; filename="{filename}"'
                     }
                 )
+
+            # XLSX export
+            if export_xlsx:
+                try:
+                    from io import BytesIO
+                    import pandas as pd
+                    buffer = BytesIO()
+                    df = pd.DataFrame(registros_periodo)
+                    # Reordenar e renomear colunas
+                    cols = ['data','funcionario','pedido_os','tipo_nome','horario','observacao']
+                    df = df[cols]
+                    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                        df.to_excel(writer, index=False, sheet_name='Historico')
+                    buffer.seek(0)
+                    from flask import Response
+                    filename = f"historico_{(dt_inicio or hoje_dt).strftime('%Y%m%d')}_{(dt_fim or hoje_dt).strftime('%Y%m%d')}.xlsx"
+                    return Response(
+                        buffer.read(),
+                        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        headers={
+                            'Content-Disposition': f'attachment; filename="{filename}"'
+                        }
+                    )
+                except Exception as e:
+                    logger.error(f"Erro ao exportar XLSX: {e}")
+                    mensagem = f"Falha ao exportar XLSX: {e}"
+                    tipo_mensagem = 'error'
 
             # Paginação
             total_registros = len(registros_periodo)
@@ -761,12 +801,14 @@ def controle_horario():
             per_page=per_page,
             usuario_filtro=usuario_filtro,
             os_filtro=os_filtro,
+            tipo_filtro=tipo_filtro,
             data_inicio=(data_inicio or hoje),
             data_fim=(data_fim or hoje),
             data_inicio_iso=to_iso(data_inicio) if data_inicio else hoje_dt.strftime('%Y-%m-%d'),
             data_fim_iso=to_iso(data_fim) if data_fim else hoje_dt.strftime('%Y-%m-%d'),
             mensagem=mensagem,
-            tipo_mensagem=tipo_mensagem)
+            tipo_mensagem=tipo_mensagem,
+            aviso_periodo=aviso_periodo)
             
     except Exception as e:
         logger.error(f"Erro no controle de horário: {e}")
