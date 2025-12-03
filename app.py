@@ -207,6 +207,46 @@ def salvar_usuarios(usuarios):
         return False
 
 USUARIOS = carregar_usuarios()
+@app.route('/usuarios', methods=['GET', 'POST'])
+@admin_required
+def usuarios_admin():
+    """Admin UI to list/add/update/delete users stored in Google Sheets."""
+    global USUARIOS
+    mensagem = None
+    tipo_mensagem = 'success'
+
+    # Handle create/update/delete
+    if request.method == 'POST':
+        acao = request.form.get('acao')
+        username = request.form.get('username', '').strip()
+        if not username:
+            mensagem = 'Username é obrigatório.'
+            tipo_mensagem = 'danger'
+        else:
+            if acao == 'delete':
+                # Remove do dict e persiste (remoção lógica: limpa senha/role)
+                if username in USUARIOS:
+                    USUARIOS.pop(username, None)
+                    # Para deletar de fato do Sheets: recarrega e reescreve sem o usuário
+                    salvar_usuarios(USUARIOS)
+                    mensagem = f'Usuário {username} removido.'
+                else:
+                    mensagem = 'Usuário não encontrado.'
+                    tipo_mensagem = 'warning'
+            else:
+                senha = request.form.get('senha', '').strip()
+                role = request.form.get('role', 'admin').strip()
+                if not senha:
+                    mensagem = 'Senha é obrigatória.'
+                    tipo_mensagem = 'danger'
+                else:
+                    USUARIOS[username] = {'senha': senha, 'role': role}
+                    salvar_usuarios(USUARIOS)
+                    mensagem = f'Usuário {username} salvo com sucesso.'
+
+    # Refresh from Sheets to show latest
+    USUARIOS = carregar_usuarios()
+    return render_template('usuarios.html', usuarios=USUARIOS, mensagem=mensagem, tipo_mensagem=tipo_mensagem)
 
 # --- DECORATOR DE AUTENTICAÇÃO ---
 def login_required(f):
