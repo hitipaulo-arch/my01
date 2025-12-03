@@ -613,12 +613,20 @@ def controle_horario():
             headers = all_data[0]
             registros_raw = all_data[1:]
             
-            # Constrói filtro de datas
+            # Constrói filtro de datas (suporta dd/mm/YYYY e YYYY-mm-dd)
             def parse_data(d):
-                try:
-                    return datetime.datetime.strptime(d, '%d/%m/%Y')
-                except:
+                if not d:
                     return None
+                for fmt in ('%d/%m/%Y', '%Y-%m-%d'):
+                    try:
+                        return datetime.datetime.strptime(d, fmt)
+                    except:
+                        continue
+                return None
+
+            def to_iso(dstr):
+                dt = parse_data(dstr)
+                return dt.strftime('%Y-%m-%d') if dt else ''
 
             dt_inicio = parse_data(data_inicio) if data_inicio else hoje_dt
             dt_fim = parse_data(data_fim) if data_fim else hoje_dt
@@ -755,6 +763,8 @@ def controle_horario():
             os_filtro=os_filtro,
             data_inicio=(data_inicio or hoje),
             data_fim=(data_fim or hoje),
+            data_inicio_iso=to_iso(data_inicio) if data_inicio else hoje_dt.strftime('%Y-%m-%d'),
+            data_fim_iso=to_iso(data_fim) if data_fim else hoje_dt.strftime('%Y-%m-%d'),
             mensagem=mensagem,
             tipo_mensagem=tipo_mensagem)
             
