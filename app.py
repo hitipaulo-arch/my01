@@ -284,20 +284,38 @@ def login():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
         
-        # Valida credenciais
-        if username in USUARIOS and USUARIOS[username]['senha'] == password:
-            session['usuario'] = username
-            session['role'] = USUARIOS[username]['role']
-            session.permanent = True
-            flash(f'Bem-vindo, {username}!', 'success')
-            
-            # Redireciona para a página solicitada ou homepage
-            next_page = request.args.get('next')
-            if next_page and next_page.startswith('/'):
-                return redirect(next_page)
-            return redirect(url_for('homepage'))
-        else:
-            return render_template('login.html', erro='Usuário ou senha inválidos.')
+        # Valida credenciais (suporta formato antigo string e novo dict)
+        if username in USUARIOS:
+            user_data = USUARIOS[username]
+            # Se for formato antigo (string), converte para dict
+            if isinstance(user_data, str):
+                if user_data == password:
+                    # Atualiza para novo formato
+                    USUARIOS[username] = {'senha': password, 'role': 'admin'}
+                    salvar_usuarios(USUARIOS)
+                    session['usuario'] = username
+                    session['role'] = 'admin'
+                    session.permanent = True
+                    flash(f'Bem-vindo, {username}!', 'success')
+                    
+                    next_page = request.args.get('next')
+                    if next_page and next_page.startswith('/'):
+                        return redirect(next_page)
+                    return redirect(url_for('homepage'))
+            # Formato novo (dict)
+            elif user_data['senha'] == password:
+                session['usuario'] = username
+                session['role'] = user_data['role']
+                session.permanent = True
+                flash(f'Bem-vindo, {username}!', 'success')
+                
+                # Redireciona para a página solicitada ou homepage
+                next_page = request.args.get('next')
+                if next_page and next_page.startswith('/'):
+                    return redirect(next_page)
+                return redirect(url_for('homepage'))
+        
+        return render_template('login.html', erro='Usuário ou senha inválidos.')
     
     return render_template('login.html')
 
@@ -333,8 +351,8 @@ def cadastro():
         if username in USUARIOS:
             return render_template('cadastro.html', erro='Usuário já existe. Escolha outro nome.')
         
-        # Cria novo usuário com role 'user' (não-admin)
-        USUARIOS[username] = {'senha': password, 'role': 'user'}
+        # Cria novo usuário com role 'admin' (todos são admin)
+        USUARIOS[username] = {'senha': password, 'role': 'admin'}
         salvar_usuarios(USUARIOS)
         
         flash(f'Cadastro realizado com sucesso! Você pode fazer login agora.', 'success')
