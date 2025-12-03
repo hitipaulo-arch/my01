@@ -23,28 +23,6 @@
             margin: 0 auto;
         }
         
-        .nav-links {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        
-        .nav-links a {
-            color: white;
-            text-decoration: none;
-            padding: 10px 20px;
-            margin: 0 10px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 8px;
-            font-weight: 600;
-            transition: all 0.3s;
-            display: inline-block;
-        }
-        
-        .nav-links a:hover {
-            background: rgba(255, 255, 255, 0.3);
-            transform: translateY(-2px);
-        }
-        
         .header {
             background: white;
             border-radius: 15px;
@@ -310,13 +288,6 @@
 </head>
 <body>
     <div class="container">
-        <div class="nav-links">
-            <a href="{{ url_for('homepage') }}">🏠 Início</a>
-            <a href="{{ url_for('dashboard') }}">📊 Dashboard</a>
-            <a href="{{ url_for('relatorios') }}">📈 Relatórios</a>
-            <a href="{{ url_for('gerenciar') }}">🔧 Gerenciar</a>
-            <a href="{{ url_for('tempo_por_funcionario') }}">⏱ Tempo por Funcionário</a>
-        </div>
 
         {% if mensagem %}
         <div class="alert alert-{{ tipo_mensagem or 'success' }}">
