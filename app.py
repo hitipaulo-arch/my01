@@ -949,6 +949,125 @@ def relatorios():
         return render_template('erro.html', 
             mensagem=f"Erro ao carregar relatórios: {e}"), 500
 
+# --- 10.1 ROTA TEMPO POR FUNCIONÁRIO ---
+
+@app.route('/tempo-por-funcionario')
+def tempo_por_funcionario():
+    """Exibe página com o tempo que cada funcionário trabalhou em cada OS e gráficos de urgência."""
+    disponivel, erro_msg = verificar_sheet_disponivel()
+    if not disponivel or sheet_horario is None:
+        return render_template('tempo_por_funcionario.html', dados=[], chart_data={}, mensagem_erro=erro_msg or "Sheets indisponível")
+
+    try:
+        # Carrega registros de controle de horário (todos)
+        all_data = sheet_horario.get_all_values()
+        if len(all_data) <= 1:
+            return render_template('tempo_por_funcionario.html', dados=[], chart_data={}, mensagem_erro=None)
+
+        registros = []
+        for row in all_data[1:]:
+            if len(row) < 5:
+                continue
+            try:
+                data = row[0]
+                funcionario = row[1]
+                pedido_os = row[2]
+                tipo = row[3].lower()
+                horario = row[4]
+                dt_data = datetime.datetime.strptime(data, '%d/%m/%Y')
+                dt_hora = datetime.datetime.strptime(horario, '%H:%M:%S')
+                dt = dt_hora.replace(year=dt_data.year, month=dt_data.month, day=dt_data.day)
+            except:
+                continue
+            registros.append({'data': dt_data, 'funcionario': funcionario, 'pedido_os': pedido_os, 'tipo': tipo, 'dt': dt})
+
+        # Agrega tempo por funcionário + OS
+        tempo_map = {}  # {(funcionario, os): total_seconds}
+        # Para cada funcionario+OS, percorre pares Entrada->(Pausa/Retorno)->Saída somando tempo útil
+        from collections import defaultdict
+        regs_por_chave = defaultdict(list)
+        for r in registros:
+            chave = (r['funcionario'], r['pedido_os'])
+            regs_por_chave[chave].append(r)
+
+        for chave, regs in regs_por_chave.items():
+            regs.sort(key=lambda x: x['dt'])
+            trabalhando_inicio = None
+            em_pausa = False
+            pausa_inicio = None
+            total = datetime.timedelta()
+            for r in regs:
+                if r['tipo'] == 'entrada':
+                    trabalhando_inicio = r['dt']
+                    em_pausa = False
+                elif r['tipo'] == 'pausa' and trabalhando_inicio and not em_pausa:
+                    total += (r['dt'] - trabalhando_inicio)
+                    pausa_inicio = r['dt']
+                    em_pausa = True
+                elif r['tipo'] == 'retorno' and pausa_inicio:
+                    trabalhando_inicio = r['dt']
+                    em_pausa = False
+                elif r['tipo'] in ('saída', 'saida') and trabalhando_inicio:
+                    if not em_pausa:
+                        total += (r['dt'] - trabalhando_inicio)
+                    trabalhando_inicio = None
+                    em_pausa = False
+                    pausa_inicio = None
+            # Se ficou aberto sem saída, ignora tempo corrente (não fechada)
+            tempo_map[chave] = int(total.total_seconds())
+
+        # Carrega urgência (prioridade) da planilha principal
+        prioridade_por_os = {}
+        try:
+            data_main = sheet.get_all_values()
+            if len(data_main) > 1:
+                headers = data_main[0]
+                # A: ID, H: Nível de prioridade (índice 8 contando de 1)
+                idx_id = headers.index('A') if 'A' in headers else 0
+                idx_prior = headers.index('Nível de prioridade') if 'Nível de prioridade' in headers else 7
+                for row in data_main[1:]:
+                    if len(row) > max(idx_id, idx_prior):
+                        os_id = str(row[0]).strip() if idx_id == 0 else str(row[idx_id]).strip()
+                        prioridade = row[idx_prior]
+                        if os_id:
+                            prioridade_por_os[os_id] = prioridade
+        except Exception as e:
+            logger.warning(f"Falha ao carregar prioridade: {e}")
+
+        # Monta dados para tabela e gráficos
+        dados = []
+        urg_counts = {}
+        for (func, osid), secs in tempo_map.items():
+            horas = secs // 3600
+            mins = (secs % 3600) // 60
+            urg = prioridade_por_os.get(str(osid), 'Desconhecida')
+            dados.append({'funcionario': func, 'pedido_os': osid, 'tempo': f"{horas}h {mins}m", 'segundos': secs, 'urgencia': urg})
+            urg_counts[urg] = urg_counts.get(urg, 0) + 1
+
+        # Ordena por funcionário e tempo desc
+        dados.sort(key=lambda x: (x['funcionario'], -x['segundos']))
+
+        # Chart datasets
+        # 1) Bar: tempo por OS (top 20 por segundos)
+        top = sorted(dados, key=lambda x: x['segundos'], reverse=True)[:20]
+        bar_labels = [f"{d['funcionario']} - OS {d['pedido_os']}" for d in top]
+        bar_values = [round(d['segundos']/3600, 2) for d in top]  # horas
+
+        # 2) Doughnut: urgência distribuição
+        urg_labels = list(urg_counts.keys())
+        urg_values = [urg_counts[k] for k in urg_labels]
+
+        chart_data = {
+            'bar_labels': bar_labels,
+            'bar_values': bar_values,
+            'urg_labels': urg_labels,
+            'urg_values': urg_values
+        }
+
+        return render_template('tempo_por_funcionario.html', dados=dados, chart_data=chart_data, mensagem_erro=None)
+    except Exception as e:
+        logger.error(f"Erro em tempo_por_funcionario: {e}")
+        return render_template('erro.html', mensagem=f"Erro ao carregar tempo por funcionário: {e}"), 500
 # --- 11. ROTA DE CONSULTA DE STATUS ---
 
 @app.route('/consultar', methods=['GET', 'POST'])
