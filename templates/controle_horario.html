@@ -258,6 +258,18 @@
         .registro-item .tipo.pausa { background: #f39c12; }
         .registro-item .tipo.retorno { background: #3498db; }
         .registro-item .tipo.saída { background: #e74c3c; }
+
+        /* Badges genéricos */
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge-os { background: #667eea; color: #fff; }
+        .badge-user { background: #ecf0f1; color: #2c3e50; }
+        .badge-date { background: #e8f6f3; color: #117a65; }
         
         .alert {
             padding: 15px 20px;
@@ -450,22 +462,16 @@
             {% if registros %}
                 {% for reg in registros %}
                 <div class="registro-item">
-                    <div>
+                    <div style="display:flex; align-items:center; flex-wrap: wrap; gap:8px;">
                         <span class="tipo {{ reg.tipo }}">{{ reg.tipo_nome }}</span>
-                        <strong style="margin-left:10px;">{{ reg.funcionario }}</strong>
+                        <span class="badge badge-user">👤 {{ reg.funcionario }}</span>
                         {% if reg.pedido_os %}
-                        <span style="margin-left: 10px; color: #667eea; font-weight: bold;">
-                            OS #{{ reg.pedido_os }}
-                        </span>
+                        <span class="badge badge-os">#{{ reg.pedido_os }}</span>
                         {% endif %}
+                        <span class="badge badge-date">📅 {{ reg.data }}</span>
                         {% if reg.observacao %}
-                        <span style="margin-left: 10px; color: #7f8c8d; font-style: italic;">
-                            {{ reg.observacao }}
-                        </span>
+                        <span class="badge" style="background:#fff3cd; color:#856404;">📝 {{ reg.observacao }}</span>
                         {% endif %}
-                        <span style="margin-left: 10px; color: #95a5a6;">
-                            📅 {{ reg.data }}
-                        </span>
                     </div>
                     <div style="font-weight: bold; color: #2c3e50;">
                         {{ reg.horario }}
