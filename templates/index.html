@@ -146,9 +146,10 @@
 
     <div class="container">
         <!-- Top Navigation with User Info and Logout -->
+        {% if session.usuario %}
         <div class="top-nav">
             <div class="user-info">
-                👤 {{ session.usuario if session.usuario else 'Usuário' }}
+                👤 {{ session.usuario }}
                 {% if session.role == 'admin' %}
                 <span class="badge bg-danger ms-2">Admin</span>
                 {% endif %}
@@ -163,6 +164,18 @@
                 <a href="/logout" class="btn-logout">Sair</a>
             </div>
         </div>
+        {% else %}
+        <div class="top-nav">
+            <div class="user-info">
+                🔓 Acesso Público
+            </div>
+            <div>
+                <a href="/login" class="btn btn-sm btn-outline-primary me-2">🔐 Login</a>
+                <a href="/cadastro" class="btn btn-sm btn-success me-2">📝 Cadastro</a>
+                <a href="/consultar" class="btn btn-sm btn-outline-info">🔍 Consultar OS</a>
+            </div>
+        </div>
+        {% endif %}
         
         <div class="nav-links">
             <a href="/dashboard">📊 Dashboard</a>
