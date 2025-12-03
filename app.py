@@ -158,7 +158,7 @@ def carregar_usuarios():
 
 def salvar_usuarios(usuarios):
     """Realiza upsert de usuários no Google Sheets sem apagar existentes.
-    Mantém registros atuais e atualiza/inclui apenas os informados.
+    Mantém TODOS os registros atuais do Sheets e atualiza/inclui apenas os informados.
     """
     global sheet_usuarios
 
@@ -167,43 +167,71 @@ def salvar_usuarios(usuarios):
         return False
 
     try:
-        # Carrega registros existentes para mapear linha por username
-        records = sheet_usuarios.get_all_records()
+        # Carrega TODOS os registros existentes no Sheets
+        all_records = sheet_usuarios.get_all_records()
         header = sheet_usuarios.row_values(1) or ['Username', 'Senha', 'Role']
         username_idx = header.index('Username') + 1 if 'Username' in header else 1
         senha_idx = header.index('Senha') + 1 if 'Senha' in header else 2
         role_idx = header.index('Role') + 1 if 'Role' in header else 3
 
+        # Mapeia usuários existentes no Sheets por linha
         existing_rows_by_username = {}
-        # get_all_records() skips header, so first data row is 2
-        for i, rec in enumerate(records, start=2):
+        for i, rec in enumerate(all_records, start=2):
             uname = str(rec.get('Username', '')).strip()
             if uname:
-                existing_rows_by_username[uname] = i
+                existing_rows_by_username[uname] = {
+                    'row': i,
+                    'senha': rec.get('Senha', ''),
+                    'role': rec.get('Role', 'admin')
+                }
 
-        # Garante cabeçalho correto sem limpar toda a aba
-        sheet_usuarios.update('A1:C1', [['Username', 'Senha', 'Role']])
-
-        # Para cada usuário, atualiza linha existente ou adiciona nova
+        # Para cada usuário no dict passado, atualiza linha existente ou adiciona nova
         for username, dados in usuarios.items():
             senha = dados.get('senha', '') if isinstance(dados, dict) else dados
             role = dados.get('role', 'admin') if isinstance(dados, dict) else 'admin'
 
             if username in existing_rows_by_username:
-                row = existing_rows_by_username[username]
-                # Atualiza células específicas da linha
+                # Atualiza usuário existente
+                row = existing_rows_by_username[username]['row']
                 sheet_usuarios.update_cell(row, username_idx, username)
                 sheet_usuarios.update_cell(row, senha_idx, senha)
                 sheet_usuarios.update_cell(row, role_idx, role)
+                logger.info(f"Usuário {username} atualizado na linha {row}")
             else:
-                # Append novo usuário no final
+                # Adiciona novo usuário
                 sheet_usuarios.append_row([username, senha, role])
+                logger.info(f"Novo usuário {username} adicionado")
 
-        logger.info(f"Upsert de {len(usuarios)} usuários concluído no Google Sheets")
+        logger.info(f"Upsert de {len(usuarios)} usuários concluído. Total no Sheets: {len(existing_rows_by_username)} existentes")
         return True
 
     except Exception as e:
         logger.error(f"Erro ao salvar usuários no Google Sheets (upsert): {e}")
+        return False
+
+def deletar_usuario_sheets(username):
+    """Deleta um usuário específico do Google Sheets."""
+    global sheet_usuarios
+    
+    if not sheet_usuarios:
+        logger.error("Aba de usuários não disponível. Não foi possível deletar.")
+        return False
+    
+    try:
+        all_records = sheet_usuarios.get_all_records()
+        
+        # Encontra a linha do usuário (records começam na linha 2)
+        for i, rec in enumerate(all_records, start=2):
+            if str(rec.get('Username', '')).strip() == username:
+                sheet_usuarios.delete_rows(i)
+                logger.info(f"Usuário {username} deletado da linha {i} no Google Sheets")
+                return True
+        
+        logger.warning(f"Usuário {username} não encontrado no Google Sheets")
+        return False
+        
+    except Exception as e:
+        logger.error(f"Erro ao deletar usuário {username} do Google Sheets: {e}")
         return False
 
 # --- DECORATOR DE AUTENTICAÇÃO ---
@@ -252,12 +280,15 @@ def usuarios_admin():
             tipo_mensagem = 'danger'
         else:
             if acao == 'delete':
-                # Remove do dict e persiste (remoção lógica: limpa senha/role)
+                # Remove do dict e do Google Sheets
                 if username in USUARIOS:
                     USUARIOS.pop(username, None)
-                    # Para deletar de fato do Sheets: recarrega e reescreve sem o usuário
-                    salvar_usuarios(USUARIOS)
-                    mensagem = f'Usuário {username} removido.'
+                    # Deleta fisicamente do Sheets
+                    if deletar_usuario_sheets(username):
+                        mensagem = f'Usuário {username} removido com sucesso.'
+                    else:
+                        mensagem = f'Usuário {username} removido do sistema, mas erro ao deletar do Sheets.'
+                        tipo_mensagem = 'warning'
                 else:
                     mensagem = 'Usuário não encontrado.'
                     tipo_mensagem = 'warning'
