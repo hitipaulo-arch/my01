@@ -1245,6 +1245,26 @@ def relatorios():
         else:
             tempo_medio = "N/A"
         
+        # Monta uma tabela resumida (últimas 50 OS)
+        df_sorted = df.sort_values('Carimbo de data/hora', ascending=False)
+        df_table = df_sorted.head(50)[[
+            'Carimbo de data/hora',
+            'Nome do solicitante',
+            'Setor em que será realizado o serviço',
+            'Status da OS',
+            'Descrição do Problema ou Serviço Solicitado'
+        ]].copy()
+        tabela_resumo = [
+            {
+                'data': row['Carimbo de data/hora'].strftime('%d/%m/%Y %H:%M'),
+                'solicitante': row['Nome do solicitante'],
+                'setor': row['Setor em que será realizado o serviço'],
+                'status': row['Status da OS'],
+                'descricao': row['Descrição do Problema ou Serviço Solicitado']
+            }
+            for _, row in df_table.iterrows()
+        ]
+
         resultado = {
             'labels_prioridade': labels_prioridade,
             'dados_prioridade': dados_prioridade,
@@ -1259,7 +1279,8 @@ def relatorios():
             'taxa_conclusao': taxa_conclusao,
             'total_finalizadas': finalizadas,
             'total_abertas': len(df[df['Status da OS'] == 'Aberto']),
-            'total_andamento': len(df[df['Status da OS'] == 'Em Andamento'])
+            'total_andamento': len(df[df['Status da OS'] == 'Em Andamento']),
+            'tabela_resumo': tabela_resumo
         }
         
         salvar_cache('relatorios', resultado)
