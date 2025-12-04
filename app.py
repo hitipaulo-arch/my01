@@ -19,6 +19,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Inicializa estrutura de usuários em memória cedo para evitar NameError
+USUARIOS = {}
+
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive.file'
@@ -127,7 +130,8 @@ def carregar_usuarios():
     if not sheet_usuarios:
         logger.warning("Aba de usuários não disponível. Mantendo usuários em memória.")
         # Retorna os usuários já carregados em memória para evitar perda
-        return USUARIOS if isinstance(USUARIOS, dict) else {}
+        memoria = USUARIOS if isinstance(USUARIOS, dict) else {}
+        return memoria
     
     try:
         # Lê todos os registros da aba de usuários
@@ -144,12 +148,14 @@ def carregar_usuarios():
         
         logger.info(f"Carregados {len(usuarios)} usuários do Google Sheets")
         # Se por algum motivo não houver registros, mantém o que já está em memória
-        return usuarios if usuarios else (USUARIOS if isinstance(USUARIOS, dict) else {})
+        memoria = USUARIOS if isinstance(USUARIOS, dict) else {}
+        return usuarios if usuarios else memoria
     
     except Exception as e:
         logger.error(f"Erro ao carregar usuários do Google Sheets: {e}")
         # Em caso de erro, manter usuários atuais em memória para evitar apagar novos
-        return USUARIOS if isinstance(USUARIOS, dict) else {}
+        memoria = USUARIOS if isinstance(USUARIOS, dict) else {}
+        return memoria
 
 def salvar_usuarios(usuarios):
     """Realiza upsert de usuários no Google Sheets sem apagar existentes.
