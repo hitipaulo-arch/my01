@@ -95,6 +95,15 @@ if creds:
     except Exception as e:
         logger.error(f"Erro ao conectar na planilha (verifique permissões de partilha): {e}")
         sheet_error = f"Erro ao conectar à planilha: {e}"
+
+# Carrega usuários DEPOIS da conexão com Sheets estar estabelecida
+try:
+    USUARIOS = carregar_usuarios()
+    logger.info(f"Sistema inicializado com {len(USUARIOS)} usuários")
+except Exception as e:
+    logger.error(f"Erro ao carregar usuários na inicialização: {e}")
+    USUARIOS = {}
+    
 # --- FIM DA LÓGICA DE CREDENCIAIS ---
 
 app = Flask(__name__)
@@ -130,7 +139,9 @@ def carregar_usuarios():
     if not sheet_usuarios:
         logger.warning("Aba de usuários não disponível. Mantendo usuários em memória.")
         # Retorna os usuários já carregados em memória para evitar perda
-        memoria = USUARIOS if isinstance(USUARIOS, dict) else {}
+        memoria = USUARIOS if isinstance(USUARIOS, dict) and USUARIOS else {
+            'admin': {'senha': 'admin123', 'role': 'admin'}
+        }
         return memoria
     
     try:
@@ -147,14 +158,20 @@ def carregar_usuarios():
                 usuarios[username] = {'senha': senha, 'role': role}
         
         logger.info(f"Carregados {len(usuarios)} usuários do Google Sheets")
-        # Se por algum motivo não houver registros, mantém o que já está em memória
-        memoria = USUARIOS if isinstance(USUARIOS, dict) else {}
-        return usuarios if usuarios else memoria
+        # Se por algum motivo não houver registros, mantém o que já está em memória ou retorna admin padrão
+        if not usuarios:
+            memoria = USUARIOS if isinstance(USUARIOS, dict) and USUARIOS else {
+                'admin': {'senha': 'admin123', 'role': 'admin'}
+            }
+            return memoria
+        return usuarios
     
     except Exception as e:
         logger.error(f"Erro ao carregar usuários do Google Sheets: {e}")
         # Em caso de erro, manter usuários atuais em memória para evitar apagar novos
-        memoria = USUARIOS if isinstance(USUARIOS, dict) else {}
+        memoria = USUARIOS if isinstance(USUARIOS, dict) and USUARIOS else {
+            'admin': {'senha': 'admin123', 'role': 'admin'}
+        }
         return memoria
 
 def salvar_usuarios(usuarios):
@@ -262,7 +279,7 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-USUARIOS = carregar_usuarios()
+# USUARIOS já foi carregado após a conexão com Sheets (linha ~105)
 
 @app.route('/usuarios', methods=['GET', 'POST'])
 @admin_required
