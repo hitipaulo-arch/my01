@@ -233,6 +233,46 @@
             </div>
         </div>
 
+        <!-- Tabela Resumo de Chamados (substitui a tabela do Dashboard) -->
+        <div class="card mt-4">
+            <div class="card-body">
+                <h3 class="mb-3">📋 Tabela Resumo de Chamados (Últimas 50)</h3>
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Data</th>
+                                <th>Solicitante</th>
+                                <th>Setor</th>
+                                <th>Status</th>
+                                <th>Descrição</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in tabela_resumo %}
+                            <tr>
+                                <td>{{ r.data }}</td>
+                                <td>{{ r.solicitante }}</td>
+                                <td>{{ r.setor }}</td>
+                                <td>
+                                    {% set status = r.status %}
+                                    <span class="badge 
+                                        {% if status == 'Finalizada' %} bg-success
+                                        {% elif status == 'Em Andamento' %} bg-primary
+                                        {% elif status == 'Aguardando Compra' %} bg-warning text-dark
+                                        {% elif status == 'Cancelada' %} bg-danger
+                                        {% else %} bg-secondary {% endif %}
+                                    ">{{ status }}</span>
+                                </td>
+                                <td>{{ r.descricao | truncate(60) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <div class="charts-grid">
             <!-- Gráfico 3: Setores (Barras Horizontal) -->
             <div class="chart-card">
