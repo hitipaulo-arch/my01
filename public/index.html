@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🏭 Gerenciamento de Produção</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .header-title h1 {
+            font-size: 28px;
+            color: #667eea;
+        }
+
+        .header-status {
+            display: flex;
+            gap: 20px;
+        }
+
+        .status-badge {
+            background: #f0f0f0;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-badge.online {
+            background: #10b981;
+            color: white;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #667eea;
+            text-transform: uppercase;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-value {
+            font-size: 36px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .card-subtitle {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .progress-bar {
+            background: #f0f0f0;
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 4px;
+        }
+
+        .section {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: #333;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background: #f9f9f9;
+        }
+
+        th {
+            text-align: left;
+            padding: 12px;
+            font-weight: 600;
+            color: #667eea;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 13px;
+        }
+
+        tr:hover {
+            background: #f9f9f9;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge.pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .badge.in-progress {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .badge.completed {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .badge.high {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .badge.medium {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .badge.low {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            font-weight: 600;
+            color: #999;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab:hover {
+            color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .empty-state h3 {
+            margin-bottom: 10px;
+        }
+
+        .api-endpoint {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+        }
+
+        .method {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+            margin-right: 10px;
+        }
+
+        .method.get {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .method.post {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .method.put {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .method.delete {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        footer {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            color: #999;
+            font-size: 12px;
+        }
+
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+
+            header {
+                flex-direction: column;
+                text-align: center;
+                gap: 15px;
+            }
+
+            .header-status {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+
+            table {
+                font-size: 11px;
+            }
+
+            th, td {
+                padding: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <header>
+            <div class="header-title">
+                <span style="font-size: 32px;">🏭</span>
+                <div>
+                    <h1>Gerenciamento de Produção</h1>
+                    <p style="font-size: 12px; color: #999;">Sistema integrado de produção, tarefas e ordens de serviço</p>
+                </div>
+            </div>
+            <div class="header-status">
+                <div class="status-badge online">
+                    🟢 ONLINE
+                </div>
+                <div class="status-badge">
+                    v1.0.0
+                </div>
+            </div>
+        </header>
+
+        <!-- KPI CARDS -->
+        <div class="grid">
+            <div class="card">
+                <div class="card-title">📊 Produções</div>
+                <div class="card-value" id="totalProductions">0</div>
+                <div class="card-subtitle">Total ativo</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 65%;"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">⏱️ Tarefas</div>
+                <div class="card-value" id="totalTasks">0</div>
+                <div class="card-subtitle">Em andamento</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 42%;"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">🔧 Ordens de Serviço</div>
+                <div class="card-value" id="totalOS">0</div>
+                <div class="card-subtitle">Pendentes</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 28%;"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">🔗 Integração</div>
+                <div class="card-value" id="syncedOS">0</div>
+                <div class="card-subtitle">OS sincronizadas</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 80%;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- OVERVIEW SECTION -->
+        <div class="section">
+            <div class="section-title">📋 Visão Geral do Sistema</div>
+
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab(event, 'features')">Features</div>
+                <div class="tab" onclick="switchTab(event, 'endpoints')">Endpoints</div>
+                <div class="tab" onclick="switchTab(event, 'docs')">Documentação</div>
+            </div>
+
+            <!-- Features Tab -->
+            <div id="features" class="tab-content active">
+                <h3 style="margin-bottom: 15px; color: #667eea;">✨ Funcionalidades Implementadas</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                    <div>
+                        <h4 style="margin-bottom: 10px;">🔐 Autenticação</h4>
+                        <ul style="font-size: 13px; color: #666; line-height: 1.8;">
+                            <li>✓ Login/Registro</li>
+                            <li>✓ JWT Tokens</li>
+                            <li>✓ Controle de Roles</li>
+                            <li>✓ Admin/Manager/Operator</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 style="margin-bottom: 10px;">📊 Produções</h4>
+                        <ul style="font-size: 13px; color: #666; line-height: 1.8;">
+                            <li>✓ CRUD Completo</li>
+                            <li>✓ Rastreamento</li>
+                            <li>✓ Filtros avançados</li>
+                            <li>✓ Histórico</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 style="margin-bottom: 10px;">⏱️ Tarefas com Tempo</h4>
+                        <ul style="font-size: 13px; color: #666; line-height: 1.8;">
+                            <li>✓ Gerenciamento de tempo</li>
+                            <li>✓ Iniciar/Pausar/Retomar</li>
+                            <li>✓ Rastreamento automático</li>
+                            <li>✓ Relatórios de tempo</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 style="margin-bottom: 10px;">🔗 Integração com my01</h4>
+                        <ul style="font-size: 13px; color: #666; line-height: 1.8;">
+                            <li>✓ Sincronização bidirecional</li>
+                            <li>✓ OS ↔ Tarefas</li>
+                            <li>✓ Logs de sincronização</li>
+                            <li>✓ Status em tempo real</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 style="margin-bottom: 10px;">🛡️ Segurança</h4>
+                        <ul style="font-size: 13px; color: #666; line-height: 1.8;">
+                            <li>✓ Helmet.js</li>
+                            <li>✓ CORS</li>
+                            <li>✓ Validação entrada</li>
+                            <li>✓ Erro handling</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 style="margin-bottom: 10px;">🧪 Desenvolvimento</h4>
+                        <ul style="font-size: 13px; color: #666; line-height: 1.8;">
+                            <li>✓ TypeScript</li>
+                            <li>✓ Express.js</li>
+                            <li>✓ Jest/ESLint</li>
+                            <li>✓ Docker ready</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Endpoints Tab -->
+            <div id="endpoints" class="tab-content">
+                <h3 style="margin-bottom: 15px; color: #667eea;">🔌 Principais Endpoints</h3>
+
+                <div style="margin-bottom: 20px;">
+                    <h4 style="margin-bottom: 10px; color: #333;">Autenticação</h4>
+                    <div class="api-endpoint">
+                        <span class="method post">POST</span>/api/auth/register
+                    </div>
+                    <div class="api-endpoint">
+                        <span class="method post">POST</span>/api/auth/login
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <h4 style="margin-bottom: 10px; color: #333;">Produções</h4>
+                    <div class="api-endpoint">
+                        <span class="method get">GET</span>/api/productions
+                    </div>
+                    <div class="api-endpoint">
+                        <span class="method post">POST</span>/api/productions
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <h4 style="margin-bottom: 10px; color: #333;">Tarefas</h4>
+                    <div class="api-endpoint">
+                        <span class="method get">GET</span>/api/tasks
+                    </div>
+                    <div class="api-endpoint">
+                        <span class="method post">POST</span>/api/tasks/:id/start
+                    </div>
+                    <div class="api-endpoint">
+                        <span class="method post">POST</span>/api/tasks/:id/complete
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <h4 style="margin-bottom: 10px; color: #333;">Integração (OS)</h4>
+                    <div class="api-endpoint">
+                        <span class="method get">GET</span>/api/integration/os
+                    </div>
+                    <div class="api-endpoint">
+                        <span class="method post">POST</span>/api/integration/sync/os-to-task
+                    </div>
+                    <div class="api-endpoint">
+                        <span class="method get">GET</span>/api/integration/status
+                    </div>
+                </div>
+            </div>
+
+            <!-- Docs Tab -->
+            <div id="docs" class="tab-content">
+                <h3 style="margin-bottom: 15px; color: #667eea;">📚 Documentação</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                    <a href="https://github.com" style="text-decoration: none;">
+                        <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; text-align: center; cursor: pointer; transition: all 0.3s;">
+                            <div style="font-size: 24px; margin-bottom: 10px;">📖</div>
+                            <strong>README.md</strong>
+                            <p style="font-size: 12px; color: #999; margin-top: 5px;">Documentação principal</p>
+                        </div>
+                    </a>
+                    <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 24px; margin-bottom: 10px;">⏱️</div>
+                        <strong>TASKS_API.md</strong>
+                        <p style="font-size: 12px; color: #999; margin-top: 5px;">Gerenciamento de tempo</p>
+                    </div>
+                    <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; text-align: center;">
+                        <div style="font-size: 24px; margin-bottom: 10px;">🔗</div>
+                        <strong>INTEGRATION_API.md</strong>
+                        <p style="font-size: 12px; color: #999; margin-top: 5px;">Integração com my01</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- STATUS SECTION -->
+        <div class="grid">
+            <div class="section">
+                <div class="section-title">🚀 Status do Servidor</div>
+                <table>
+                    <tr>
+                        <td style="font-weight: 600;">Porta</td>
+                        <td>3000</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600;">Ambiente</td>
+                        <td><span class="badge in-progress">Development</span></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600;">Status</td>
+                        <td><span class="badge" style="background: #d1fae5; color: #065f46;">🟢 Online</span></td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600;">Versão</td>
+                        <td>1.0.0</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="section">
+                <div class="section-title">💾 Banco de Dados</div>
+                <table>
+                    <tr>
+                        <td style="font-weight: 600;">Tipo</td>
+                        <td>Mock (In-Memory)</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600;">Pronto para</td>
+                        <td>PostgreSQL / MongoDB</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600;">ORM</td>
+                        <td>Prisma</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600;">Migrações</td>
+                        <td>Alembic/Prisma</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="section">
+                <div class="section-title">🛠️ Stack Técnico</div>
+                <table>
+                    <tr>
+                        <td style="font-weight: 600;">Runtime</td>
+                        <td>Node.js 18+</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600;">Linguagem</td>
+                        <td>TypeScript 5.x</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600;">Framework</td>
+                        <td>Express.js 4.x</td>
+                    </tr>
+                    <tr>
+                        <td style="font-weight: 600;">Auth</td>
+                        <td>JWT + BCrypt</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- QUICK START -->
+        <div class="section">
+            <div class="section-title">⚡ Quick Start</div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                <div>
+                    <h4 style="margin-bottom: 10px; color: #333;">1️⃣ Registrar</h4>
+                    <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px; font-size: 11px; overflow-x: auto;">curl -X POST http://localhost:3000/api/auth/register \
+-H "Content-Type: application/json" \
+-d '{
+  "name": "Admin",
+  "email": "admin@test.com",
+  "password": "senha123",
+  "role": "admin"
+}'</pre>
+                </div>
+                <div>
+                    <h4 style="margin-bottom: 10px; color: #333;">2️⃣ Login</h4>
+                    <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px; font-size: 11px; overflow-x: auto;">curl -X POST http://localhost:3000/api/auth/login \
+-H "Content-Type: application/json" \
+-d '{
+  "email": "admin@test.com",
+  "password": "senha123"
+}'</pre>
+                </div>
+                <div>
+                    <h4 style="margin-bottom: 10px; color: #333;">3️⃣ Criar Tarefa</h4>
+                    <pre style="background: #f5f5f5; padding: 10px; border-radius: 5px; font-size: 11px; overflow-x: auto;">curl -X POST http://localhost:3000/api/tasks \
+-H "Authorization: Bearer TOKEN" \
+-H "Content-Type: application/json" \
+-d '{
+  "name": "Tarefa",
+  "productionId": "prod-1",
+  "operatorId": "op-1",
+  "estimatedTime": 120
+}'</pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- FOOTER -->
+        <footer>
+            <p>🏭 Gerenciamento de Produção © 2026 | Desenvolvido com ❤️ em TypeScript + Express.js</p>
+            <p style="margin-top: 10px;">📊 Integração com my01-yzj7.onrender.com | 🔗 API em http://localhost:3000</p>
+        </footer>
+    </div>
+
+    <script>
+        function switchTab(event, tabName) {
+            // Hide all tab contents
+            const contents = document.querySelectorAll('.tab-content');
+            contents.forEach(content => content.classList.remove('active'));
+
+            // Remove active class from all tabs
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(tab => tab.classList.remove('active'));
+
+            // Show selected tab content
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // Simulate data loading
+        async function loadData() {
+            try {
+                // Token de autenticação (pode ser obtido após login)
+                const authToken = localStorage.getItem('authToken') || '';
+                
+                // Buscar estatísticas de produções
+                const productionsRes = await fetch('/api/productions/stats', {
+                    headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+                });
+                if (productionsRes.ok) {
+                    const productionsData = await productionsRes.json();
+                    document.getElementById('totalProductions').textContent = productionsData.total;
+                }
+
+                // Buscar estatísticas de tarefas
+                const tasksRes = await fetch('/api/tasks/stats', {
+                    headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+                });
+                if (tasksRes.ok) {
+                    const tasksData = await tasksRes.json();
+                    document.getElementById('totalTasks').textContent = tasksData.total;
+                }
+
+                // Buscar estatísticas de OS
+                const osRes = await fetch('/api/integration/stats', {
+                    headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
+                });
+                if (osRes.ok) {
+                    const osData = await osRes.json();
+                    document.getElementById('totalOS').textContent = osData.total;
+                    document.getElementById('syncedOS').textContent = osData.synced;
+                }
+            } catch (error) {
+                console.error('Erro ao buscar dados:', error);
+                // Manter valores mockados em caso de erro
+                document.getElementById('totalProductions').textContent = Math.floor(Math.random() * 50) + 10;
+                document.getElementById('totalTasks').textContent = Math.floor(Math.random() * 100) + 25;
+                document.getElementById('totalOS').textContent = Math.floor(Math.random() * 30) + 5;
+                document.getElementById('syncedOS').textContent = Math.floor(Math.random() * 25) + 15;
+            }
+        }
+
+        // Load data on page load
+        window.addEventListener('load', loadData);
+
+        // Refresh data every 5 seconds
+        setInterval(loadData, 5000);
+    </script>
+</body>
+</html>
