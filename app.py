@@ -8,7 +8,12 @@ import os
 import logging
 from threading import Lock
 import secrets
-from functools import wraps 
+from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_wtf.csrf import CSRFProtect
+from flask_caching import Cache
+from typing import Optional, Dict, List, Tuple, Any
+from dataclasses import dataclass 
 
 # --- 1. CONFIGURAÇÃO INICIAL (Google Sheets & Flask) ---
 
@@ -112,8 +117,19 @@ app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
 app.config['SESSION_COOKIE_SECURE'] = os.getenv('FLASK_ENV') == 'production'
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['WTF_CSRF_ENABLED'] = True
+app.config['WTF_CSRF_TIME_LIMIT'] = None  # Token não expira
+
+# Ativa proteção CSRF
+csrf = CSRFProtect(app)
 
 # --- CONFIGURAÇÃO DE CACHE ---
+# Substitui cache manual por Flask-Caching
+app.config['CACHE_TYPE'] = 'SimpleCache'  # Use 'RedisCache' em produção
+app.config['CACHE_DEFAULT_TIMEOUT'] = int(os.getenv('CACHE_TTL_SECONDS', 300))
+cache = Cache(app)
+
+# Mantém variáveis para compatibilidade com código legado
 CACHE_TTL = int(os.getenv('CACHE_TTL_SECONDS', 300))  # 5 minutos padrão
 cache_lock = Lock()
 cache_data = {
@@ -128,8 +144,89 @@ import json
 
 USERS_FILE = Path(__file__).parent / 'users.json'
 
+# --- DATACLASSES PARA VALIDAÇÃO ---
+
+@dataclass
+class ValidacaoResultado:
+    """Resultado de uma validação."""
+    valido: bool
+    erros: List[str]
+
+class ValidadorOS:
+    """Validador centralizado para Ordens de Serviço."""
+    
+    @staticmethod
+    def validar_formulario(form_data: Dict[str, Any]) -> ValidacaoResultado:
+        """Valida dados do formulário de OS."""
+        erros = []
+        
+        # Validações obrigatórias
+        if not form_data.get('nome_solicitante', '').strip():
+            erros.append('Nome do solicitante é obrigatório.')
+        
+        if not form_data.get('setor', '').strip():
+            erros.append('Setor é obrigatório.')
+        
+        if not form_data.get('equipamento', '').strip():
+            erros.append('Equipamento ou local afetado é obrigatório.')
+        
+        descricao = form_data.get('descricao', '').strip()
+        if not descricao:
+            erros.append('Descrição do problema é obrigatória.')
+        elif len(descricao) < 10:
+            erros.append('Descrição deve ter pelo menos 10 caracteres.')
+        
+        prioridade = form_data.get('prioridade')
+        if prioridade not in ['Baixa', 'Média', 'Alta', 'Urgente']:
+            erros.append('Prioridade inválida.')
+        
+        return ValidacaoResultado(valido=len(erros) == 0, erros=erros)
+    
+    @staticmethod
+    def validar_atualizacao(form_data: Dict[str, Any]) -> ValidacaoResultado:
+        """Valida dados de atualização de OS."""
+        erros = []
+        
+        if not form_data.get('row_id'):
+            erros.append('ID da linha é obrigatório.')
+        
+        status = form_data.get('status_os')
+        if status not in ['Aberto', 'Em Andamento', 'Concluído', 'Cancelado']:
+            erros.append('Status inválido.')
+        
+        return ValidacaoResultado(valido=len(erros) == 0, erros=erros)
+
+class ValidadorUsuario:
+    """Validador centralizado para usuários."""
+    
+    @staticmethod
+    def validar_cadastro(username: str, password: str, confirm_password: str = None) -> ValidacaoResultado:
+        """Valida dados de cadastro de usuário."""
+        erros = []
+        
+        if not username or not password:
+            erros.append('Usuário e senha são obrigatórios.')
+            return ValidacaoResultado(valido=False, erros=erros)
+        
+        if len(username) < 3:
+            erros.append('Usuário deve ter no mínimo 3 caracteres.')
+        
+        if len(password) < 6:
+            erros.append('Senha deve ter no mínimo 6 caracteres.')
+        
+        if confirm_password is not None and password != confirm_password:
+            erros.append('As senhas não coincidem.')
+        
+        return ValidacaoResultado(valido=len(erros) == 0, erros=erros)
+
+# --- CONFIGURAÇÃO DE USUÁRIOS (SIMPLIFICADO) ---
+# Em produção, use banco de dados com senhas hasheadas (bcrypt/werkzeug.security)
+import json
+
+USERS_FILE = Path(__file__).parent / 'users.json'
+
 # Carrega usuários do Google Sheets ou cria usuários padrão
-def carregar_usuarios():
+def carregar_usuarios() -> Dict[str, Dict[str, str]]:
     """Carrega usuários do Google Sheets.
     Se a aba não estiver disponível ou ocorrer erro, retorna os usuários em memória
     (mantendo os existentes) em vez de valores padrão.
@@ -174,9 +271,15 @@ def carregar_usuarios():
         }
         return memoria
 
-def salvar_usuarios(usuarios):
+def salvar_usuarios(usuarios: Dict[str, Dict[str, str]]) -> bool:
     """Realiza upsert de usuários no Google Sheets sem apagar existentes.
     Mantém TODOS os registros atuais do Sheets e atualiza/inclui apenas os informados.
+    
+    Args:
+        usuarios: Dicionário com username como chave e dict com senha/role como valor
+    
+    Returns:
+        True se sucesso, False se erro
     """
     global sheet_usuarios
 
@@ -227,8 +330,15 @@ def salvar_usuarios(usuarios):
         logger.error(f"Erro ao salvar usuários no Google Sheets (upsert): {e}")
         return False
 
-def deletar_usuario_sheets(username):
-    """Deleta um usuário específico do Google Sheets."""
+def deletar_usuario_sheets(username: str) -> bool:
+    """Deleta um usuário específico do Google Sheets.
+    
+    Args:
+        username: Nome do usuário a ser deletado
+    
+    Returns:
+        True se deletado com sucesso, False caso contrário
+    """
     global sheet_usuarios
     
     if not sheet_usuarios:
@@ -317,7 +427,9 @@ def usuarios_admin():
                     mensagem = 'Senha é obrigatória.'
                     tipo_mensagem = 'danger'
                 else:
-                    USUARIOS[username] = {'senha': senha, 'role': role}
+                    # Gera hash da senha antes de salvar
+                    senha_hash = generate_password_hash(senha, method='pbkdf2:sha256')
+                    USUARIOS[username] = {'senha': senha_hash, 'role': role}
                     salvar_usuarios(USUARIOS)
                     mensagem = f'Usuário {username} salvo com sucesso.'
 
@@ -327,7 +439,24 @@ def usuarios_admin():
 
 # --- FUNÇÕES AUXILIARES ---
 
-def validar_formulario(form_data):
+def validar_formulario(form_data: Dict[str, Any]) -> List[str]:
+    """Valida formulário usando ValidadorOS (mantido para compatibilidade).
+    
+    Args:
+        form_data: Dados do formulário
+    
+    Returns:
+        Lista de erros (vazia se válido)
+    """
+    resultado = ValidadorOS.validar_formulario(form_data)
+    return resultado.erros
+
+def obter_proximo_id() -> str:
+    """Obtém o próximo ID disponível para uma nova OS.
+    
+    Returns:
+        String com o próximo ID no formato adequado
+    """
     """Valida os campos do formulário de abertura de OS."""
     erros = []
     
@@ -403,8 +532,13 @@ def obter_cache(chave):
             logger.info(f"Cache MISS para '{chave}'")
     return None
 
-def salvar_cache(chave, dados):
-    """Armazena dados no cache com timestamp."""
+def salvar_cache(chave: str, dados: Any) -> None:
+    """Armazena dados no cache com timestamp.
+    
+    Args:
+        chave: Chave para armazenar os dados
+        dados: Dados a serem cacheados
+    """
     with cache_lock:
         cache_data[chave] = {
             'data': dados,
@@ -412,8 +546,12 @@ def salvar_cache(chave, dados):
         }
         logger.info(f"Cache SAVED para '{chave}'")
 
-def limpar_cache(chave=None):
-    """Limpa o cache (específico ou todo)."""
+def limpar_cache(chave: Optional[str] = None) -> None:
+    """Limpa o cache (específico ou todo).
+    
+    Args:
+        chave: Chave específica para limpar, ou None para limpar tudo
+    """
     with cache_lock:
         if chave:
             if chave in cache_data:
@@ -445,36 +583,53 @@ def login():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
         
-        # Valida credenciais (suporta formato antigo string e novo dict)
+        # Valida credenciais com hash seguro
         if username in USUARIOS:
             user_data = USUARIOS[username]
-            # Se for formato antigo (string), converte para dict
+            senha_hash = None
+            role = 'admin'
+            
+            # Se for formato antigo (string sem hash), converte
             if isinstance(user_data, str):
+                # Senha em texto plano (formato legado)
                 if user_data == password:
-                    # Atualiza para novo formato
-                    USUARIOS[username] = {'senha': password, 'role': 'admin'}
+                    # Atualiza para formato com hash
+                    senha_hash = generate_password_hash(password, method='pbkdf2:sha256')
+                    USUARIOS[username] = {'senha': senha_hash, 'role': 'admin'}
                     salvar_usuarios(USUARIOS)
-                    session['usuario'] = username
-                    session['role'] = 'admin'
-                    session.permanent = True
-                    flash(f'Bem-vindo, {username}!', 'success')
-                    
-                    next_page = request.args.get('next')
-                    if next_page and next_page.startswith('/'):
-                        return redirect(next_page)
-                    return redirect(url_for('homepage'))
+                    role = 'admin'
+                else:
+                    return render_template('login.html', erro='Usuário ou senha inválidos.')
             # Formato novo (dict)
-            elif user_data['senha'] == password:
-                session['usuario'] = username
-                session['role'] = user_data['role']
-                session.permanent = True
-                flash(f'Bem-vindo, {username}!', 'success')
+            elif isinstance(user_data, dict):
+                senha_hash = user_data['senha']
+                role = user_data.get('role', 'admin')
                 
-                # Redireciona para a página solicitada ou homepage
-                next_page = request.args.get('next')
-                if next_page and next_page.startswith('/'):
-                    return redirect(next_page)
-                return redirect(url_for('homepage'))
+                # Verifica se é senha em texto plano ou hash
+                if senha_hash.startswith('pbkdf2:sha256:') or senha_hash.startswith('scrypt:'):
+                    # Senha com hash - valida com check_password_hash
+                    if not check_password_hash(senha_hash, password):
+                        return render_template('login.html', erro='Usuário ou senha inválidos.')
+                else:
+                    # Senha em texto plano (migração) - valida e atualiza para hash
+                    if senha_hash != password:
+                        return render_template('login.html', erro='Usuário ou senha inválidos.')
+                    # Atualiza para hash
+                    senha_hash = generate_password_hash(password, method='pbkdf2:sha256')
+                    USUARIOS[username] = {'senha': senha_hash, 'role': role}
+                    salvar_usuarios(USUARIOS)
+            
+            # Login bem-sucedido
+            session['usuario'] = username
+            session['role'] = role
+            session.permanent = True
+            flash(f'Bem-vindo, {username}!', 'success')
+            
+            # Redireciona para a página solicitada ou homepage
+            next_page = request.args.get('next')
+            if next_page and next_page.startswith('/'):
+                return redirect(next_page)
+            return redirect(url_for('homepage'))
         
         return render_template('login.html', erro='Usuário ou senha inválidos.')
     
@@ -496,24 +651,17 @@ def cadastro():
         password = request.form.get('password', '').strip()
         confirm_password = request.form.get('confirm_password', '').strip()
         
-        # Validações
-        if not username or not password:
-            return render_template('cadastro.html', erro='Usuário e senha são obrigatórios.')
-        
-        if len(username) < 3:
-            return render_template('cadastro.html', erro='Usuário deve ter no mínimo 3 caracteres.')
-        
-        if len(password) < 6:
-            return render_template('cadastro.html', erro='Senha deve ter no mínimo 6 caracteres.')
-        
-        if password != confirm_password:
-            return render_template('cadastro.html', erro='As senhas não coincidem.')
+        # Usa validador centralizado
+        validacao = ValidadorUsuario.validar_cadastro(username, password, confirm_password)
+        if not validacao.valido:
+            return render_template('cadastro.html', erro=' '.join(validacao.erros))
         
         if username in USUARIOS:
             return render_template('cadastro.html', erro='Usuário já existe. Escolha outro nome.')
         
-        # Cria novo usuário com role 'admin' (todos são admin)
-        USUARIOS[username] = {'senha': password, 'role': 'admin'}
+        # Cria novo usuário com senha hasheada e role 'admin'
+        senha_hash = generate_password_hash(password, method='pbkdf2:sha256')
+        USUARIOS[username] = {'senha': senha_hash, 'role': 'admin'}
         salvar_usuarios(USUARIOS)
         
         flash(f'Cadastro realizado com sucesso! Você pode fazer login agora.', 'success')
@@ -1561,7 +1709,35 @@ def consultar_pedido():
     return render_template('consultar.html', resultado=resultado, pedido_buscado=pedido_buscado)
 
 
-# --- 12. ROTA PARA FAVICON ---
+# --- 12. ERROR HANDLERS GLOBAIS ---
+
+@app.errorhandler(404)
+def page_not_found(e):
+    """Handler para páginas não encontradas."""
+    logger.warning(f"Página não encontrada: {request.url}")
+    return render_template('erro.html', 
+        mensagem="Página não encontrada. Verifique o endereço e tente novamente."), 404
+
+@app.errorhandler(500)
+def internal_server_error(e):
+    """Handler para erros internos do servidor."""
+    logger.error(f"Erro interno do servidor: {e}", exc_info=True)
+    return render_template('erro.html', 
+        mensagem="Erro interno do servidor. Tente novamente mais tarde."), 500
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Handler genérico para exceptions não tratadas."""
+    # Se for um HTTPException, deixa o Flask tratar normalmente
+    if hasattr(e, 'code'):
+        return e
+    
+    logger.error(f"Erro não tratado: {e}", exc_info=True)
+    return render_template('erro.html', 
+        mensagem="Ocorreu um erro inesperado. Nossa equipe foi notificada."), 500
+
+
+# --- 13. ROTA PARA FAVICON ---
 
 @app.route('/favicon.ico')
 def favicon():

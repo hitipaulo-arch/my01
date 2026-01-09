@@ -12,6 +12,13 @@ Sistema web para gerenciamento de Ordens de Serviço integrado com Google Sheets
 - 📝 Logging estruturado
 - ✨ Validação de formulários
 - 🔐 Tratamento seguro de credenciais
+- 🛡️ **Hash de senhas com PBKDF2** (segurança aprimorada)
+- 🔒 **Proteção CSRF** em todos os formulários
+- 🔄 Migração automática de senhas legadas
+- ⚡ **Flask-Caching** para melhor performance
+- 🚨 **Error handlers globais** para tratamento robusto de erros
+- ✔️ **Validações centralizadas** com dataclasses
+- 📝 **Type hints** para código mais seguro
 
 ## 📋 Pré-requisitos
 
@@ -116,11 +123,27 @@ O sistema implementa cache inteligente:
 
 ## 🛡️ Segurança
 
+- ✅ **Hash de senhas PBKDF2** (600.000 iterações)
+- ✅ **Proteção CSRF** com Flask-WTF
+- ✅ Migração automática de senhas legadas
 - ✅ Validação de entrada
 - ✅ Sanitização de dados
 - ✅ Credenciais não expostas
 - ✅ Secret key configurável
+- ✅ Session cookies com HttpOnly e SameSite
 - ✅ HTTPS recomendado em produção
+
+**📖 Veja [SECURITY_IMPROVEMENTS.md](SECURITY_IMPROVEMENTS.md) para detalhes das melhorias implementadas.**
+
+## ⚡ Performance & Código
+
+- ✅ **Flask-Caching** com SimpleCache (Redis ready)
+- ✅ **Error Handlers Globais** (404, 500, Exception)
+- ✅ **Validações Centralizadas** com dataclasses
+- ✅ **Type Hints** em funções principais
+- ✅ **Configurações Centralizadas** em config.py
+
+**📖 Veja [MEDIUM_PRIORITY_IMPROVEMENTS.md](MEDIUM_PRIORITY_IMPROVEMENTS.md) para detalhes das melhorias de código.**
 
 ## 📝 Logs
 

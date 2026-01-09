@@ -233,6 +233,7 @@
             <div class="modal-content">
                 <!-- O formulário envia os dados para a rota '/atualizar_chamado' -->
                 <form action="/atualizar_chamado" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <div class="modal-header">
                         <h5 class="modal-title" id="modalEdicaoLabel">Editar Chamado</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
