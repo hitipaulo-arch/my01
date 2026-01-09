@@ -307,6 +307,7 @@
             <div class="card">
                 <h2>📝 Novo Registro</h2>
                 <form method="POST" action="{{ url_for('controle_horario') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <div class="form-group">
                         <label for="nome_usuario">Nome do Funcionário:</label>
                         <input type="text" id="nome_usuario" name="nome_usuario" 
@@ -364,6 +365,7 @@
                                 </p>
                             </div>
                             <form method="POST" action="{{ url_for('controle_horario') }}" style="display: inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                 <input type="hidden" name="funcionario_fechar" value="{{ os.funcionario }}">
                                 <input type="hidden" name="pedido_fechar" value="{{ os.pedido_os }}">
                                 <button type="submit" name="acao" value="fechar_os" 

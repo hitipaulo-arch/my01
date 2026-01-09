@@ -1,4 +1,6 @@
 Flask>=3.0.0,<4.0.0
+Flask-WTF>=1.2.0,<2.0.0
+Flask-Caching>=2.1.0,<3.0.0
 gspread>=6.0.0,<7.0.0
 google-auth>=2.25.0,<3.0.0
 google-auth-oauthlib>=1.0.0
@@ -6,3 +8,4 @@ pandas>=2.1.0,<3.0.0
 gunicorn>=21.2.0,<22.0.0
 numpy>=1.24.0,<2.0.0
 python-dateutil>=2.8.0
+Werkzeug>=3.0.0,<4.0.0

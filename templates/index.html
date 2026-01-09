@@ -163,7 +163,7 @@
                     
                 
                     <form action="/enviar" method="POST">
-                        
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <div class="mb-3">
                             <label for="nome_solicitante" class="form-label">Nome do solicitante:</label>
                             <input type="text" class="form-control" id="nome_solicitante" name="nome_solicitante" required>
