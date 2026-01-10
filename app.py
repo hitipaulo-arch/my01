@@ -1,3 +1,36 @@
+"""
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                          APLICAÇÃO DE GESTÃO DE OS                            ║
+║                                                                                ║
+║  ESTRUTURA DO ARQUIVO:                                                        ║
+║  1. IMPORTS & CONFIGURAÇÃO INICIAL (linhas 1-166)                            ║
+║  2. UTILIDADES & HELPERS (linhas 168-670)                                    ║
+║     - Notificações (email/WhatsApp)                                          ║
+║     - Classes de Validação                                                    ║
+║     - Gerenciamento de Usuários                                              ║
+║     - Decoradores de Segurança                                               ║
+║     - Cache & Utilidades de Sheet                                            ║
+║  3. ROTAS - AUTENTICAÇÃO (linhas 825-922)                                   ║
+║     - Login, Logout, Cadastro                                                ║
+║  4. ROTAS - FORMULÁRIOS & CHAMADOS (linhas 924-1253)                        ║
+║     - Homepage, Envio de Formulário, Dashboard, Gerenciar                   ║
+║  5. ROTAS - ADMIN & GESTÃO (linhas 1255-1277)                              ║
+║     - Gerenciamento de Usuários, Cache                                       ║
+║  6. ROTAS - CONTROLE DE HORÁRIO (linhas 1279-1597)                         ║
+║     - Controle de Horas, Health Check                                        ║
+║  7. ROTAS - RELATÓRIOS & CONSULTAS (linhas 1599-2021)                      ║
+║     - Relatórios, Análise de Tempo, Consultas                               ║
+║  8. ROTAS - UTILIDADES (linhas 2023-2039)                                  ║
+║     - Favicon                                                                 ║
+║                                                                                ║
+║  Ver ESTRUTURA_CODIGO.md para documentação completa de navegação             ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+"""
+
+# ════════════════════════════════════════════════════════════════════════════════
+# 1. IMPORTS & CONFIGURAÇÃO INICIAL
+# ════════════════════════════════════════════════════════════════════════════════
+
 import datetime
 from pathlib import Path
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
@@ -18,8 +51,6 @@ from typing import Optional, Dict, List, Tuple, Any
 from dataclasses import dataclass
 import requests 
 
-# --- 1. CONFIGURAÇÃO INICIAL (Google Sheets & Flask) ---
-
 # Configuração de logging
 logging.basicConfig(
     level=logging.INFO,
@@ -27,9 +58,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Inicializa estrutura de usuários em memória cedo para evitar NameError
+# Inicializa estrutura de usuários em memória (evita NameError)
 USUARIOS = {}
 
+# Escopos para acesso à Google Sheets API
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets',
     'https://www.googleapis.com/auth/drive.file'
@@ -71,25 +103,46 @@ if creds:
     try:
         client = gspread.authorize(creds)
         spreadsheet = client.open_by_key(SHEET_ID)
-        sheet = spreadsheet.worksheet(SHEET_TAB_NAME)
-        logger.info(f"Conectado com sucesso à planilha '{SHEET_TAB_NAME}'!")
+        try:
+            sheet = spreadsheet.worksheet(SHEET_TAB_NAME)
+            logger.info(f"Conectado com sucesso à planilha '{SHEET_TAB_NAME}'!")
+        except Exception:
+            # Aba principal não existe: cria com cabeçalho padrão para permitir salvar formulários
+            sheet = spreadsheet.add_worksheet(title=SHEET_TAB_NAME, rows=2000, cols=20)
+            sheet.append_row([
+                'ID',
+                'Carimbo de data/hora',
+                'Nome do solicitante',
+                'Setor',
+                'Data da Solicitação',
+                'Descrição',
+                'Equipamento/Local',
+                'Prioridade',
+                'Status da OS',
+                'Informações adicionais',
+                'Serviço realizado',
+                'Horario de Inicio',
+                'Horario de Término',
+                'Horas trabalhadas'
+            ])
+            logger.info(f"Aba '{SHEET_TAB_NAME}' criada com cabeçalho padrão")
         
         # Tenta conectar à aba de controle de horário (cria se não existir)
         try:
             sheet_horario = spreadsheet.worksheet(SHEET_HORARIO_TAB)
             logger.info(f"Conectado à aba '{SHEET_HORARIO_TAB}'")
-        except:
+        except Exception as e:
             # Cria aba se não existir
             sheet_horario = spreadsheet.add_worksheet(title=SHEET_HORARIO_TAB, rows=1000, cols=10)
             # Adiciona cabeçalho
             sheet_horario.append_row(['Data', 'Funcionário', 'Pedido/OS', 'Tipo', 'Horário', 'Observação'])
-            logger.info(f"Aba '{SHEET_HORARIO_TAB}' criada com sucesso")
+            logger.info(f"Aba '{SHEET_HORARIO_TAB}' criada com sucesso (motivo: {e})")
         
         # Tenta conectar à aba de usuários (cria se não existir)
         try:
             sheet_usuarios = spreadsheet.worksheet(SHEET_USUARIOS_TAB)
             logger.info(f"Conectado à aba '{SHEET_USUARIOS_TAB}'")
-        except:
+        except Exception as e:
             # Cria aba se não existir
             sheet_usuarios = spreadsheet.add_worksheet(title=SHEET_USUARIOS_TAB, rows=1000, cols=10)
             # Adiciona cabeçalho
@@ -98,22 +151,17 @@ if creds:
             sheet_usuarios.append_row(['admin', 'admin123', 'admin'])
             sheet_usuarios.append_row(['gestor', 'gestor123', 'admin'])
             sheet_usuarios.append_row(['operador', 'operador123', 'admin'])
-            logger.info(f"Aba '{SHEET_USUARIOS_TAB}' criada com sucesso com usuários padrão")
+            logger.info(f"Aba '{SHEET_USUARIOS_TAB}' criada com sucesso com usuários padrão (motivo: {e})")
             
     except Exception as e:
         logger.error(f"Erro ao conectar na planilha (verifique permissões de partilha): {e}")
         sheet_error = f"Erro ao conectar à planilha: {e}"
 
-# Carrega usuários DEPOIS da conexão com Sheets estar estabelecida
-try:
-    USUARIOS = carregar_usuarios()
-    logger.info(f"Sistema inicializado com {len(USUARIOS)} usuários")
-except Exception as e:
-    logger.error(f"Erro ao carregar usuários na inicialização: {e}")
-    USUARIOS = {}
-    
-# --- FIM DA LÓGICA DE CREDENCIAIS ---
+# Inicializa estrutura de usuários em memória (será carregada sob demanda)
+USUARIOS = {}
+logger.info("Sistema inicializado. Usuários serão carregados sob demanda.")
 
+# Inicializa Flask application
 app = Flask(__name__)
 # Gera chave secreta segura se não definida
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
@@ -126,8 +174,7 @@ app.config['WTF_CSRF_TIME_LIMIT'] = None  # Token não expira
 # Ativa proteção CSRF
 csrf = CSRFProtect(app)
 
-# --- CONFIGURAÇÃO DE CACHE ---
-# Substitui cache manual por Flask-Caching
+# Configuração de Cache
 app.config['CACHE_TYPE'] = 'SimpleCache'  # Use 'RedisCache' em produção
 app.config['CACHE_DEFAULT_TIMEOUT'] = int(os.getenv('CACHE_TTL_SECONDS', 300))
 cache = Cache(app)
@@ -141,12 +188,13 @@ cache_data = {
     'relatorios': {'data': None, 'timestamp': None}
 }
 
-# --- CONFIGURAÇÃO DE USUÁRIOS (SIMPLIFICADO) ---
-# Em produção, use banco de dados com senhas hasheadas (bcrypt/werkzeug.security)
+# Configuração de Usuários
 import json
-
 USERS_FILE = Path(__file__).parent / 'users.json'
 
+# ════════════════════════════════════════════════════════════════════════════════
+# 2. UTILIDADES & HELPERS - NOTIFICAÇÕES
+# ════════════════════════════════════════════════════════════════════════════════
 
 def enviar_notificacao_abertura_os(
     *,
@@ -164,10 +212,11 @@ def enviar_notificacao_abertura_os(
     Controlado por variáveis de ambiente (todas opcionais). Se desabilitado,
     retorna False sem erro.
 
-    Env vars:
-      - NOTIFY_ENABLED=true|false
-      - NOTIFY_TO=email1,email2
-      - NOTIFY_FROM=remetente@dominio
+        Env vars:
+            - NOTIFY_ENABLED=true|false
+            - SMTP_RECIPIENTS=email1,email2  (preferido)
+            - NOTIFY_TO=email1,email2        (legado, compatível)
+            - NOTIFY_FROM=remetente@dominio
       - SMTP_HOST, SMTP_PORT
       - SMTP_USER, SMTP_PASSWORD (opcionais, dependendo do servidor)
       - SMTP_USE_TLS=true|false (STARTTLS)
@@ -178,15 +227,16 @@ def enviar_notificacao_abertura_os(
     if not enabled:
         return False
 
-    to_raw = os.getenv('NOTIFY_TO', '').strip()
+    # Usa SMTP_RECIPIENTS se disponível; cai para NOTIFY_TO para compatibilidade
+    to_raw = os.getenv('SMTP_RECIPIENTS', os.getenv('NOTIFY_TO', '')).strip()
     smtp_host = os.getenv('SMTP_HOST', '').strip()
     if not to_raw or not smtp_host:
-        logger.warning("Notificação habilitada, mas NOTIFY_TO/SMTP_HOST não configurados.")
+        logger.warning("Notificação habilitada, mas SMTP_RECIPIENTS/NOTIFY_TO ou SMTP_HOST não configurados.")
         return False
 
     recipients = [e.strip() for e in to_raw.split(',') if e.strip()]
     if not recipients:
-        logger.warning("Notificação habilitada, mas NOTIFY_TO está vazio.")
+        logger.warning("Notificação habilitada, mas SMTP_RECIPIENTS/NOTIFY_TO está vazio.")
         return False
 
     smtp_port = int(os.getenv('SMTP_PORT', '587'))
@@ -243,6 +293,10 @@ def enviar_notificacao_abertura_os(
         logger.error(f"Falha ao enviar notificação por e-mail (OS #{numero_pedido}): {e}")
         return False
 
+
+# ════════════════════════════════════════════════════════════════════════════════
+# 2. UTILIDADES & HELPERS - NOTIFICAÇÕES (continuação)
+# ════════════════════════════════════════════════════════════════════════════════
 
 def enviar_notificacao_whatsapp_os(
     *,
@@ -403,7 +457,9 @@ def enviar_notificacao_whatsapp_os(
 
     return success_count > 0
 
-# --- DATACLASSES PARA VALIDAÇÃO ---
+# ════════════════════════════════════════════════════════════════════════════════
+# 2. UTILIDADES & HELPERS - CLASSES DE VALIDAÇÃO
+# ════════════════════════════════════════════════════════════════════════════════
 
 @dataclass
 class ValidacaoResultado:
@@ -478,13 +534,10 @@ class ValidadorUsuario:
         
         return ValidacaoResultado(valido=len(erros) == 0, erros=erros)
 
-# --- CONFIGURAÇÃO DE USUÁRIOS (SIMPLIFICADO) ---
-# Em produção, use banco de dados com senhas hasheadas (bcrypt/werkzeug.security)
-import json
+# ════════════════════════════════════════════════════════════════════════════════
+# 2. UTILIDADES & HELPERS - GERENCIAMENTO DE USUÁRIOS
+# ════════════════════════════════════════════════════════════════════════════════
 
-USERS_FILE = Path(__file__).parent / 'users.json'
-
-# Carrega usuários do Google Sheets ou cria usuários padrão
 def carregar_usuarios() -> Dict[str, Dict[str, str]]:
     """Carrega usuários do Google Sheets.
     Se a aba não estiver disponível ou ocorrer erro, retorna os usuários em memória
@@ -621,7 +674,10 @@ def deletar_usuario_sheets(username: str) -> bool:
         logger.error(f"Erro ao deletar usuário {username} do Google Sheets: {e}")
         return False
 
-# --- DECORATOR DE AUTENTICAÇÃO ---
+# ════════════════════════════════════════════════════════════════════════════════
+# 2. UTILIDADES & HELPERS - DECORADORES DE SEGURANÇA
+# ════════════════════════════════════════════════════════════════════════════════
+
 def login_required(f):
     """Decorator para proteger rotas que requerem autenticação."""
     @wraps(f)
@@ -648,7 +704,9 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# USUARIOS já foi carregado após a conexão com Sheets (linha ~105)
+# ════════════════════════════════════════════════════════════════════════════════
+# 5. ROTAS - ADMIN & GESTÃO
+# ════════════════════════════════════════════════════════════════════════════════
 
 @app.route('/usuarios', methods=['GET', 'POST'])
 @admin_required
@@ -710,35 +768,9 @@ def validar_formulario(form_data: Dict[str, Any]) -> List[str]:
     resultado = ValidadorOS.validar_formulario(form_data)
     return resultado.erros
 
-def obter_proximo_id() -> str:
-    """Obtém o próximo ID disponível para uma nova OS.
-    
-    Returns:
-        String com o próximo ID no formato adequado
-    """
-    """Valida os campos do formulário de abertura de OS."""
-    erros = []
-    
-    if not form_data.get('nome_solicitante', '').strip():
-        erros.append('Nome do solicitante é obrigatório.')
-    elif len(form_data.get('nome_solicitante', '')) > 100:
-        erros.append('Nome do solicitante muito longo (máx 100 caracteres).')
-    
-    if not form_data.get('setor', '').strip():
-        erros.append('Setor é obrigatório.')
-    
-    if not form_data.get('descricao', '').strip():
-        erros.append('Descrição é obrigatória.')
-    elif len(form_data.get('descricao', '')) > 1000:
-        erros.append('Descrição muito longa (máx 1000 caracteres).')
-    
-    if not form_data.get('equipamento', '').strip():
-        erros.append('Equipamento/Local é obrigatório.')
-    
-    if not form_data.get('prioridade'):
-        erros.append('Prioridade é obrigatória.')
-    
-    return erros
+# ════════════════════════════════════════════════════════════════════════════════
+# 2. UTILIDADES & HELPERS - VALIDAÇÃO & SHEET UTILITIES
+# ════════════════════════════════════════════════════════════════════════════════
 
 def obter_proximo_id():
     """Busca o último ID da planilha e retorna o próximo número disponível."""
@@ -775,6 +807,10 @@ def verificar_sheet_disponivel():
         logger.warning("Tentativa de acesso à planilha sem conexão estabelecida.")
         return False, sheet_error or "Conexão com Google Sheets não disponível."
     return True, None
+
+# ════════════════════════════════════════════════════════════════════════════════
+# 2. UTILIDADES & HELPERS - GERENCIAMENTO DE CACHE
+# ════════════════════════════════════════════════════════════════════════════════
 
 def obter_cache(chave):
     """Obtém dados do cache se ainda válidos."""
@@ -829,7 +865,9 @@ USUARIOS = {
     'operador': 'operador123'
 }
 
-# --- ROTAS DE AUTENTICAÇÃO ---
+# ════════════════════════════════════════════════════════════════════════════════
+# 3. ROTAS - AUTENTICAÇÃO
+# ════════════════════════════════════════════════════════════════════════════════
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -928,7 +966,9 @@ def cadastro():
     
     return render_template('cadastro.html')
 
-# --- 2. ROTA PRINCIPAL (Formulário de Abertura) ---
+# ════════════════════════════════════════════════════════════════════════════════
+# 4. ROTAS - FORMULÁRIOS & CHAMADOS
+# ════════════════════════════════════════════════════════════════════════════════
 
 @app.route('/')
 def homepage():
@@ -1284,6 +1324,9 @@ def admin_limpar_cache():
 
 
 # --- 8. ROTA DE CONTROLE DE HORÁRIO ---
+# ════════════════════════════════════════════════════════════════════════════════
+# 6. ROTAS - CONTROLE DE HORÁRIO
+# ════════════════════════════════════════════════════════════════════════════════
 
 @app.route('/controle-horario', methods=['GET', 'POST'])
 @admin_required
@@ -1603,7 +1646,9 @@ def health_check():
     }
     return jsonify(status), 200
 
-# --- 10. ROTA DE RELATÓRIOS DETALHADOS ---
+# ════════════════════════════════════════════════════════════════════════════════
+# 7. ROTAS - RELATÓRIOS & CONSULTAS
+# ════════════════════════════════════════════════════════════════════════════════
 
 @app.route('/relatorios')
 @admin_required
@@ -2029,12 +2074,19 @@ def handle_exception(e):
 
 # --- 13. ROTA PARA FAVICON ---
 
+# ════════════════════════════════════════════════════════════════════════════════
+# 8. ROTAS - UTILIDADES
+# ════════════════════════════════════════════════════════════════════════════════
+
 @app.route('/favicon.ico')
 def favicon():
     """Retorna um favicon vazio para evitar erro 404."""
     return '', 204
 
-# --- Ponto de Entrada Principal ---
+# ════════════════════════════════════════════════════════════════════════════════
+# PONTO DE ENTRADA
+# ════════════════════════════════════════════════════════════════════════════════
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
