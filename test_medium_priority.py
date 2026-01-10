@@ -5,6 +5,7 @@ Execute este script para verificar se as implementações estão funcionando cor
 
 import sys
 from typing import Dict, List
+from pathlib import Path
 
 def test_imports():
     """Testa se todos os imports necessários estão disponíveis."""
@@ -118,14 +119,44 @@ def test_config_structure():
     # Testes
     assert Config.VALIDATION.MIN_USERNAME_LENGTH == 3
     print("  ✓ Acesso a configurações de validação: OK")
-    
+
     assert Config.CACHE.CACHE_TYPE == 'SimpleCache'
     print("  ✓ Acesso a configurações de cache: OK")
-    
+
     assert 'Alta' in Config.VALIDATION.PRIORIDADES_VALIDAS
     print("  ✓ Validação de prioridades: OK")
-    
+
     print("✅ Estrutura de config funcionando!\n")
+    return True
+
+
+def test_notification_hook_present():
+    """Garante que o código de notificação de abertura de OS existe no app.py.
+
+    Evita importar app.py (que pode tentar conectar no Google Sheets em import-time).
+    """
+    print("🔔 Testando Hook de Notificação (abertura de OS)...")
+
+    app_path = Path(__file__).parent / 'app.py'
+    if not app_path.exists():
+        print("  ❌ app.py não encontrado")
+        return False
+
+    src = app_path.read_text(encoding='utf-8', errors='ignore')
+    required_snippets = [
+        'def enviar_notificacao_abertura_os',
+        'enviar_notificacao_abertura_os(',
+        "NOTIFY_ENABLED",
+        'SMTP_HOST',
+    ]
+
+    missing = [s for s in required_snippets if s not in src]
+    if missing:
+        print(f"  ❌ Trechos ausentes: {missing}")
+        return False
+
+    print("  ✓ Função/hook de notificação presente")
+    print("✅ Hook de notificação OK!\n")
     return True
 
 def test_validador_os():
@@ -252,6 +283,7 @@ def main():
     resultados.append(("Dataclass Validation", test_dataclass_validation()))
     resultados.append(("Type Hints", test_type_hints()))
     resultados.append(("Config Structure", test_config_structure()))
+    resultados.append(("Notification Hook", test_notification_hook_present()))
     resultados.append(("ValidadorOS", test_validador_os()))
     resultados.append(("ValidadorUsuario", test_validador_usuario()))
     
