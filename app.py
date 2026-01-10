@@ -6,6 +6,8 @@ from google.oauth2.service_account import Credentials
 import pandas as pd
 import os
 import logging
+import smtplib
+from email.message import EmailMessage
 from threading import Lock
 import secrets
 from functools import wraps
@@ -13,7 +15,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_wtf.csrf import CSRFProtect
 from flask_caching import Cache
 from typing import Optional, Dict, List, Tuple, Any
-from dataclasses import dataclass 
+from dataclasses import dataclass
+import requests 
 
 # --- 1. CONFIGURAÇÃO INICIAL (Google Sheets & Flask) ---
 
@@ -143,6 +146,262 @@ cache_data = {
 import json
 
 USERS_FILE = Path(__file__).parent / 'users.json'
+
+
+def enviar_notificacao_abertura_os(
+    *,
+    numero_pedido: str,
+    solicitante: str,
+    setor: str,
+    prioridade: str,
+    descricao: str,
+    equipamento: str,
+    timestamp: str,
+    info_adicional: str = ''
+) -> bool:
+    """Envia notificação (e-mail) quando uma OS é aberta.
+
+    Controlado por variáveis de ambiente (todas opcionais). Se desabilitado,
+    retorna False sem erro.
+
+    Env vars:
+      - NOTIFY_ENABLED=true|false
+      - NOTIFY_TO=email1,email2
+      - NOTIFY_FROM=remetente@dominio
+      - SMTP_HOST, SMTP_PORT
+      - SMTP_USER, SMTP_PASSWORD (opcionais, dependendo do servidor)
+      - SMTP_USE_TLS=true|false (STARTTLS)
+      - SMTP_USE_SSL=true|false (SMTP_SSL)
+    """
+
+    enabled = os.getenv('NOTIFY_ENABLED', 'false').strip().lower() in ('1', 'true', 'yes', 'on')
+    if not enabled:
+        return False
+
+    to_raw = os.getenv('NOTIFY_TO', '').strip()
+    smtp_host = os.getenv('SMTP_HOST', '').strip()
+    if not to_raw or not smtp_host:
+        logger.warning("Notificação habilitada, mas NOTIFY_TO/SMTP_HOST não configurados.")
+        return False
+
+    recipients = [e.strip() for e in to_raw.split(',') if e.strip()]
+    if not recipients:
+        logger.warning("Notificação habilitada, mas NOTIFY_TO está vazio.")
+        return False
+
+    smtp_port = int(os.getenv('SMTP_PORT', '587'))
+    smtp_user = os.getenv('SMTP_USER', '').strip()
+    smtp_password = os.getenv('SMTP_PASSWORD', '').strip()
+    use_tls = os.getenv('SMTP_USE_TLS', 'true').strip().lower() in ('1', 'true', 'yes', 'on')
+    use_ssl = os.getenv('SMTP_USE_SSL', 'false').strip().lower() in ('1', 'true', 'yes', 'on')
+
+    from_addr = os.getenv('NOTIFY_FROM', smtp_user or 'no-reply@localhost').strip()
+    subject = f"[OS] Nova OS aberta #{numero_pedido} - {prioridade}"
+
+    body_lines = [
+        "Nova Ordem de Serviço aberta no sistema.",
+        "",
+        f"OS: #{numero_pedido}",
+        f"Data/Hora: {timestamp}",
+        f"Solicitante: {solicitante}",
+        f"Setor: {setor}",
+        f"Equipamento/Local: {equipamento}",
+        f"Prioridade: {prioridade}",
+        "",
+        "Descrição:",
+        (descricao or "").strip(),
+    ]
+    if info_adicional and info_adicional.strip():
+        body_lines += ["", "Info adicional:", info_adicional.strip()]
+
+    msg = EmailMessage()
+    msg['Subject'] = subject
+    msg['From'] = from_addr
+    msg['To'] = ', '.join(recipients)
+    msg.set_content('\n'.join(body_lines))
+
+    timeout = float(os.getenv('SMTP_TIMEOUT_SECONDS', '10'))
+
+    try:
+        if use_ssl:
+            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=timeout)
+        else:
+            server = smtplib.SMTP(smtp_host, smtp_port, timeout=timeout)
+
+        with server:
+            server.ehlo()
+            if (not use_ssl) and use_tls:
+                server.starttls()
+                server.ehlo()
+            if smtp_user and smtp_password:
+                server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+
+        logger.info(f"Notificação por e-mail enviada para: {', '.join(recipients)} (OS #{numero_pedido})")
+        return True
+    except Exception as e:
+        logger.error(f"Falha ao enviar notificação por e-mail (OS #{numero_pedido}): {e}")
+        return False
+
+
+def enviar_notificacao_whatsapp_os(
+    *,
+    numero_pedido: str,
+    solicitante: str,
+    setor: str,
+    prioridade: str,
+    descricao: str,
+    equipamento: str,
+    timestamp: str,
+    info_adicional: str = ''
+) -> bool:
+    """Envia notificação via WhatsApp (Twilio API) quando uma OS é aberta.
+
+    Controlado por variáveis de ambiente (todas opcionais). Se desabilitado,
+    retorna False sem erro.
+
+    Env vars:
+      - WHATSAPP_ENABLED=true|false
+      - TWILIO_ACCOUNT_SID=ACxxxxx
+      - TWILIO_AUTH_TOKEN=seu_token
+      - TWILIO_WHATSAPP_FROM=whatsapp:+14155238886 (número Twilio sandbox ou seu número)
+      - TWILIO_WHATSAPP_TO=whatsapp:+5511999999999,whatsapp:+5511888888888 (separados por vírgula)
+    """
+
+    enabled = os.getenv('WHATSAPP_ENABLED', 'false').strip().lower() in ('1', 'true', 'yes', 'on')
+    if not enabled:
+        return False
+
+    account_sid = os.getenv('TWILIO_ACCOUNT_SID', '').strip()
+    auth_token = os.getenv('TWILIO_AUTH_TOKEN', '').strip()
+    from_number = os.getenv('TWILIO_WHATSAPP_FROM', '').strip()
+    to_raw = os.getenv('TWILIO_WHATSAPP_TO', '').strip()
+
+    if not all([account_sid, auth_token, from_number, to_raw]):
+        logger.warning("WhatsApp habilitado, mas credenciais Twilio não configuradas.")
+        return False
+
+    recipients = [n.strip() for n in to_raw.split(',') if n.strip()]
+    if not recipients:
+        logger.warning("WhatsApp habilitado, mas TWILIO_WHATSAPP_TO está vazio.")
+        return False
+
+    # Monta mensagem
+    emoji_priority = {
+        'Urgente': '🚨',
+        'Alta': '⚠️',
+        'Média': '📋',
+        'Baixa': '📝'
+    }
+    emoji = emoji_priority.get(prioridade, '📋')
+
+    message_lines = [
+        f"{emoji} *Nova OS #{numero_pedido}*",
+        f"Prioridade: *{prioridade}*",
+        "",
+        f"📅 {timestamp}",
+        f"👤 {solicitante}",
+        f"🏢 {setor}",
+        f"🔧 {equipamento}",
+        "",
+        "📝 Descrição:",
+        (descricao or "").strip()[:200] + ("..." if len(descricao or "") > 200 else "")
+    ]
+    if info_adicional and info_adicional.strip():
+        message_lines += ["", "ℹ️ Info adicional:", info_adicional.strip()[:100]]
+
+    message_body = '\n'.join(message_lines)
+
+    # API Twilio
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
+    timeout = float(os.getenv('TWILIO_TIMEOUT_SECONDS', '10'))
+    content_sid = os.getenv('TWILIO_CONTENT_SID', '').strip()
+    content_vars_json = os.getenv('TWILIO_CONTENT_VARIABLES_JSON', '').strip()
+    content_map = os.getenv('TWILIO_CONTENT_MAP', '').strip()
+
+    success_count = 0
+    for recipient in recipients:
+        try:
+            payload = {
+                'From': from_number,
+                'To': recipient,
+            }
+
+            # Se Content SID/Variables estiverem configurados, usa template
+            if content_sid:
+                payload['ContentSid'] = content_sid
+                # Se não houver JSON fornecido via env, cria automaticamente a partir dos dados da OS
+                auto_vars = None
+                if not content_vars_json:
+                    try:
+                        # Se houver TWILIO_CONTENT_MAP, usa mapeamento personalizado "1=campo,2=campo,..."
+                        # Campos disponíveis: numero_pedido, timestamp, solicitante, setor, equipamento, prioridade, descricao, info
+                        field_values = {
+                            'numero_pedido': str(numero_pedido or ''),
+                            'timestamp': str(timestamp or ''),
+                            'solicitante': str(solicitante or ''),
+                            'setor': str(setor or ''),
+                            'equipamento': str(equipamento or ''),
+                            'prioridade': str(prioridade or ''),
+                            'descricao': (str(descricao or '')[:200] + ("..." if len(str(descricao or '')) > 200 else '')),
+                            'info': (info_adicional.strip()[:100] if info_adicional and info_adicional.strip() else '')
+                        }
+
+                        auto_vars = {}
+                        if content_map:
+                            # Exemplo: "1=numero_pedido,2=prioridade,3=solicitante"
+                            pairs = [p.strip() for p in content_map.split(',') if p.strip()]
+                            for pair in pairs:
+                                try:
+                                    key, field = [x.strip() for x in pair.split('=', 1)]
+                                    if key and field and field in field_values:
+                                        auto_vars[str(key)] = field_values[field]
+                                except Exception:
+                                    continue
+                        else:
+                            # Mapeamento padrão:
+                            # 1: número da OS, 2: timestamp, 3: solicitante, 4: setor, 5: equipamento, 6: prioridade, 7: descrição, 8: info adicional (opcional)
+                            auto_vars = {
+                                "1": field_values['numero_pedido'],
+                                "2": field_values['timestamp'],
+                                "3": field_values['solicitante'],
+                                "4": field_values['setor'],
+                                "5": field_values['equipamento'],
+                                "6": field_values['prioridade'],
+                                "7": field_values['descricao']
+                            }
+                            # Só adiciona info (8) se houver conteúdo
+                            if field_values['info']:
+                                auto_vars["8"] = field_values['info']
+
+                        # Se conseguirmos montar algum conteúdo, serializa
+                        if auto_vars:
+                            content_vars_json = json.dumps(auto_vars, ensure_ascii=False)
+                    except Exception as e:
+                        logger.error(f"Falha ao montar ContentVariables automático: {e}")
+                        content_vars_json = None
+
+                if content_vars_json:
+                    payload['ContentVariables'] = content_vars_json
+                else:
+                    # Sem variables válidas, faz fallback para Body
+                    payload['Body'] = message_body
+            else:
+                payload['Body'] = message_body
+
+            response = requests.post(url, auth=(account_sid, auth_token), data=payload, timeout=timeout)
+            if response.status_code in (200, 201):
+                if content_sid and content_vars_json:
+                    logger.info(f"WhatsApp (template ContentSid) enviado para {recipient} (OS #{numero_pedido})")
+                else:
+                    logger.info(f"WhatsApp enviado para {recipient} (OS #{numero_pedido})")
+                success_count += 1
+            else:
+                logger.error(f"Falha ao enviar WhatsApp para {recipient}: {response.status_code} - {response.text}")
+        except Exception as e:
+            logger.error(f"Erro ao enviar WhatsApp para {recipient} (OS #{numero_pedido}): {e}")
+
+    return success_count > 0
 
 # --- DATACLASSES PARA VALIDAÇÃO ---
 
@@ -743,6 +1002,37 @@ def receber_requerimento():
             limpar_cache()
             
             logger.info(f"Nova OS (Pedido #{numero_pedido}) adicionada por: {solicitante}")
+
+            # Notificações (não bloqueia a criação da OS)
+            try:
+                # E-mail
+                enviar_notificacao_abertura_os(
+                    numero_pedido=str(numero_pedido),
+                    solicitante=solicitante,
+                    setor=setor,
+                    prioridade=prioridade,
+                    descricao=descricao,
+                    equipamento=equipamento,
+                    timestamp=timestamp,
+                    info_adicional=info_adicional,
+                )
+            except Exception as e:
+                logger.error(f"Erro ao tentar notificar por e-mail (OS #{numero_pedido}): {e}")
+            
+            try:
+                # WhatsApp
+                enviar_notificacao_whatsapp_os(
+                    numero_pedido=str(numero_pedido),
+                    solicitante=solicitante,
+                    setor=setor,
+                    prioridade=prioridade,
+                    descricao=descricao,
+                    equipamento=equipamento,
+                    timestamp=timestamp,
+                    info_adicional=info_adicional,
+                )
+            except Exception as e:
+                logger.error(f"Erro ao tentar notificar por WhatsApp (OS #{numero_pedido}): {e}")
             
             return render_template('sucesso.html', nome=solicitante, os_numero=numero_pedido)
             
