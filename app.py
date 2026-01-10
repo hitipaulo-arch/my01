@@ -991,13 +991,6 @@ def dashboard():
         return render_template('dashboard.html', labels_meses=[], datasets_status=[], 
             mensagem_erro=erro_msg)
     
-    # Tenta obter do cache primeiro
-    cache_result = obter_cache('dashboard')
-    if cache_result:
-        return render_template('dashboard.html', 
-            labels_meses=cache_result['labels_meses'],
-            datasets_status=cache_result['datasets_status'])
-    
     try:
         data = sheet.get_all_values()
         if not data or len(data) < 2:
@@ -1541,11 +1534,6 @@ def relatorios():
             labels_tempo_resolucao=[], dados_tempo_resolucao=[],
             labels_dia_semana=[], dados_dia_semana=[],
             total_os=0, tempo_medio='0 dias', taxa_conclusao='0%')
-    
-    # Tenta obter do cache primeiro
-    cache_result = obter_cache('relatorios')
-    if cache_result:
-        return render_template('relatorios.html', **cache_result)
     
     try:
         data = sheet.get_all_values()
