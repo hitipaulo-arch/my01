@@ -1,73 +1,35 @@
-"""
-╔════════════════════════════════════════════════════════════════════════════════╗
-║                          APLICAÇÃO DE GESTÃO DE OS                            ║
-║                                                                                ║
-║  ESTRUTURA DO ARQUIVO:                                                        ║
-║  1. IMPORTS & CONFIGURAÇÃO INICIAL (linhas 1-166)                            ║
-║  2. UTILIDADES & HELPERS (linhas 168-670)                                    ║
-║     - Notificações (email/WhatsApp)                                          ║
-║     - Classes de Validação                                                    ║
-║     - Gerenciamento de Usuários                                              ║
-║     - Decoradores de Segurança                                               ║
-║     - Cache & Utilidades de Sheet                                            ║
-║  3. ROTAS - AUTENTICAÇÃO (linhas 825-922)                                   ║
-║     - Login, Logout, Cadastro                                                ║
-║  4. ROTAS - FORMULÁRIOS & CHAMADOS (linhas 924-1253)                        ║
-║     - Homepage, Envio de Formulário, Dashboard, Gerenciar                   ║
-║  5. ROTAS - ADMIN & GESTÃO (linhas 1255-1277)                              ║
-║     - Gerenciamento de Usuários, Cache                                       ║
-║  6. ROTAS - CONTROLE DE HORÁRIO (linhas 1279-1597)                         ║
-║     - Controle de Horas, Health Check                                        ║
-║  7. ROTAS - RELATÓRIOS & CONSULTAS (linhas 1599-2021)                      ║
-║     - Relatórios, Análise de Tempo, Consultas                               ║
-║  8. ROTAS - UTILIDADES (linhas 2023-2039)                                  ║
-║     - Favicon                                                                 ║
-║                                                                                ║
-║  Ver ESTRUTURA_CODIGO.md para documentação completa de navegação             ║
-╚════════════════════════════════════════════════════════════════════════════════╝
-"""
+"""Aplicação de Gestão de Ordens de Serviço - Ver ESTRUTURA_CODIGO.md para documentação completa"""
 
-# ════════════════════════════════════════════════════════════════════════════════
-# 1. IMPORTS & CONFIGURAÇÃO INICIAL
-# ════════════════════════════════════════════════════════════════════════════════
-
+# Imports
 import datetime
-from pathlib import Path
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
-import gspread
-from google.oauth2.service_account import Credentials
-import pandas as pd
 import os
 import logging
 import smtplib
-from email.message import EmailMessage
-from threading import Lock
 import secrets
+from pathlib import Path
+from threading import Lock
 from functools import wraps
-from werkzeug.security import generate_password_hash, check_password_hash
-from flask_wtf.csrf import CSRFProtect
-from flask_caching import Cache
 from typing import Optional, Dict, List, Tuple, Any
 from dataclasses import dataclass
-import requests 
+from email.message import EmailMessage
 
-# Configuração de logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+import requests
+import pandas as pd
+import gspread
+from google.oauth2.service_account import Credentials
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
+from flask_wtf.csrf import CSRFProtect
+from flask_caching import Cache
+from werkzeug.security import generate_password_hash, check_password_hash 
+
+# Configuração
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Inicializa estrutura de usuários em memória (evita NameError)
 USUARIOS = {}
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive.file']
 
-# Escopos para acesso à Google Sheets API
-SCOPES = [
-    'https://www.googleapis.com/auth/spreadsheets',
-    'https://www.googleapis.com/auth/drive.file'
-]
-
-# --- LÓGICA DE CREDENCIAIS SIMPLIFICADA (Lê o ficheiro 'credentials.json') ---
+# Credenciais Google Sheets
 creds = None
 client = None
 sheet = None
@@ -79,23 +41,19 @@ try:
     logger.info("Credenciais carregadas com sucesso a partir do ficheiro (local ou Secret File).")
     
 except FileNotFoundError:
-    logger.error("ERRO: Ficheiro 'credentials.json' não encontrado na pasta do projeto.")
-    logger.error("Por favor, baixe o JSON do Google Cloud e coloque-o na mesma pasta do 'app.py'")
-    logger.error("Se estiver no Render, certifique-se que o 'Secret File' está configurado.")
-    sheet_error = "Ficheiro de credenciais não encontrado."
+    logger.error("Ficheiro 'credentials.json' não encontrado")
+    sheet_error = "Credenciais não encontradas"
 except Exception as e:
-    logger.error(f"ERRO CRÍTICO AO CARREGAR CREDENCIAIS: {e}")
-    sheet_error = f"Erro ao carregar credenciais: {e}"
+    logger.error(f"Erro ao carregar credenciais: {e}")
+    sheet_error = f"Erro: {e}"
 
-# Variáveis de ambiente para configuração (permite substituir via env vars)
+# Configuração Google Sheets
 SHEET_ID = os.getenv('GOOGLE_SHEET_ID', '1qs3cxlklTnzCp4RpQGhxIrEF4CbeUvid1S0Cp2tC3Xg')
 SHEET_TAB_NAME = os.getenv('GOOGLE_SHEET_TAB', 'Respostas ao formulário 3')
 SHEET_HORARIO_TAB = os.getenv('GOOGLE_SHEET_HORARIO_TAB', 'Controle de Horário')
 SHEET_USUARIOS_TAB = os.getenv('GOOGLE_SHEET_USUARIOS_TAB', 'Usuários')
 
-# Variável para planilha de controle de horário
 sheet_horario = None
-# Variável para planilha de usuários
 sheet_usuarios = None
 
 # Só tenta conectar se as credenciais foram carregadas
@@ -157,40 +115,23 @@ if creds:
         logger.error(f"Erro ao conectar na planilha (verifique permissões de partilha): {e}")
         sheet_error = f"Erro ao conectar à planilha: {e}"
 
-# Inicializa estrutura de usuários em memória (será carregada sob demanda)
-USUARIOS = {}
-logger.info("Sistema inicializado. Usuários serão carregados sob demanda.")
+logger.info("Sistema inicializado")
 
-# Inicializa Flask application
+# Flask App
 app = Flask(__name__)
-# Gera chave secreta segura se não definida
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
-app.config['SESSION_COOKIE_SECURE'] = os.getenv('FLASK_ENV') == 'production'
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['WTF_CSRF_ENABLED'] = True
-app.config['WTF_CSRF_TIME_LIMIT'] = None  # Token não expira
+app.config.update(
+    SESSION_COOKIE_SECURE=os.getenv('FLASK_ENV') == 'production',
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    WTF_CSRF_ENABLED=True,
+    WTF_CSRF_TIME_LIMIT=None,
+    CACHE_TYPE='SimpleCache',
+    CACHE_DEFAULT_TIMEOUT=int(os.getenv('CACHE_TTL_SECONDS', 300))
+)
 
-# Ativa proteção CSRF
 csrf = CSRFProtect(app)
-
-# Configuração de Cache
-app.config['CACHE_TYPE'] = 'SimpleCache'  # Use 'RedisCache' em produção
-app.config['CACHE_DEFAULT_TIMEOUT'] = int(os.getenv('CACHE_TTL_SECONDS', 300))
 cache = Cache(app)
-
-# Mantém variáveis para compatibilidade com código legado
-CACHE_TTL = int(os.getenv('CACHE_TTL_SECONDS', 300))  # 5 minutos padrão
-cache_lock = Lock()
-cache_data = {
-    'dashboard': {'data': None, 'timestamp': None},
-    'gerenciar': {'data': None, 'timestamp': None},
-    'relatorios': {'data': None, 'timestamp': None}
-}
-
-# Configuração de Usuários
-import json
-USERS_FILE = Path(__file__).parent / 'users.json'
 
 # ════════════════════════════════════════════════════════════════════════════════
 # 2. UTILIDADES & HELPERS - NOTIFICAÇÕES
@@ -809,56 +750,9 @@ def verificar_sheet_disponivel():
     return True, None
 
 # ════════════════════════════════════════════════════════════════════════════════
-# 2. UTILIDADES & HELPERS - GERENCIAMENTO DE CACHE
+# CONFIGURAÇÃO DE USUÁRIOS (SIMPLIFICADO)
 # ════════════════════════════════════════════════════════════════════════════════
 
-def obter_cache(chave):
-    """Obtém dados do cache se ainda válidos."""
-    with cache_lock:
-        cache_entry = cache_data.get(chave)
-        if cache_entry and cache_entry['timestamp']:
-            idade = (datetime.datetime.now() - cache_entry['timestamp']).total_seconds()
-            if idade < CACHE_TTL:
-                logger.info(f"Cache HIT para '{chave}' (idade: {idade:.1f}s)")
-                return cache_entry['data']
-            else:
-                logger.info(f"Cache EXPIRED para '{chave}' (idade: {idade:.1f}s)")
-        else:
-            logger.info(f"Cache MISS para '{chave}'")
-    return None
-
-def salvar_cache(chave: str, dados: Any) -> None:
-    """Armazena dados no cache com timestamp.
-    
-    Args:
-        chave: Chave para armazenar os dados
-        dados: Dados a serem cacheados
-    """
-    with cache_lock:
-        cache_data[chave] = {
-            'data': dados,
-            'timestamp': datetime.datetime.now()
-        }
-        logger.info(f"Cache SAVED para '{chave}'")
-
-def limpar_cache(chave: Optional[str] = None) -> None:
-    """Limpa o cache (específico ou todo).
-    
-    Args:
-        chave: Chave específica para limpar, ou None para limpar tudo
-    """
-    with cache_lock:
-        if chave:
-            if chave in cache_data:
-                cache_data[chave] = {'data': None, 'timestamp': None}
-                logger.info(f"Cache limpo para '{chave}'")
-        else:
-            for key in cache_data:
-                cache_data[key] = {'data': None, 'timestamp': None}
-            logger.info("Todo o cache foi limpo")
-
-# --- CONFIGURAÇÃO DE USUÁRIOS (SIMPLIFICADO) ---
-# Em produção, use banco de dados com senhas hasheadas (bcrypt/werkzeug.security)
 USUARIOS = {
     'admin': 'admin123',
     'gestor': 'gestor123',
@@ -1141,13 +1035,6 @@ def dashboard():
             }
             datasets_status.append(dataset)
         
-        # Salva no cache antes de retornar
-        resultado = {
-            'labels_meses': labels_meses,
-            'datasets_status': datasets_status
-        }
-        salvar_cache('dashboard', resultado)
-        
         return render_template(
             'dashboard.html',
             labels_meses=labels_meses,
@@ -1173,46 +1060,37 @@ def gerenciar():
     sort_by = request.args.get('sort_by', 'Carimbo de data/hora')
     order = request.args.get('order', 'desc')
     
-    # Tenta obter do cache primeiro
-    cache_result = obter_cache('gerenciar')
-    if cache_result:
-        chamados_filtrados = cache_result
-    else:
-        try:
-            data = sheet.get_all_values()
-            if not data or len(data) < 2:
-                return render_template('gerenciar.html', chamados=[], current_sort=sort_by, current_order=order)
+    try:
+        data = sheet.get_all_values()
+        if not data or len(data) < 2:
+            return render_template('gerenciar.html', chamados=[], current_sort=sort_by, current_order=order)
 
-            headers = data.pop(0)
-            
-            if 'Status da OS' not in headers:
-                raise ValueError("A coluna 'Status da OS' não foi encontrada na planilha. Verifique o cabeçalho.")
-            
-            status_index = headers.index('Status da OS')
-            
-            chamados_filtrados = []
-            
-            for i, row in enumerate(data):
-                if not any(row):
-                    continue
+        headers = data.pop(0)
+        
+        if 'Status da OS' not in headers:
+            raise ValueError("A coluna 'Status da OS' não foi encontrada na planilha. Verifique o cabeçalho.")
+        
+        status_index = headers.index('Status da OS')
+        
+        chamados_filtrados = []
+        
+        for i, row in enumerate(data):
+            if not any(row):
+                continue
 
-                if len(row) > status_index and row[status_index] == 'Cancelada':
-                    continue
-                    
-                chamado = {'row_id': i + 2}
+            if len(row) > status_index and row[status_index] == 'Cancelada':
+                continue
                 
-                full_row = row + [''] * (len(headers) - len(row))
-                
-                chamado.update(zip(headers, full_row))
-                chamados_filtrados.append(chamado)
+            chamado = {'row_id': i + 2}
             
-            # Salva os dados filtrados no cache
-            salvar_cache('gerenciar', chamados_filtrados)
+            full_row = row + [''] * (len(headers) - len(row))
             
-        except Exception as e:
-            logger.error(f"Erro ao carregar dados da planilha: {e}")
-            return render_template('erro.html', 
-                mensagem=f"Erro ao carregar dados: {e}"), 500
+            chamado.update(zip(headers, full_row))
+            chamados_filtrados.append(chamado)
+        
+    except Exception as e:
+        logger.error(f"Erro ao carregar dados da planilha: {e}")
+        return render_template('erro.html', mensagem=f"Erro ao carregar dados: {e}"), 500
     
     # Aplica ordenação (sempre executada, mesmo com cache)
     try:
@@ -1783,7 +1661,7 @@ def relatorios():
             'tabela_resumo': tabela_resumo
         }
         
-        salvar_cache('relatorios', resultado)
+
         return render_template('relatorios.html', **resultado)
         
     except Exception as e:
