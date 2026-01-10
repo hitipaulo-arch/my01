@@ -933,7 +933,7 @@ def receber_requerimento():
             result = sheet.append_row(nova_linha, value_input_option='USER_ENTERED', insert_data_option='INSERT_ROWS')
             
             # Invalida cache após inserção
-            limpar_cache()
+            cache.clear()
             
             logger.info(f"Nova OS (Pedido #{numero_pedido}) adicionada por: {solicitante}")
 
@@ -1166,7 +1166,7 @@ def atualizar_chamado():
         sheet.update(f'A{row_id}:N{row_id}', [linha_atualizada])
         
         # Invalida cache após atualização
-        limpar_cache()
+        cache.clear()
 
         logger.info(f"Chamado (Linha {row_id}) atualizado com status: {status_os}")
 
@@ -1192,7 +1192,7 @@ def sucesso():
 def admin_limpar_cache():
     """Limpa o cache manualmente (útil para admins/devs)."""
     try:
-        limpar_cache()
+        cache.clear()
         logger.info("Cache limpo manualmente via rota /admin/limpar-cache")
         flash('Cache limpo com sucesso!', 'success')
         return redirect(request.referrer or url_for('homepage'))
@@ -1304,7 +1304,7 @@ def controle_horario():
                     
                     mensagem = f"{tipo_map.get(acao, acao)} registrada para OS #{pedido_os}"
             
-            limpar_cache()
+            cache.clear()
         
         # Busca registros de período (por padrão: hoje)
         all_data = sheet_horario.get_all_values()
