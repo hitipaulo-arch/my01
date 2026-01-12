@@ -638,7 +638,14 @@ def admin_required(f):
             return redirect(url_for('login', next=request.url))
         
         usuario = session.get('usuario')
-        if USUARIOS.get(usuario, {}).get('role') != 'admin':
+        user_data = USUARIOS.get(usuario, {})
+        # Compatibilidade com formato legado (string) e novo (dict)
+        if isinstance(user_data, dict):
+            role = user_data.get('role', 'admin')
+        else:
+            role = 'admin'  # Assume admin se em formato legado
+        
+        if role != 'admin':
             flash('Acesso negado. Apenas administradores podem acessar esta página.', 'danger')
             return redirect(url_for('homepage'))
         
@@ -1232,6 +1239,14 @@ def controle_horario():
         hoje_dt = datetime.datetime.now()
         hoje = hoje_dt.strftime('%d/%m/%Y')
         agora = hoje_dt
+        
+        # Inicializa variáveis que podem ser usadas em render_template
+        mensagem = None
+        tipo_mensagem = 'success'
+        usuarios_ativos = []
+        registros = []
+        total_registros = 0
+        aviso_periodo = None
 
         # Carrega todos os registros apenas uma vez por requisição
         all_data = sheet_horario.get_all_values()
