@@ -1232,38 +1232,44 @@ def controle_horario():
         hoje_dt = datetime.datetime.now()
         hoje = hoje_dt.strftime('%d/%m/%Y')
         agora = hoje_dt
+
+        # Carrega todos os registros apenas uma vez por requisição
+        all_data = sheet_horario.get_all_values()
+        if not all_data:
+            all_data = []
+
+        def ultimo_registro(funcionario: str, pedido_os: str):
+            """Retorna o último registro bruto (lista) para o par funcionário/OS."""
+            ultimo = None
+            for row in all_data[1:] if len(all_data) > 1 else []:
+                if len(row) < 4:
+                    continue
+                if row[1] == funcionario and row[2] == pedido_os:
+                    ultimo = row
+            return ultimo
         
         # Processa ação se for POST
         if request.method == 'POST':
             acao = request.form.get('acao')
             
             if acao == 'fechar_os':
-                # Fechar OS específica
                 funcionario = request.form.get('funcionario_fechar')
                 pedido_os = request.form.get('pedido_fechar')
-                
+
                 if funcionario and pedido_os:
-                    # Busca se já tem saída para essa OS hoje
-                    all_data = sheet_horario.get_all_values()
-                    ja_tem_saida = False
-                    
-                    if len(all_data) > 1:
-                        for row in all_data[1:]:
-                            if (len(row) > 3 and row[0] == hoje and 
-                                row[1] == funcionario and row[2] == pedido_os and 
-                                row[3].lower() == 'saída'):
-                                ja_tem_saida = True
-                                break
-                    
-                    if not ja_tem_saida:
+                    ultimo = ultimo_registro(funcionario, pedido_os)
+                    ultimo_tipo = (ultimo[3].lower() if ultimo and len(ultimo) > 3 else None)
+
+                    if not ultimo or ultimo_tipo == 'saída':
+                        mensagem = f"Nenhuma entrada aberta para a OS #{pedido_os} de {funcionario}."
+                        tipo_mensagem = 'warning'
+                    else:
                         horario_registro = agora.strftime('%H:%M:%S')
                         nova_linha = [hoje, funcionario, pedido_os, 'Saída', horario_registro, 'Fechamento de OS']
                         sheet_horario.append_row(nova_linha, value_input_option='USER_ENTERED')
+                        all_data.append(nova_linha)  # Mantém cache local em sincronia
                         logger.info(f"OS {pedido_os} fechada por {funcionario} às {horario_registro}")
                         mensagem = f"OS #{pedido_os} fechada com sucesso!"
-                    else:
-                        mensagem = f"OS #{pedido_os} já foi fechada."
-                        tipo_mensagem = 'warning'
             else:
                 # Registro normal (entrada, pausa, retorno, saída)
                 nome_usuario = request.form.get('nome_usuario', 'Usuário').strip() or 'Usuário'
@@ -1282,25 +1288,43 @@ def controle_horario():
                         'retorno': 'Retorno'
                     }
                     
-                    # Registra na planilha
-                    nova_linha = [
-                        hoje,
-                        nome_usuario,
-                        pedido_os,
-                        tipo_map.get(acao, acao),
-                        horario_registro,
-                        ''
-                    ]
-                    
-                    sheet_horario.append_row(nova_linha, value_input_option='USER_ENTERED')
-                    logger.info(f"Registro de {acao} - {nome_usuario} - OS {pedido_os} às {horario_registro}")
-                    
-                    mensagem = f"{tipo_map.get(acao, acao)} registrada para OS #{pedido_os}"
+                    ultimo = ultimo_registro(nome_usuario, pedido_os)
+                    ultimo_tipo = (ultimo[3].lower() if ultimo and len(ultimo) > 3 else None)
+
+                    allowed = {
+                        'entrada': (None, 'saída'),
+                        'pausa': ('entrada', 'retorno'),
+                        'retorno': ('pausa',),
+                        'saida': ('entrada', 'retorno'),
+                    }
+
+                    # Validação de sequência (impede retorno/pausa sem entrada aberta, etc.)
+                    if acao in allowed:
+                        if ultimo_tipo not in allowed[acao]:
+                            mensagem = "Sequência inválida: verifique a última ação registrada para esta OS."
+                            tipo_mensagem = 'warning'
+                            cache.clear()
+                            # Não registra linha inválida
+                        else:
+                            nova_linha = [
+                                hoje,
+                                nome_usuario,
+                                pedido_os,
+                                tipo_map.get(acao, acao),
+                                horario_registro,
+                                ''
+                            ]
+                            sheet_horario.append_row(nova_linha, value_input_option='USER_ENTERED')
+                            all_data.append(nova_linha)
+                            logger.info(f"Registro de {acao} - {nome_usuario} - OS {pedido_os} às {horario_registro}")
+                            mensagem = f"{tipo_map.get(acao, acao)} registrada para OS #{pedido_os}"
+                    else:
+                        mensagem = "Ação inválida."
+                        tipo_mensagem = 'error'
             
             cache.clear()
         
         # Busca registros de período (por padrão: hoje)
-        all_data = sheet_horario.get_all_values()
         if len(all_data) > 1:
             headers = all_data[0]
             registros_raw = all_data[1:]
@@ -1423,57 +1447,59 @@ def controle_horario():
             fim = inicio + per_page
             registros = registros_periodo[inicio:fim]
             
-            # Agrupa por usuário e OS para calcular status (apenas para o dia atual)
+            # Agrupa por usuário e OS para calcular status (considera registros no período carregado)
             os_por_usuario = {}
-            registros_dia_atual = [r for r in registros_periodo if r['data'] == hoje]
-            for reg in registros_dia_atual:
+            for reg in registros_periodo:
                 chave = f"{reg['funcionario']}|{reg['pedido_os']}"
                 if chave not in os_por_usuario:
                     os_por_usuario[chave] = []
                 os_por_usuario[chave].append(reg)
             
-            # Processa cada OS ativa
+            # Processa cada OS ativa (último status diferente de saída)
             for chave, regs in os_por_usuario.items():
                 funcionario, pedido_os = chave.split('|')
                 if not pedido_os:
                     continue
-                
-                # Ordena registros por horário
-                regs_ordenados = sorted(regs, key=lambda x: x['horario'])
+
+                # Ordena por data/hora real
+                def reg_datetime(r):
+                    d = parse_data(r['data']) or hoje_dt
+                    try:
+                        t = datetime.datetime.strptime(r['horario'], '%H:%M:%S').time()
+                    except Exception:
+                        t = datetime.time(0, 0, 0)
+                    return datetime.datetime.combine(d.date(), t)
+
+                regs_ordenados = sorted(regs, key=lambda x: reg_datetime(x))
                 ultimo_reg = regs_ordenados[-1]
-                
-                # Verifica se ainda está ativa (sem saída)
+
                 if ultimo_reg['tipo'] != 'saída':
-                    # Calcula tempo trabalhado
                     total_trabalho = datetime.timedelta()
-                    tempo_inicio = None
-                    em_pausa = False
-                    pausa_inicio = None
-                    
+                    inicio = None
+
                     for reg in regs_ordenados:
-                        horario = datetime.datetime.strptime(reg['horario'], '%H:%M:%S')
-                        
-                        if reg['tipo'] == 'entrada':
-                            tempo_inicio = horario
-                            em_pausa = False
-                        elif reg['tipo'] == 'pausa' and tempo_inicio:
-                            if not em_pausa:
-                                total_trabalho += horario - tempo_inicio
-                                pausa_inicio = horario
-                                em_pausa = True
-                        elif reg['tipo'] == 'retorno' and pausa_inicio:
-                            tempo_inicio = horario
-                            em_pausa = False
-                    
-                    # Se ainda está trabalhando
-                    if tempo_inicio and not em_pausa:
-                        total_trabalho += agora - tempo_inicio.replace(year=agora.year, month=agora.month, day=agora.day)
-                    
+                        momento = reg_datetime(reg)
+                        tipo = reg['tipo']
+
+                        if tipo in ('entrada', 'retorno'):
+                            # Inicia ou reinicia período de trabalho
+                            inicio = momento
+                        elif tipo == 'pausa' and inicio:
+                            total_trabalho += momento - inicio
+                            inicio = None
+                        elif tipo == 'saída' and inicio:
+                            total_trabalho += momento - inicio
+                            inicio = None
+
+                    # Se ainda ativo (sem saída e não pausado), soma até agora
+                    if inicio:
+                        total_trabalho += agora - inicio
+
                     horas = int(total_trabalho.total_seconds() // 3600)
                     minutos = int((total_trabalho.total_seconds() % 3600) // 60)
-                    
+
                     primeira_entrada = regs_ordenados[0]['horario']
-                    
+
                     usuarios_ativos.append({
                         'funcionario': funcionario,
                         'pedido_os': pedido_os,
