@@ -6,6 +6,7 @@ import os
 import logging
 import smtplib
 import secrets
+import json
 from pathlib import Path
 from threading import Lock
 from functools import wraps
