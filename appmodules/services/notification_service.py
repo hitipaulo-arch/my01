@@ -8,6 +8,9 @@ import requests
 from email.message import EmailMessage
 from typing import Optional
 
+from appmodules.services.whatsapp_click_to_chat import WhatsAppClickToChatService
+from appmodules.services.whatsapp_web_service import WhatsAppWebNotificationService
+
 logger = logging.getLogger(__name__)
 
 
@@ -246,7 +249,9 @@ class NotificationService:
         
         resultados = {
             'email': False,
-            'whatsapp': False
+            'whatsapp_twilio': False,
+            'whatsapp_web': False,
+            'whatsapp_click_to_chat': False
         }
         
         try:
@@ -258,11 +263,33 @@ class NotificationService:
             logger.error(f"Erro ao notificar email: {e}")
         
         try:
-            resultados['whatsapp'] = NotificationService.enviar_whatsapp(
+            resultados['whatsapp_twilio'] = NotificationService.enviar_whatsapp(
                 numero_pedido, solicitante, setor, prioridade,
                 descricao, equipamento, timestamp, info_adicional
             )
         except Exception as e:
-            logger.error(f"Erro ao notificar whatsapp: {e}")
+            logger.error(f"Erro ao notificar whatsapp (Twilio): {e}")
+        
+        # WhatsApp Web Automático
+        try:
+            service_web = WhatsAppWebNotificationService()
+            result_web = service_web.enviar_whatsapp_web(
+                numero_pedido, solicitante, setor, prioridade,
+                descricao, equipamento, timestamp, info_adicional
+            )
+            resultados['whatsapp_web'] = result_web.get('success', False)
+        except Exception as e:
+            logger.error(f"Erro ao notificar whatsapp (Web): {e}")
+        
+        # WhatsApp Click-to-Chat (Universal)
+        try:
+            service_chat = WhatsAppClickToChatService()
+            result_chat = service_chat.enviar_whatsapp_click_to_chat(
+                numero_pedido, solicitante, setor, prioridade,
+                descricao, equipamento, timestamp, info_adicional
+            )
+            resultados['whatsapp_click_to_chat'] = result_chat.get('success', False)
+        except Exception as e:
+            logger.error(f"Erro ao notificar whatsapp (Click-to-Chat): {e}")
         
         return resultados
