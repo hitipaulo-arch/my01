@@ -1,8 +1,10 @@
 """Serviço de gerenciamento de usuários."""
 
 import logging
+import os
 from typing import Dict, Optional, List
 from appmodules.models import Usuario
+from appmodules.models.usuario import Role
 from appmodules.services.sheets_service import SheetsService
 
 logger = logging.getLogger(__name__)
@@ -23,17 +25,25 @@ class UserService:
             if not self.sheets_service:
                 logger.warning("Sheets service indisponível; cache de usuários vazio")
                 self._usuarios_cache = {}
+                self._load_local_fallback_user()
                 return
             
             records = self.sheets_service.get_usuarios_raw()
             self._usuarios_cache = {}
             
-            for record in records:
+            roles_validos = {r.value for r in Role}
+            for i, record in enumerate(records, start=2):
                 username = str(record.get('Username', '')).strip()
                 senha = str(record.get('Senha', '')).strip()
-                role = str(record.get('Role', 'admin')).strip()
+                role = str(record.get('Role', Role.ADMIN.value)).strip().lower()
+                if role not in roles_validos:
+                    role = Role.ADMIN.value
                 
                 if username and senha:
+                    if not Usuario.is_hash_valido(senha):
+                        senha = Usuario.criar(username, senha, role).senha_hash
+                        if not self.sheets_service.update_usuario(i, username, senha, role):
+                            logger.warning("Falha ao migrar senha legada do usuário %s", username)
                     self._usuarios_cache[username] = Usuario(
                         username=username,
                         senha_hash=senha,
@@ -42,10 +52,32 @@ class UserService:
             
             if not self._usuarios_cache:
                 logger.warning("Nenhum usuário cadastrado no Sheets. Cadastre pelo menos um administrador.")
+                self._load_local_fallback_user()
             else:
                 logger.info(f"Carregados {len(self._usuarios_cache)} usuários")
         except Exception as e:
             logger.warning(f"Erro ao carregar usuários: {e}; cache de usuários permanecerá vazio")
+            self._load_local_fallback_user()
+
+    def _load_local_fallback_user(self) -> None:
+        """Cria usuário admin local para ambiente de desenvolvimento."""
+        if os.getenv('DISABLE_LOCAL_ADMIN_FALLBACK', 'false').lower() == 'true':
+            return
+
+        username = os.getenv('LOCAL_ADMIN_USER', 'admin').strip()
+        password = os.getenv('LOCAL_ADMIN_PASSWORD', 'admin123').strip()
+        role = os.getenv('LOCAL_ADMIN_ROLE', 'admin').strip() or 'admin'
+
+        if not username or not password:
+            return
+
+        if username not in self._usuarios_cache:
+            self._usuarios_cache[username] = Usuario.criar(username, password, role)
+            logger.warning(
+                "Usuário local de fallback carregado para login (dev): %s. "
+                "Defina LOCAL_ADMIN_USER/LOCAL_ADMIN_PASSWORD para alterar.",
+                username
+            )
     
     def get_usuario(self, username: str) -> Optional[Usuario]:
         """Obtém um usuário pelo username."""
@@ -58,6 +90,11 @@ class UserService:
     def criar_usuario(self, username: str, senha: str, role: str = 'admin') -> bool:
         """Cria novo usuário."""
         try:
+            role = str(role or Role.ADMIN.value).strip().lower()
+            if role not in {r.value for r in Role}:
+                logger.warning("Role inválida ao criar usuário: %s", role)
+                return False
+
             if not self.sheets_service:
                 logger.error("Sheets service indisponível; não é possível criar usuário")
                 return False
@@ -97,6 +134,10 @@ class UserService:
             if senha:
                 usuario.atualizar_senha(senha)
             if role:
+                role = str(role).strip().lower()
+                if role not in {r.value for r in Role}:
+                    logger.warning("Role inválida ao atualizar usuário: %s", role)
+                    return False
                 usuario.role = role
             
             # Atualiza no Sheets (busca por row_id)

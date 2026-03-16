@@ -143,24 +143,24 @@
                                 <!-- Cabeçalhos clicáveis para ordenação -->
                                 <th scope="col">Nº OS</th>
                                 <th scope="col">
-                                    <a href="{{ url_for('gerenciar', sort_by='Carimbo de data/hora', order='desc' if current_order == 'asc' else 'asc') }}" class="sort-link">
+                                    <a href="{{ url_for('os.gerenciar', sort_by='Carimbo de data/hora', order='desc' if current_order == 'asc' else 'asc') }}" class="sort-link">
                                         Data Solicitação <i class="bi bi-arrow-down-up ms-1"></i>
                                     </a>
                                 </th>
                                 <th scope="col">
-                                    <a href="{{ url_for('gerenciar', sort_by='Nome do solicitante', order='desc' if current_order == 'asc' else 'asc') }}" class="sort-link">
+                                    <a href="{{ url_for('os.gerenciar', sort_by='Nome do solicitante', order='desc' if current_order == 'asc' else 'asc') }}" class="sort-link">
                                         Solicitante <i class="bi bi-arrow-down-up ms-1"></i>
                                     </a>
                                 </th>
                                 <th scope="col">
-                                    <a href="{{ url_for('gerenciar', sort_by='Setor em que será realizado o serviço', order='desc' if current_order == 'asc' else 'asc') }}" class="sort-link">
+                                    <a href="{{ url_for('os.gerenciar', sort_by='Setor em que será realizado o serviço', order='desc' if current_order == 'asc' else 'asc') }}" class="sort-link">
                                         Setor <i class="bi bi-arrow-down-up ms-1"></i>
                                     </a>
                                 </th>
                                 <th scope="col">Descrição</th>
                                 <th scope="col">Equipamento</th>
                                 <th scope="col">
-                                    <a href="{{ url_for('gerenciar', sort_by='Status da OS', order='desc' if current_order == 'asc' else 'asc') }}" class="sort-link">
+                                    <a href="{{ url_for('os.gerenciar', sort_by='Status da OS', order='desc' if current_order == 'asc' else 'asc') }}" class="sort-link">
                                         Status Atual <i class="bi bi-arrow-down-up ms-1"></i>
                                     </a>
                                 </th>
@@ -186,6 +186,7 @@
                                     data-info-adicional="{{ chamado['Informações adicionais (Opcional)'] }}"
                                     data-servico-realizado="{{ chamado['Serviço realizado'] }}"
                                     data-horario-inicio="{{ chamado['Horario de Inicio'] }}"
+                                    data-horario-andamento="{{ chamado['Horario de Andamento'] }}"
                                     data-horario-termino="{{ chamado['Horario de Término'] }}"
                                     data-horas-trabalhadas="{{ chamado['Horas trabalhadas'] }}"
                                     >
@@ -302,15 +303,19 @@
                         </div>
 
                         <div class="row mb-3">
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label for="edit-horario-inicio" class="form-label">Horário Início:</label>
                                 <input type="text" class="form-control" id="edit-horario-inicio" name="horario_inicio">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
+                                <label for="edit-horario-andamento" class="form-label">Horário Andamento:</label>
+                                <input type="text" class="form-control" id="edit-horario-andamento" name="horario_andamento">
+                            </div>
+                            <div class="col-md-3">
                                 <label for="edit-horario-termino" class="form-label">Horário Término:</label>
                                 <input type="text" class="form-control" id="edit-horario-termino" name="horario_termino">
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <label for="edit-horas-trabalhadas" class="form-label">Horas Trabalhadas:</label>
                                 <input type="text" class="form-control" id="edit-horas-trabalhadas" name="horas_trabalhadas">
                             </div>
@@ -378,6 +383,7 @@
                 infoAdicional: getData('info-adicional'),
                 servicoRealizado: getData('servico-realizado'),
                 horarioInicio: getData('horario-inicio'),
+                horarioAndamento: getData('horario-andamento'),
                 horarioTermino: getData('horario-termino'),
                 horasTrabalhadas: getData('horas-trabalhadas')
             };
@@ -400,6 +406,7 @@
             setModalValue('info-adicional', dadosChamado.infoAdicional);
             setModalValue('servico-realizado', dadosChamado.servicoRealizado);
             setModalValue('horario-inicio', dadosChamado.horarioInicio);
+            setModalValue('horario-andamento', dadosChamado.horarioAndamento);
             setModalValue('horario-termino', dadosChamado.horarioTermino);
             setModalValue('horas-trabalhadas', dadosChamado.horasTrabalhadas);
         });

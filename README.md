@@ -5,7 +5,6 @@ Sistema web para gerenciamento de Ordens de Serviço integrado com Google Sheets
 ## 🚀 Funcionalidades
 
 - ✅ Abertura de OS via formulário web
-- 📊 Dashboard com gráficos de análise
 - 🔧 Gerenciamento e edição de chamados
 - 🔍 Consulta pública de status
 - 💾 Cache inteligente (5 minutos TTL)
@@ -79,7 +78,6 @@ projeto_flask/
 ├── app.py                 # Aplicação principal
 ├── templates/             # Templates HTML
 │   ├── index.html        # Formulário de abertura
-│   ├── dashboard.html    # Dashboard com gráficos
 │   ├── gerenciar.html    # Gerenciamento de OS
 │   ├── consultar.html    # Consulta pública
 │   ├── sucesso.html      # Confirmação
@@ -230,7 +228,7 @@ TWILIO_CONTENT_MAP="1=numero_pedido,2=prioridade,3=solicitante,4=setor,5=equipam
 
 O sistema implementa cache inteligente:
 - **TTL**: 5 minutos configurável
-- **Rotas cacheadas**: Dashboard, Gerenciar
+- **Rotas cacheadas**: Gerenciar
 - **Invalidação**: Automática após criar/atualizar OS
 - **Limpeza manual**: `/admin/limpar-cache`
 

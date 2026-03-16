@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Ferramentas</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container { max-width: 1400px; margin: 0 auto; }
+
+        .page-header {
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            margin-bottom: 30px;
+            box-shadow: 0 15px 50px rgba(0,0,0,0.15);
+        }
+
+        .page-header h1 {
+            font-size: 36px;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .form-card, .table-card {
+            background: rgba(255,255,255,0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+
+        .table-card { overflow-x: auto; }
+
+        .badge-disponivel  { background: #28a745; }
+        .badge-manutencao  { background: #ffc107; color: #333; }
+        .badge-indisponivel { background: #dc3545; }
+
+        .btn-action { margin: 0 3px; padding: 5px 10px; font-size: 12px; }
+    </style>
+</head>
+<body>
+    {% include '_top_nav.html' %}
+
+    <div class="container">
+        <div class="page-header">
+            <h1>🔧 Controle de Ferramentas</h1>
+            <p class="text-muted">Gerencie ferramentas, patrocínios e manutenções</p>
+        </div>
+
+        {% if mensagem %}
+        <div class="alert alert-{{ tipo_mensagem }} alert-dismissible fade show" role="alert">
+            {{ mensagem }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+        {% endif %}
+
+        <!-- Formulário de Cadastro -->
+        <div class="form-card">
+            <h3 class="mb-4">➕ Cadastrar Nova Ferramenta</h3>
+            <form method="POST" action="/ferramentas">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Nome da Ferramenta <span class="text-danger">*</span></label>
+                        <input type="text" name="nome" class="form-control"
+                               placeholder="Ex: Furadeira, Serra Circular" required>
+                    </div>
+
+                    <div class="col-md-2 mb-3">
+                        <label class="form-label">Patrocínio</label>
+                        <input type="text" name="patrocinio" class="form-control"
+                               placeholder="Ex: Empresa XYZ, Projeto ABC">
+                    </div>
+
+                    <div class="col-md-2 mb-3">
+                        <label class="form-label">Responsável</label>
+                        <input type="text" name="responsavel" class="form-control"
+                               placeholder="Ex: João Silva">
+                    </div>
+
+                    <div class="col-md-2 mb-3">
+                        <label class="form-label">Última Manutenção</label>
+                        <input type="date" name="ultima_manutencao" class="form-control">
+                    </div>
+
+                    <div class="col-md-2 mb-3">
+                        <label class="form-label">Status</label>
+                        <select name="status" class="form-select">
+                            <option value="Disponível">Disponível</option>
+                            <option value="Em Manutenção">Em Manutenção</option>
+                            <option value="Indisponível">Indisponível</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-2 mb-3">
+                        <label class="form-label">Observação</label>
+                        <input type="text" name="observacao" class="form-control"
+                               placeholder="Observações adicionais">
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-success">
+                    💾 Cadastrar Ferramenta
+                </button>
+            </form>
+        </div>
+
+        <!-- Tabela de Ferramentas -->
+        <div class="table-card">
+            <h3 class="mb-4">📋 Ferramentas Cadastradas</h3>
+
+            {% if ferramentas %}
+            <table class="table table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>Nome</th>
+                        <th>Patrocínio</th>
+                        <th>Responsável</th>
+                        <th>Data de Cadastro</th>
+                        <th>Última Manutenção</th>
+                        <th>Status</th>
+                        <th>Observação</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for ferramenta in ferramentas %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td><strong>{{ ferramenta.get('Nome', '-') }}</strong></td>
+                        <td>{{ ferramenta.get('Patrocínio', '-') }}</td>
+                        <td>{{ ferramenta.get('Responsável', '-') or '-' }}</td>
+                        <td>{{ ferramenta.get('Data de Cadastro', '-') }}</td>
+                        <td>{{ ferramenta.get('Última Manutenção', '-') or '-' }}</td>
+                        <td>
+                            <span class="badge
+                                {% if ferramenta.get('Status') == 'Disponível' %}badge-disponivel
+                                {% elif ferramenta.get('Status') == 'Em Manutenção' %}badge-manutencao
+                                {% else %}badge-indisponivel
+                                {% endif %}">
+                                {{ ferramenta.get('Status', '-') }}
+                            </span>
+                        </td>
+                        <td>{{ ferramenta.get('Observação', '-') or '-' }}</td>
+                        <td>
+                            <button
+                                class="btn btn-sm btn-warning btn-action js-edit-ferramenta"
+                                data-row-id="{{ loop.index0 }}"
+                                data-responsavel="{{ ferramenta.get('Responsável', '') | e }}"
+                                data-ultima-manutencao="{{ ferramenta.get('Última Manutenção', '') | e }}"
+                                data-status="{{ ferramenta.get('Status', 'Disponível') | e }}"
+                                data-observacao="{{ ferramenta.get('Observação', '') | e }}">
+                                ✏️ Editar
+                            </button>
+                            <button class="btn btn-sm btn-info btn-action js-historico-ferramenta"
+                                    data-nome="{{ ferramenta.get('Nome', '') }}"
+                                    >
+                                📌 Histórico
+                            </button>
+                            <button class="btn btn-sm btn-danger btn-action js-delete-ferramenta"
+                                    data-row-id="{{ loop.index0 }}">
+                                🗑️ Deletar
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="alert alert-info">
+                ℹ️ Nenhuma ferramenta cadastrada ainda.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Modal de Histórico -->
+    <div class="modal fade" id="historicoModal" tabindex="-1">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">📌 Histórico da Ferramenta: <span id="historico_nome"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="historico_loading" class="text-center py-4">
+                        <div class="spinner-border text-success" role="status">
+                            <span class="visually-hidden">Carregando...</span>
+                        </div>
+                    </div>
+                    <div id="historico_content" style="display:none">
+                        <table class="table table-hover table-sm">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Evento</th>
+                                    <th>Data/Hora</th>
+                                    <th>Usuário</th>
+                                    <th>Detalhes</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historico_tbody"></tbody>
+                        </table>
+                        <div id="historico_vazio" class="alert alert-info" style="display:none">
+                            ℹ️ Nenhum registro de histórico para esta ferramenta.
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Edição -->
+    <div class="modal fade" id="editModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">✏️ Editar Ferramenta</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editForm">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <input type="hidden" id="edit_row_id" name="row_id">
+
+                        <div class="mb-3">
+                            <label class="form-label">Responsável</label>
+                            <input type="text" id="edit_responsavel"
+                                   name="responsavel" class="form-control">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Última Manutenção</label>
+                            <input type="date" id="edit_ultima_manutencao"
+                                   name="ultima_manutencao" class="form-control">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Status</label>
+                            <select id="edit_status" name="status" class="form-select">
+                                <option value="Disponível">Disponível</option>
+                                <option value="Em Manutenção">Em Manutenção</option>
+                                <option value="Indisponível">Indisponível</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Observação</label>
+                            <input type="text" id="edit_observacao"
+                                   name="observacao" class="form-control">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="salvarEdicao()">Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let editModal;
+        let historicoModal;
+
+        document.addEventListener('DOMContentLoaded', function () {
+            editModal = new bootstrap.Modal(document.getElementById('editModal'));
+            historicoModal = new bootstrap.Modal(document.getElementById('historicoModal'));
+
+            document.querySelectorAll('.js-edit-ferramenta').forEach(button => {
+                button.addEventListener('click', () => {
+                    editarFerramenta(
+                        button.dataset.rowId,
+                        button.dataset.responsavel || '',
+                        button.dataset.ultimaManutencao || '',
+                        button.dataset.status || 'Disponível',
+                        button.dataset.observacao || ''
+                    );
+                });
+            });
+
+            document.querySelectorAll('.js-historico-ferramenta').forEach(button => {
+                button.addEventListener('click', () => verHistorico(button.dataset.nome || ''));
+            });
+
+            document.querySelectorAll('.js-delete-ferramenta').forEach(button => {
+                button.addEventListener('click', () => deletarFerramenta(button.dataset.rowId));
+            });
+        });
+
+        const eventoClasses = {
+            'Cadastro': 'badge bg-success',
+            'Edição': 'badge bg-warning text-dark',
+            'Exclusão': 'badge bg-danger'
+        };
+
+        function verHistorico(nome) {
+            document.getElementById('historico_nome').textContent = nome;
+            document.getElementById('historico_loading').style.display = 'block';
+            document.getElementById('historico_content').style.display = 'none';
+            historicoModal.show();
+
+            fetch(`/ferramentas/historico?nome=${encodeURIComponent(nome)}`)
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('historico_loading').style.display = 'none';
+                    document.getElementById('historico_content').style.display = 'block';
+                    const tbody = document.getElementById('historico_tbody');
+                    const vazio = document.getElementById('historico_vazio');
+                    tbody.innerHTML = '';
+                    if (!data.success || !data.historico.length) {
+                        vazio.style.display = 'block';
+                        return;
+                    }
+                    vazio.style.display = 'none';
+                    data.historico.forEach(h => {
+                        const cls = eventoClasses[h['Evento']] || 'badge bg-secondary';
+                        tbody.innerHTML += `<tr>
+                            <td><span class="${cls}">${h['Evento'] || '-'}</span></td>
+                            <td>${h['Data/Hora'] || '-'}</td>
+                            <td>${h['Usuário'] || '-'}</td>
+                            <td>${h['Detalhes'] || '-'}</td>
+                        </tr>`;
+                    });
+                })
+                .catch(err => {
+                    document.getElementById('historico_loading').innerHTML =
+                        `<div class="alert alert-danger">Erro ao carregar histórico: ${err}</div>`;
+                });
+        }
+
+        function editarFerramenta(rowId, responsavel, ultimaManutencao, status, observacao) {
+            document.getElementById('edit_row_id').value = rowId;
+            document.getElementById('edit_responsavel').value = responsavel;
+            document.getElementById('edit_ultima_manutencao').value = ultimaManutencao;
+            document.getElementById('edit_status').value = status;
+            document.getElementById('edit_observacao').value = observacao;
+            editModal.show();
+        }
+
+        function salvarEdicao() {
+            const rowId = document.getElementById('edit_row_id').value;
+            const formData = new FormData(document.getElementById('editForm'));
+
+            fetch(`/ferramentas/atualizar/${rowId}`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) { alert(data.message); location.reload(); }
+                else { alert('Erro: ' + data.message); }
+            })
+            .catch(err => alert('Erro ao atualizar: ' + err));
+        }
+
+        function deletarFerramenta(rowId) {
+            if (!confirm('Tem certeza que deseja deletar esta ferramenta?')) return;
+
+            const formData = new FormData();
+            formData.append('csrf_token', '{{ csrf_token() }}');
+
+            fetch(`/ferramentas/deletar/${rowId}`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) { alert(data.message); location.reload(); }
+                else { alert('Erro: ' + data.message); }
+            })
+            .catch(err => alert('Erro ao deletar: ' + err));
+        }
+    </script>
+</body>
+</html>

@@ -3,6 +3,7 @@
 import gspread
 import logging
 import datetime
+import json
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
 from google.oauth2.service_account import Credentials
@@ -36,6 +37,7 @@ class SheetsService:
     def _init_connection(self, creds_file: str) -> None:
         """Inicializa conexão com Google Sheets."""
         try:
+            self._validate_credentials_file(creds_file)
             creds = Credentials.from_service_account_file(creds_file, scopes=self.SCOPES)
             logger.info("Credenciais carregadas com sucesso")
             
@@ -52,7 +54,7 @@ class SheetsService:
                     'ID', 'Carimbo de data/hora', 'Nome do solicitante', 'Setor',
                     'Data da Solicitação', 'Descrição', 'Equipamento/Local', 'Prioridade',
                     'Status da OS', 'Informações adicionais', 'Serviço realizado',
-                    'Horario de Inicio', 'Horario de Término', 'Horas trabalhadas'
+                    'Horario de Inicio', 'Horario de Andamento', 'Horario de Término', 'Horas trabalhadas'
                 ])
                 logger.info(f"Aba '{self.sheet_tab}' criada com cabeçalho")
             
@@ -77,9 +79,50 @@ class SheetsService:
         except FileNotFoundError:
             logger.error("Arquivo 'credentials.json' não encontrado")
             self.error = "Credenciais não encontradas"
+        except ValueError as e:
+            logger.error(f"Credenciais inválidas: {e}")
+            self.error = str(e)
         except Exception as e:
             logger.error(f"Erro ao conectar à planilha: {e}")
             self.error = str(e)
+
+    def _validate_credentials_file(self, creds_file: str) -> None:
+        """Valida formato mínimo do credentials.json antes de autenticar."""
+        creds_path = Path(creds_file)
+        if not creds_path.exists():
+            raise FileNotFoundError(creds_file)
+
+        data = json.loads(creds_path.read_text(encoding='utf-8'))
+        placeholders = {
+            'SUBSTITUA',
+            'SUBSTITUA_COM_SEU_PROJECT_ID',
+            'SUA_PRIVATE_KEY_AQUI',
+            'SEU_PROJECT_ID_AQUI'
+        }
+
+        private_key = str(data.get('private_key', '')).strip()
+        client_email = str(data.get('client_email', '')).strip()
+        project_id = str(data.get('project_id', '')).strip()
+
+        if (
+            not private_key
+            or private_key in placeholders
+            or 'BEGIN PRIVATE KEY' not in private_key
+        ):
+            raise ValueError(
+                "credentials.json inválido: campo 'private_key' ausente/placeholder. "
+                "Use JSON real de service account."
+            )
+
+        if not client_email or client_email in placeholders or '@' not in client_email:
+            raise ValueError(
+                "credentials.json inválido: campo 'client_email' ausente/placeholder."
+            )
+
+        if not project_id or project_id in placeholders:
+            raise ValueError(
+                "credentials.json inválido: campo 'project_id' ausente/placeholder."
+            )
     
     def is_available(self) -> Tuple[bool, Optional[str]]:
         """Verifica se a conexão está disponível."""
@@ -159,8 +202,10 @@ class SheetsService:
         try:
             if not self.sheet:
                 return False
-            
-            self.sheet.update(f'A{row_id}:N{row_id}', [row_data])
+
+            # Define a faixa dinamicamente com base na quantidade de colunas.
+            ultima_coluna = chr(ord('A') + len(row_data) - 1)
+            self.sheet.update(f'A{row_id}:{ultima_coluna}{row_id}', [row_data])
             logger.info(f"OS (linha {row_id}) atualizada")
             return True
         except Exception as e:

@@ -98,7 +98,7 @@
             </div>
             {% endif %}
 
-            <form method="POST" action="{{ url_for('cadastro') }}">
+            <form method="POST" action="{{ url_for('auth.cadastro') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <div class="mb-3">
                     <label for="username" class="form-label">Usuário</label>
@@ -118,7 +118,7 @@
             </form>
 
             <div class="login-link">
-                <p>Já tem uma conta? <a href="{{ url_for('login') }}">Fazer login</a></p>
+                <p>Já tem uma conta? <a href="{{ url_for('auth.login') }}">Fazer login</a></p>
             </div>
 
             <div class="text-center mt-3">

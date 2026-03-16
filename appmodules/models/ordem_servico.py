@@ -38,6 +38,7 @@ class OrdemServico:
     info_adicional: str = ''
     servico_realizado: str = ''
     horario_inicio: str = ''
+    horario_andamento: str = ''
     horario_termino: str = ''
     horas_trabalhadas: str = ''
     
@@ -74,6 +75,7 @@ class OrdemServico:
             self.info_adicional,
             self.servico_realizado,
             self.horario_inicio,
+            self.horario_andamento,
             self.horario_termino,
             self.horas_trabalhadas
         ]

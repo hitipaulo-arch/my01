@@ -152,8 +152,9 @@ def atualizar_chamado():
         
         status_os = request.form.get('status_os', '').strip()
         servico_realizado = request.form.get('servico_realizado', '')
-        horario_inicio = request.form.get('horario_inicio', '')
-        horario_termino = request.form.get('horario_termino', '')
+        horario_inicio = request.form.get('horario_inicio', '').strip()
+        horario_andamento = request.form.get('horario_andamento', '').strip()
+        horario_termino = request.form.get('horario_termino', '').strip()
         horas_trabalhadas = request.form.get('horas_trabalhadas', '')
         
         try:
@@ -172,6 +173,30 @@ def atualizar_chamado():
         if not os_original:
             return render_template('erro.html', 
                 mensagem="OS não encontrada"), 404
+
+        status_original = str(os_original.get('Status da OS', '')).strip()
+
+        # Preserva valores já existentes quando o formulário não envia o campo.
+        if not horario_inicio:
+            horario_inicio = str(os_original.get('Horario de Inicio', '')).strip()
+        if not horario_andamento:
+            horario_andamento = str(os_original.get('Horario de Andamento', '')).strip()
+        if not horario_termino:
+            horario_termino = str(os_original.get('Horario de Término', '')).strip()
+
+        agora = datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+
+        # Ao entrar em andamento, registra horário automaticamente (se vazio).
+        if status_os == 'Em Andamento' and not horario_andamento:
+            horario_andamento = agora
+
+        # Ao finalizar, registra término automaticamente (se vazio).
+        if status_os == 'Finalizada' and not horario_termino:
+            horario_termino = agora
+
+        # Se foi finalizada sem andamento preenchido, registra andamento também.
+        if status_os == 'Finalizada' and not horario_andamento:
+            horario_andamento = agora
         
         linha_atualizada = [
             os_original.get('ID', ''),
@@ -186,6 +211,7 @@ def atualizar_chamado():
             info_adicional,
             servico_realizado,
             horario_inicio,
+            horario_andamento,
             horario_termino,
             horas_trabalhadas
         ]

@@ -122,43 +122,14 @@
 <body>
 
     <div class="container">
-        <!-- Top Navigation with User Info and Logout -->
-        {% if session.usuario %}
-        <div class="top-nav">
-            <div class="user-info">
-                👤 {{ session.usuario }}
-                {% if session.role == 'admin' %}
-                <span class="badge bg-danger ms-2">Admin</span>
-                {% endif %}
-            </div>
-            <div>
-                {% if session.role == 'admin' %}
-                <a href="/dashboard" class="btn btn-sm btn-outline-primary me-2">📊 Dashboard</a>
-                <a href="/gerenciar" class="btn btn-sm btn-outline-primary me-2">📋 Gerenciar</a>
-                <a href="/controle-horario" class="btn btn-sm btn-outline-primary me-2">⏱️ Controle</a>
-                <a href="/relatorios" class="btn btn-sm btn-outline-primary me-2">📈 Relatórios</a>
-                {% endif %}
-                <a href="/logout" class="btn-logout">Sair</a>
-            </div>
-        </div>
-        {% else %}
-        <div class="top-nav">
-            <div class="user-info">
-                🔓 Acesso Público
-            </div>
-            <div>
-                <a href="/login" class="btn btn-sm btn-outline-primary me-2">🔐 Login</a>
-                <a href="/consultar" class="btn btn-sm btn-outline-info">🔍 Consultar OS</a>
-            </div>
-        </div>
-        {% endif %}
+        {% include '_top_nav.html' %}
         
         <div class="form-card">
             <h2>Formulário de Abertura de OS</h2>
             
             <p class="text-center text-muted mb-4">
                 Já abriu um chamado? 
-                <a href="{{ url_for('consultar_pedido') }}">Consulte o status aqui.</a>
+                <a href="{{ url_for('os.consultar_pedido') }}">Consulte o status aqui.</a>
             </p>
                     
                 

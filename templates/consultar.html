@@ -146,7 +146,7 @@
             <p class="text-muted">Digite o número do pedido que você recebeu na página de sucesso.</p>
                 
                     <!-- Formulário de Consulta -->
-                    <form method="POST" action="{{ url_for('consultar_pedido') }}">
+                    <form method="POST" action="{{ url_for('os.consultar_pedido') }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                         <div class="mb-3">
                             <label for="numero_pedido" class="form-label">Número do Pedido:</label>

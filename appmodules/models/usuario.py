@@ -25,12 +25,16 @@ class Usuario:
         """Cria novo usuário com senha hasheada."""
         senha_hash = generate_password_hash(senha, method='pbkdf2:sha256')
         return cls(username=username, senha_hash=senha_hash, role=role)
+
+    @staticmethod
+    def is_hash_valido(valor: str) -> bool:
+        """Verifica se o valor parece um hash suportado pelo Werkzeug."""
+        return str(valor or '').startswith(('pbkdf2:', 'scrypt:'))
     
     def verificar_senha(self, senha: str) -> bool:
         """Verifica se a senha está correta."""
-        # Compatibilidade com senhas legadas (texto plano)
-        if not self.senha_hash.startswith(('pbkdf2:', 'scrypt:')):
-            return self.senha_hash == senha
+        if not self.is_hash_valido(self.senha_hash):
+            return False
         return check_password_hash(self.senha_hash, senha)
     
     def atualizar_senha(self, nova_senha: str) -> None:
