@@ -69,6 +69,10 @@
             padding: 5px 10px;
             font-size: 12px;
         }
+
+        .search-box {
+            max-width: 420px;
+        }
     </style>
 </head>
 <body>
@@ -131,10 +135,22 @@
         
         <!-- Tabela de Centrais -->
         <div class="table-card">
-            <h3 class="mb-4">📋 Centrais Cadastradas</h3>
+            <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+                <h3 class="mb-0">📋 Centrais Cadastradas</h3>
+                <div class="search-box w-100">
+                    <label for="buscaCentral" class="form-label mb-1">Pesquisar centrais</label>
+                    <input
+                        type="text"
+                        id="buscaCentral"
+                        class="form-control"
+                        placeholder="Busque por portas, código, status ou obra"
+                    >
+                    <small id="contadorCentrais" class="text-muted">Mostrando todas as centrais.</small>
+                </div>
+            </div>
             
             {% if centrais %}
-            <table class="table table-hover">
+            <table class="table table-hover" id="tabelaCentrais">
                 <thead class="table-light">
                     <tr>
                         <th>#</th>
@@ -224,9 +240,61 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let editModal;
+
+        function atualizarContadorCentrais(quantidadeVisiveis, quantidadeTotal) {
+            const contador = document.getElementById('contadorCentrais');
+            if (!contador) {
+                return;
+            }
+
+            if (quantidadeVisiveis === quantidadeTotal) {
+                contador.textContent = 'Mostrando todas as centrais.';
+                return;
+            }
+
+            contador.textContent = `Mostrando ${quantidadeVisiveis} de ${quantidadeTotal} centrais.`;
+        }
+
+        function filtrarCentrais() {
+            const inputBusca = document.getElementById('buscaCentral');
+            const tabela = document.getElementById('tabelaCentrais');
+            if (!inputBusca || !tabela) {
+                return;
+            }
+
+            const termoBusca = inputBusca.value.trim().toLowerCase();
+            const linhas = tabela.querySelectorAll('tbody tr');
+            let visiveis = 0;
+
+            linhas.forEach((linha) => {
+                const portas = linha.children[1]?.innerText.toLowerCase() || '';
+                const codigoSerie = linha.children[2]?.innerText.toLowerCase() || '';
+                const status = linha.children[3]?.innerText.toLowerCase() || '';
+                const obra = linha.children[4]?.innerText.toLowerCase() || '';
+
+                const corresponde = !termoBusca ||
+                    portas.includes(termoBusca) ||
+                    codigoSerie.includes(termoBusca) ||
+                    status.includes(termoBusca) ||
+                    obra.includes(termoBusca);
+
+                linha.style.display = corresponde ? '' : 'none';
+                if (corresponde) {
+                    visiveis += 1;
+                }
+            });
+
+            atualizarContadorCentrais(visiveis, linhas.length);
+        }
         
         document.addEventListener('DOMContentLoaded', function() {
             editModal = new bootstrap.Modal(document.getElementById('editModal'));
+
+            const buscaCentral = document.getElementById('buscaCentral');
+            if (buscaCentral) {
+                buscaCentral.addEventListener('input', filtrarCentrais);
+                filtrarCentrais();
+            }
         });
         
         function editarCentral(rowId, status, obra) {

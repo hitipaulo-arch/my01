@@ -16,6 +16,19 @@ logger = logging.getLogger(__name__)
 
 class NotificationService:
     """Gerencia notificações via email e WhatsApp."""
+
+    @staticmethod
+    def _normalizar_destino_whatsapp(numero: str) -> Optional[str]:
+        """Normaliza número para formato Twilio: whatsapp:+55XXXXXXXXXXX."""
+        if not numero:
+            return None
+
+        digits = ''.join(filter(str.isdigit, str(numero)))
+        if len(digits) < 10:
+            return None
+        if not digits.startswith('55'):
+            digits = f'55{digits}'
+        return f'whatsapp:+{digits}'
     
     @staticmethod
     def enviar_email(
@@ -109,7 +122,8 @@ class NotificationService:
         descricao: str,
         equipamento: str,
         timestamp: str,
-        info_adicional: str = ''
+        info_adicional: str = '',
+        whatsapp_destino: str = ''
     ) -> bool:
         """Envia notificação por WhatsApp via Twilio."""
         
@@ -127,6 +141,11 @@ class NotificationService:
             return False
         
         recipients = [n.strip() for n in to_raw.split(',') if n.strip()]
+
+        destino_dinamico = NotificationService._normalizar_destino_whatsapp(whatsapp_destino)
+        if destino_dinamico and destino_dinamico not in recipients:
+            recipients.append(destino_dinamico)
+
         if not recipients:
             logger.warning("WhatsApp habilitado, mas TWILIO_WHATSAPP_TO está vazio")
             return False
@@ -159,7 +178,10 @@ class NotificationService:
         url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
         timeout = float(os.getenv('TWILIO_TIMEOUT_SECONDS', '10'))
         content_sid = os.getenv('TWILIO_CONTENT_SID', '').strip()
-        content_vars_json = os.getenv('TWILIO_CONTENT_VARIABLES_JSON', '').strip()
+        content_vars_json_env = os.getenv('TWILIO_CONTENT_VARIABLES_JSON', '').strip()
+        usar_content_variables_estatico = os.getenv(
+            'TWILIO_USE_STATIC_CONTENT_VARIABLES', 'false'
+        ).strip().lower() in ('1', 'true', 'yes', 'on')
         content_map = os.getenv('TWILIO_CONTENT_MAP', '').strip()
         
         success_count = 0
@@ -172,7 +194,9 @@ class NotificationService:
                 
                 if content_sid:
                     payload['ContentSid'] = content_sid
-                    auto_vars = None
+                    content_vars_json = content_vars_json_env if usar_content_variables_estatico else ''
+
+                    # Por padrão, sempre monta variáveis dinâmicas para evitar valores fixos repetidos.
                     if not content_vars_json:
                         try:
                             field_values = {
@@ -214,7 +238,7 @@ class NotificationService:
                         except Exception as e:
                             logger.error(f"Falha ao montar ContentVariables: {e}")
                             content_vars_json = None
-                    
+
                     if content_vars_json:
                         payload['ContentVariables'] = content_vars_json
                     else:
@@ -243,7 +267,8 @@ class NotificationService:
         descricao: str,
         equipamento: str,
         timestamp: str,
-        info_adicional: str = ''
+        info_adicional: str = '',
+        whatsapp_destino: str = ''
     ) -> dict:
         """Envia todas as notificações para uma nova OS."""
         
@@ -265,14 +290,14 @@ class NotificationService:
         try:
             resultados['whatsapp_twilio'] = NotificationService.enviar_whatsapp(
                 numero_pedido, solicitante, setor, prioridade,
-                descricao, equipamento, timestamp, info_adicional
+                descricao, equipamento, timestamp, info_adicional, whatsapp_destino
             )
         except Exception as e:
             logger.error(f"Erro ao notificar whatsapp (Twilio): {e}")
         
         # WhatsApp Web Automático
         try:
-            service_web = WhatsAppWebNotificationService()
+            service_web = WhatsAppWebNotificationService(phone_to=whatsapp_destino)
             result_web = service_web.enviar_whatsapp_web(
                 numero_pedido, solicitante, setor, prioridade,
                 descricao, equipamento, timestamp, info_adicional
@@ -283,7 +308,7 @@ class NotificationService:
         
         # WhatsApp Click-to-Chat (Universal)
         try:
-            service_chat = WhatsAppClickToChatService()
+            service_chat = WhatsAppClickToChatService(phone_to=whatsapp_destino)
             result_chat = service_chat.enviar_whatsapp_click_to_chat(
                 numero_pedido, solicitante, setor, prioridade,
                 descricao, equipamento, timestamp, info_adicional

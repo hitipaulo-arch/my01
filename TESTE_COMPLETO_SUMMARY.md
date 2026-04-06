@@ -1,10 +1,32 @@
 # 🧪 TESTES COMPLETOS - SISTEMA DE NOTIFICAÇÕES
 
-## ✅ Status Final: TODOS OS TESTES PASSARAM
+## ✅ Resultado Final: TODOS OS TESTES PASSARAM
 
 **Data:** 10/01/2026  
 **Total de Testes:** 20  
 **Taxa de Sucesso:** 100% (20/20)
+
+## Atualizacao de Seguranca (23/03/2026)
+
+Este resumo historico de testes continua valido para notificacoes, mas a aplicacao recebeu endurecimentos de seguranca:
+
+- Cadastro publico desativado (rota /cadastro restrita a admin autenticado)
+- GOOGLE_SHEET_ID obrigatorio para inicializar o servico
+- Alternativa local de admin sem padroes inseguros e bloqueada em producao
+
+Para testes em desenvolvimento quando ainda nao houver usuario no Sheets, defina explicitamente:
+
+```env
+LOCAL_ADMIN_USER=admin_dev
+LOCAL_ADMIN_PASSWORD=senha_forte_aqui
+LOCAL_ADMIN_ROLE=admin
+```
+
+Opcionalmente, para desligar a alternativa local:
+
+```env
+DISABLE_LOCAL_ADMIN_FALLBACK=true
+```
 
 ---
 
@@ -13,7 +35,7 @@
 ### 1. Mapeamento Twilio ContentVariables ✅ (6/6)
 **Arquivo:** [test_twilio_mapping.py](test_twilio_mapping.py)
 
-| # | Teste | Status |
+| # | Teste | Resultado |
 |---|---|---|
 | 1 | Mapeamento Padrão (1..8) | ✅ PASSOU |
 | 2 | Info Adicional Opcional | ✅ PASSOU |
@@ -34,7 +56,7 @@
 ### 2. Integração de Notificações ✅ (8/8)
 **Arquivo:** [test_integration.py](test_integration.py)
 
-| # | Teste | Status |
+| # | Teste | Resultado |
 |---|---|---|
 | 1 | Sintaxe do app.py | ✅ PASSOU |
 | 2 | Imports Necessários | ✅ PASSOU |
@@ -42,27 +64,27 @@
 | 4 | Suporte Twilio ContentVariables | ✅ PASSOU |
 | 5 | Variáveis .env.example | ✅ PASSOU |
 | 6 | Documentação Atualizada | ✅ PASSOU |
-| 7 | Requirements.txt | ✅ PASSOU |
+| 7 | requirements.txt | ✅ PASSOU |
 | 8 | Tratamento de Erros | ✅ PASSOU |
 
 **O que foi validado:**
 - ✅ app.py compila sem erros
-- ✅ Todos os imports necessários disponíveis (flask, gspread, requests, smtplib, email.mime)
+- ✅ Todas as importações necessárias disponíveis (flask, gspread, requests, smtplib, email.mime)
 - ✅ Funções `enviar_notificacao_abertura_os()` e `enviar_notificacao_whatsapp_os()` encontradas
 - ✅ Suporte completo a ContentVariables do Twilio
 - ✅ .env.example documentado com todas as variáveis Twilio
 - ✅ Documentação em README.md, GUIA_NOTIFICACOES.md atualizada
 - ✅ requests>=2.31.0 em requirements.txt
-- ✅ Try/except e logging implementados
+- ✅ Try/except e registros (logging) implementados
 
 ---
 
 ### 3. Testes Funcionais (Simulação) ✅ (6/6)
 **Arquivo:** [test_functional.py](test_functional.py)
 
-| # | Teste | Status |
+| # | Teste | Resultado |
 |---|---|---|
-| 1 | Composição de Email | ✅ PASSOU |
+| 1 | Composição de E-mail | ✅ PASSOU |
 | 2 | Payload WhatsApp ContentVariables | ✅ PASSOU |
 | 3 | Mapeamento Customizado | ✅ PASSOU |
 | 4 | Múltiplos Destinatários | ✅ PASSOU |
@@ -70,18 +92,18 @@
 | 6 | Serialização JSON | ✅ PASSOU |
 
 **O que foi validado:**
-- ✅ Email HTML composto corretamente com todos os campos da OS
+- ✅ E-mail HTML composto corretamente com todos os campos da OS
 - ✅ Payload Twilio estruturado corretamente com ContentSid e ContentVariables JSON
 - ✅ Mapeamento customizado inverte/reordena variáveis conforme TWILIO_CONTENT_MAP
 - ✅ Múltiplos destinatários WhatsApp processados individualmente
 - ✅ Campos longos truncados apropriadamente (desc 200, info 100)
-- ✅ JSON serializado com preserve de acentos e caracteres especiais
+- ✅ JSON serializado com preservação de acentos e caracteres especiais
 
 ---
 
-## 🎯 Checklist de Funcionalidades
+## 🎯 Lista de Verificação de Funcionalidades
 
-### Email (Gmail SMTP)
+### E-mail (Gmail SMTP)
 - ✅ Função `enviar_notificacao_abertura_os()` implementada
 - ✅ HTML com tabela de campos da OS
 - ✅ Suporta múltiplos destinatários (SMTP_RECIPIENTS)
@@ -108,7 +130,7 @@
 - ✅ SMTP_USER, SMTP_PASSWORD, SMTP_RECIPIENTS - Email
 
 ### Documentação
-- ✅ README.md atualizado com section ContentSid
+- ✅ README.md atualizado com seção de ContentSid
 - ✅ GUIA_NOTIFICACOES.md com guia passo-a-passo
 - ✅ .env.example com exemplos de todas as variáveis
 - ✅ RELATORIO_TESTES.md com detalhes completos
@@ -141,13 +163,13 @@ Usuário cria OS via /enviar
 [Salva em Google Sheets]
        ↓
 ┌─────────────────────────────────────┐
-│   NÃO-BLOQUEANTE (Threads)          │
+│   NÃO BLOQUEANTE (threads)          │
 ├─────────────────────────────────────┤
 │                                     │
 │  enviar_notificacao_abertura_os()   │
 │  - Gmail SMTP                       │
-│  - Email HTML composição            │
-│  - Múltiplos recipients             │
+│  - Composição de e-mail HTML        │
+│  - Múltiplos destinatários          │
 │  - Log sucesso/falha                │
 │                                     │
 │  enviar_notificacao_whatsapp_os()   │
@@ -155,7 +177,7 @@ Usuário cria OS via /enviar
 │  - ContentVariables JSON            │
 │  - TWILIO_CONTENT_MAP aplicado      │
 │  - Múltiplos destinatários          │
-│  - Log per-recipient                │
+│  - Log por destinatário             │
 │                                     │
 └─────────────────────────────────────┘
        ↓
@@ -220,7 +242,7 @@ Painel Render → Environment Variables
 | Taxa de Sucesso | 100% (20/20) |
 | Suítes de Teste | 3 |
 | Tempo Total | ~10-15 segundos |
-| Cobertura de Features | 100% |
+| Cobertura de Funcionalidades | 100% |
 
 ---
 
@@ -230,19 +252,19 @@ Painel Render → Environment Variables
 - ✅ Sem hardcoding de senhas ou tokens
 - ✅ Sensibilidade de dados em descrição (200 chars max)
 - ✅ Try/except sem exposição de stack traces ao usuário
-- ✅ Logging detalhado para debugging
-- ✅ CSRF protection (Flask-WTF)
-- ✅ Session management seguro
+- ✅ Logging detalhado para depuração
+- ✅ Proteção CSRF (Flask-WTF)
+- ✅ Gerenciamento de sessão seguro
 
 ---
 
 ## ✨ Conclusão
 
-**Status:** ✅ **SISTEMA PRONTO PARA PRODUÇÃO**
+**Resultado:** ✅ **SISTEMA PRONTO PARA PRODUÇÃO**
 
 Todas as funcionalidades foram testadas e validadas:
-- ✅ Email notifications funcionando
-- ✅ WhatsApp notifications funcionando
+- ✅ Notificações por e-mail funcionando
+- ✅ Notificações por WhatsApp funcionando
 - ✅ Twilio ContentVariables com mapeamento automático
 - ✅ Suporte a mapeamento customizado (TWILIO_CONTENT_MAP)
 - ✅ Documentação completa
@@ -256,4 +278,4 @@ Todas as funcionalidades foram testadas e validadas:
 **Data:** 10/01/2026  
 **Gerado por:** Sistema de Testes Automatizados  
 **Versão:** 1.0  
-**Status:** ✅ COMPLETO
+**Resultado:** ✅ COMPLETO

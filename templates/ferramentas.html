@@ -50,6 +50,31 @@
         .badge-indisponivel { background: #dc3545; }
 
         .btn-action { margin: 0 3px; padding: 5px 10px; font-size: 12px; }
+
+        .filtro-toolbar {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr auto;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        @media (max-width: 1100px) {
+            .filtro-toolbar {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .filtro-toolbar {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .filtro-resumo {
+            font-size: 0.95rem;
+            color: #4f5d75;
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
@@ -125,6 +150,33 @@
             <h3 class="mb-4">📋 Ferramentas Cadastradas</h3>
 
             {% if ferramentas %}
+            <div class="filtro-toolbar">
+                <input
+                    type="text"
+                    id="filtroFerramentas"
+                    class="form-control"
+                    placeholder="Filtrar por nome, patrocínio, responsável ou observação">
+                <select id="filtroStatusFerramenta" class="form-select">
+                    <option value="">Todos os status</option>
+                    <option value="Disponível">Disponível</option>
+                    <option value="Em Manutenção">Em Manutenção</option>
+                    <option value="Indisponível">Indisponível</option>
+                </select>
+                <select id="ordenarFerramentasPor" class="form-select">
+                    <option value="nome">Ordenar: Nome</option>
+                    <option value="status">Ordenar: Status</option>
+                    <option value="data-cadastro">Ordenar: Data de Cadastro</option>
+                    <option value="ultima-manutencao">Ordenar: Última Manutenção</option>
+                </select>
+                <select id="ordenacaoFerramentasDirecao" class="form-select">
+                    <option value="asc">Crescente</option>
+                    <option value="desc">Decrescente</option>
+                </select>
+                <button type="button" id="limparFiltrosFerramenta" class="btn btn-outline-secondary">Limpar</button>
+            </div>
+
+            <div id="filtroResumoFerramentas" class="filtro-resumo"></div>
+
             <table class="table table-hover">
                 <thead class="table-light">
                     <tr>
@@ -139,9 +191,14 @@
                         <th>Ações</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="tabelaFerramentasBody">
                     {% for ferramenta in ferramentas %}
-                    <tr>
+                    <tr
+                        data-nome="{{ ferramenta.get('Nome', '') | lower | e }}"
+                        data-status="{{ ferramenta.get('Status', '-') }}"
+                        data-data-cadastro="{{ ferramenta.get('Data de Cadastro', '') | e }}"
+                        data-ultima-manutencao="{{ ferramenta.get('Última Manutenção', '') | e }}"
+                        data-filtro-texto="{{ (ferramenta.get('Nome', '') ~ ' ' ~ ferramenta.get('Patrocínio', '') ~ ' ' ~ ferramenta.get('Responsável', '') ~ ' ' ~ ferramenta.get('Observação', '')) | lower | e }}">
                         <td>{{ loop.index }}</td>
                         <td><strong>{{ ferramenta.get('Nome', '-') }}</strong></td>
                         <td>{{ ferramenta.get('Patrocínio', '-') }}</td>
@@ -286,6 +343,8 @@
             editModal = new bootstrap.Modal(document.getElementById('editModal'));
             historicoModal = new bootstrap.Modal(document.getElementById('historicoModal'));
 
+            configurarFiltrosFerramentas();
+
             document.querySelectorAll('.js-edit-ferramenta').forEach(button => {
                 button.addEventListener('click', () => {
                     editarFerramenta(
@@ -306,6 +365,110 @@
                 button.addEventListener('click', () => deletarFerramenta(button.dataset.rowId));
             });
         });
+
+        function configurarFiltrosFerramentas() {
+            const inputBusca = document.getElementById('filtroFerramentas');
+            const selectStatus = document.getElementById('filtroStatusFerramenta');
+            const selectOrdenacao = document.getElementById('ordenarFerramentasPor');
+            const selectDirecao = document.getElementById('ordenacaoFerramentasDirecao');
+            const limparBtn = document.getElementById('limparFiltrosFerramenta');
+            const resumo = document.getElementById('filtroResumoFerramentas');
+            const tbody = document.getElementById('tabelaFerramentasBody');
+            const linhas = Array.from(document.querySelectorAll('#tabelaFerramentasBody tr'));
+
+            if (!inputBusca || !selectStatus || !selectOrdenacao || !selectDirecao || !limparBtn || !resumo || !tbody || !linhas.length) {
+                return;
+            }
+
+            const parseData = (valor) => {
+                const texto = (valor || '').trim();
+                if (!texto || texto === '-') return Number.NEGATIVE_INFINITY;
+
+                const iso = Date.parse(texto);
+                if (!Number.isNaN(iso)) return iso;
+
+                const partes = texto.split('/');
+                if (partes.length === 3) {
+                    const dia = parseInt(partes[0], 10);
+                    const mes = parseInt(partes[1], 10) - 1;
+                    const ano = parseInt(partes[2], 10);
+                    if (!Number.isNaN(dia) && !Number.isNaN(mes) && !Number.isNaN(ano)) {
+                        return new Date(ano, mes, dia).getTime();
+                    }
+                }
+
+                return Number.NEGATIVE_INFINITY;
+            };
+
+            const compararLinhas = (a, b) => {
+                const campo = selectOrdenacao.value;
+                const direcao = selectDirecao.value === 'desc' ? -1 : 1;
+                let valorA = '';
+                let valorB = '';
+
+                if (campo === 'nome') {
+                    valorA = (a.dataset.nome || '').toLowerCase();
+                    valorB = (b.dataset.nome || '').toLowerCase();
+                } else if (campo === 'status') {
+                    valorA = (a.dataset.status || '').toLowerCase();
+                    valorB = (b.dataset.status || '').toLowerCase();
+                } else if (campo === 'data-cadastro') {
+                    valorA = parseData(a.dataset.dataCadastro);
+                    valorB = parseData(b.dataset.dataCadastro);
+                } else if (campo === 'ultima-manutencao') {
+                    valorA = parseData(a.dataset.ultimaManutencao);
+                    valorB = parseData(b.dataset.ultimaManutencao);
+                }
+
+                if (valorA < valorB) return -1 * direcao;
+                if (valorA > valorB) return 1 * direcao;
+                return 0;
+            };
+
+            const ordenarTabela = () => {
+                const ordenadas = [...linhas].sort(compararLinhas);
+                ordenadas.forEach(linha => tbody.appendChild(linha));
+            };
+
+            const aplicarFiltro = () => {
+                ordenarTabela();
+
+                const termo = inputBusca.value.trim().toLowerCase();
+                const statusSelecionado = selectStatus.value.trim();
+                let exibidas = 0;
+
+                Array.from(tbody.querySelectorAll('tr')).forEach(linha => {
+                    const texto = (linha.dataset.filtroTexto || '').toLowerCase();
+                    const status = (linha.dataset.status || '').trim();
+                    const okTexto = !termo || texto.includes(termo);
+                    const okStatus = !statusSelecionado || status === statusSelecionado;
+                    const mostrar = okTexto && okStatus;
+
+                    linha.style.display = mostrar ? '' : 'none';
+                    const numero = linha.querySelector('td:first-child');
+                    if (mostrar) {
+                        exibidas += 1;
+                        if (numero) numero.textContent = String(exibidas);
+                    }
+                });
+
+                resumo.textContent = `Exibindo ${exibidas} de ${linhas.length} ferramenta(s).`;
+            };
+
+            inputBusca.addEventListener('input', aplicarFiltro);
+            selectStatus.addEventListener('change', aplicarFiltro);
+            selectOrdenacao.addEventListener('change', aplicarFiltro);
+            selectDirecao.addEventListener('change', aplicarFiltro);
+            limparBtn.addEventListener('click', () => {
+                inputBusca.value = '';
+                selectStatus.value = '';
+                selectOrdenacao.value = 'nome';
+                selectDirecao.value = 'asc';
+                aplicarFiltro();
+            });
+
+            aplicarFiltro();
+        }
 
         const eventoClasses = {
             'Cadastro': 'badge bg-success',

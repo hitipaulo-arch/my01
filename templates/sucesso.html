@@ -112,6 +112,11 @@
         <a href="{{ url_for('os.consultar_pedido', numero_pedido=os_numero) }}" class="btn btn-info mt-3">
             Consultar Status
         </a>
+        {% if whatsapp_link %}
+        <a href="{{ whatsapp_link }}" target="_blank" rel="noopener" class="btn btn-success mt-3">
+            Enviar OS no WhatsApp
+        </a>
+        {% endif %}
     </div>
     
     <!-- Rodapé -->
