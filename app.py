@@ -7,11 +7,13 @@ Ponto de entrada principal da aplicação.
 import os
 import logging
 import secrets
+import zipfile
 import pandas as pd
 from pathlib import Path
-from flask import Flask, render_template, jsonify, request, redirect, url_for, flash, session
+from flask import Flask, render_template, jsonify, request, redirect, url_for, flash, session, send_from_directory
 from flask_wtf.csrf import CSRFProtect
 from flask_caching import Cache
+from werkzeug.utils import secure_filename
 
 # Carrega variáveis do .env, se disponível
 try:
@@ -33,19 +35,37 @@ from appmodules.routes.auth_routes import auth_bp
 from appmodules.routes.os_routes import os_bp
 from appmodules.utils import login_required, admin_required
 from appmodules.models.usuario import Role
+from appmodules.models.validacao import ValidadorUsuario
 
 # Inicializa serviços globais
 CREDS_FILE = Path(__file__).parent / 'credentials.json'
-SHEET_ID = os.getenv('GOOGLE_SHEET_ID', '1qs3cxlklTnzCp4RpQGhxIrEF4CbeUvid1S0Cp2tC3Xg')
 SHEET_TAB = os.getenv('GOOGLE_SHEET_TAB', 'Respostas ao formulário 3')
 HORARIO_TAB = os.getenv('GOOGLE_SHEET_HORARIO_TAB', 'Controle de Horário')
 USUARIOS_TAB = os.getenv('GOOGLE_SHEET_USUARIOS_TAB', 'Usuários')
+AUDITORIA_TAB = os.getenv('GOOGLE_SHEET_AUDITORIA_TAB', 'Registro de Ações')
 CENTRAIS_TAB = os.getenv('GOOGLE_SHEET_CENTRAIS_TAB', 'Controle de Centrais')
 FERRAMENTAS_TAB = os.getenv('GOOGLE_SHEET_FERRAMENTAS_TAB', 'Controle de Ferramentas')
 HISTORICO_FERRAMENTAS_TAB = os.getenv('GOOGLE_SHEET_HISTORICO_FERRAMENTAS_TAB', 'Histórico de Ferramentas')
 
+DOCUMENTOS_UPLOAD_DIR = Path(__file__).parent / 'uploads' / 'documentos'
+DOCUMENTOS_EXTENSOES_PERMITIDAS = {
+    'pdf', 'png', 'jpg', 'jpeg', 'doc', 'docx', 'xls', 'xlsx', 'txt'
+}
+DOCUMENTOS_MAX_MB = int(os.getenv('DOCUMENTOS_MAX_MB', '10'))
+
+SHEET_ID = os.getenv('GOOGLE_SHEET_ID', '').strip()
+
 try:
-    sheets_service = SheetsService(str(CREDS_FILE), SHEET_ID, SHEET_TAB, HORARIO_TAB, USUARIOS_TAB)
+    if not SHEET_ID:
+        raise ValueError('GOOGLE_SHEET_ID não configurado')
+    sheets_service = SheetsService(
+        str(CREDS_FILE),
+        SHEET_ID,
+        SHEET_TAB,
+        HORARIO_TAB,
+        USUARIOS_TAB,
+        AUDITORIA_TAB,
+    )
     user_service = UserService(sheets_service)
     logger.info("Serviços inicializados com sucesso")
 except Exception as e:
@@ -63,7 +83,9 @@ app.config.update(
     WTF_CSRF_ENABLED=True,
     WTF_CSRF_TIME_LIMIT=None,
     CACHE_TYPE=os.getenv('CACHE_TYPE', 'SimpleCache'),
-    CACHE_DEFAULT_TIMEOUT=int(os.getenv('CACHE_TTL_SECONDS', 300))
+    CACHE_DEFAULT_TIMEOUT=int(os.getenv('CACHE_TTL_SECONDS', 300)),
+    MAX_CONTENT_LENGTH=DOCUMENTOS_MAX_MB * 1024 * 1024,
+    DOCUMENTOS_MAX_MB=DOCUMENTOS_MAX_MB,
 )
 
 csrf = CSRFProtect(app)
@@ -78,6 +100,73 @@ app.config['notification_service'] = NotificationService
 app.register_blueprint(auth_bp)
 app.register_blueprint(os_bp)
 
+
+def _detectar_tipo_documento(arquivo) -> str:
+    """Detecta tipo real do arquivo a partir de assinatura e estrutura."""
+    stream = arquivo.stream
+    posicao_original = stream.tell()
+    try:
+        stream.seek(0)
+        head = stream.read(8192)
+
+        if head.startswith(b'%PDF-'):
+            return 'pdf'
+        if head.startswith(b'\x89PNG\r\n\x1a\n'):
+            return 'png'
+        if head.startswith(b'\xff\xd8\xff'):
+            return 'jpeg'
+        if head.startswith(b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'):
+            return 'ole'
+
+        if zipfile.is_zipfile(stream):
+            stream.seek(0)
+            with zipfile.ZipFile(stream, 'r') as zip_ref:
+                nomes = set(zip_ref.namelist())
+            if any(nome.startswith('word/') for nome in nomes):
+                return 'docx'
+            if any(nome.startswith('xl/') for nome in nomes):
+                return 'xlsx'
+
+        try:
+            texto = head.decode('utf-8')
+            if texto and all((c.isprintable() or c in '\r\n\t') for c in texto):
+                return 'txt'
+        except UnicodeDecodeError:
+            pass
+
+        return 'desconhecido'
+    finally:
+        stream.seek(posicao_original)
+
+
+def _tipo_compativel_com_extensao(extensao: str, tipo_real: str) -> bool:
+    """Valida compatibilidade entre extensão declarada e tipo real do arquivo."""
+    compativeis = {
+        'pdf': {'pdf'},
+        'png': {'png'},
+        'jpg': {'jpeg'},
+        'jpeg': {'jpeg'},
+        'doc': {'ole'},
+        'xls': {'ole'},
+        'docx': {'docx'},
+        'xlsx': {'xlsx'},
+        'txt': {'txt'},
+    }
+    return tipo_real in compativeis.get(extensao, set())
+
+
+@app.errorhandler(413)
+def payload_too_large(_error):
+    """Retorna feedback amigável para upload acima do limite."""
+    if request.path.startswith('/documentos'):
+        flash(
+            f"Arquivo excede o limite de {app.config.get('DOCUMENTOS_MAX_MB', 10)} MB.",
+            'danger',
+        )
+        return redirect(url_for('documentos'))
+
+    return render_template('erro.html', mensagem='Arquivo muito grande.'), 413
+
 # ════════════════════════════════════════════════════════════════════════════════
 # ROTAS DE ADMINISTRAÇÃO
 # ════════════════════════════════════════════════════════════════════════════════
@@ -86,26 +175,59 @@ app.register_blueprint(os_bp)
 @admin_required
 def usuarios_admin():
     """Admin UI para gerenciar usuários."""
-    from flask import flash
-    
+
     user_service = app.config.get('user_service')
     mensagem = None
     tipo_mensagem = 'success'
     
     if request.method == 'POST':
-        acao = request.form.get('acao')
+        acao = request.form.get('acao', '').strip().lower()
         username = request.form.get('username', '').strip()
         
-        if not username:
+        if not user_service:
+            mensagem = 'Serviço de usuários indisponível.'
+            tipo_mensagem = 'danger'
+        elif not username:
             mensagem = 'Username é obrigatório.'
             tipo_mensagem = 'danger'
         else:
             if acao == 'delete':
-                if user_service.deletar_usuario(username):
-                    mensagem = f'Usuário {username} removido com sucesso.'
-                else:
-                    mensagem = f'Erro ao remover usuário {username}.'
+                usuario_logado = session.get('usuario', '')
+                if username == usuario_logado:
+                    mensagem = 'Você não pode excluir o usuário atualmente logado.'
                     tipo_mensagem = 'danger'
+                else:
+                    usuario_alvo = user_service.get_usuario(username)
+                    if not usuario_alvo:
+                        mensagem = f'Usuário {username} não encontrado.'
+                        tipo_mensagem = 'danger'
+                    else:
+                        if usuario_alvo.role == Role.ADMIN.value:
+                            total_admins = len([
+                                u for u in user_service.get_todos_usuarios()
+                                if u.role == Role.ADMIN.value
+                            ])
+                            if total_admins <= 1:
+                                mensagem = 'Não é permitido excluir o último administrador.'
+                                tipo_mensagem = 'danger'
+                            elif user_service.deletar_usuario(username):
+                                mensagem = f'Usuário {username} removido com sucesso.'
+                            else:
+                                mensagem = f'Erro ao remover usuário {username}.'
+                                tipo_mensagem = 'danger'
+                        else:
+                            if user_service.deletar_usuario(username):
+                                sheets_service.add_audit_record(
+                                    session.get('usuario', ''),
+                                    'removeu usuário',
+                                    'Usuário',
+                                    username,
+                                    'Exclusão pela tela de administração',
+                                )
+                                mensagem = f'Usuário {username} removido com sucesso.'
+                            else:
+                                mensagem = f'Erro ao remover usuário {username}.'
+                                tipo_mensagem = 'danger'
             else:
                 senha = request.form.get('senha', '').strip()
                 role = request.form.get('role', Role.ADMIN.value).strip().lower()
@@ -118,11 +240,42 @@ def usuarios_admin():
                     mensagem = 'Role inválida.'
                     tipo_mensagem = 'danger'
                 else:
-                    if user_service.criar_usuario(username, senha, role):
-                        mensagem = f'Usuário {username} criado com sucesso.'
-                    else:
-                        mensagem = f'Erro ao criar usuário {username}.'
+                    validacao = ValidadorUsuario.validar_cadastro(username, senha)
+                    if not validacao.valido:
+                        mensagem = ' '.join(validacao.erros)
                         tipo_mensagem = 'danger'
+                    else:
+                        usuario_existente = user_service.get_usuario(username)
+                        if usuario_existente:
+                            if user_service.atualizar_usuario(username, senha=senha, role=role):
+                                sheets_service.add_audit_record(
+                                    session.get('usuario', ''),
+                                    'atualizou usuário',
+                                    'Usuário',
+                                    username,
+                                    f'Role definida para {role}',
+                                )
+                                mensagem = f'Usuário {username} atualizado com sucesso.'
+                            else:
+                                detalhe = user_service.get_last_error()
+                                mensagem = detalhe or f'Erro ao atualizar usuário {username}.'
+                                tipo_mensagem = 'danger'
+                        else:
+                            if user_service.criar_usuario(username, senha, role):
+                                sheets_service.add_audit_record(
+                                    session.get('usuario', ''),
+                                    'criou usuário',
+                                    'Usuário',
+                                    username,
+                                    f'Role definida para {role}',
+                                )
+                                mensagem = f'Usuário {username} criado com sucesso.'
+                            else:
+                                mensagem = f'Erro ao criar usuário {username}.'
+                                tipo_mensagem = 'danger'
+        if mensagem:
+            flash(mensagem, tipo_mensagem)
+        return redirect(url_for('usuarios_admin'))
     
     usuarios = user_service.get_todos_usuarios() if user_service else []
     usuarios_dict = {u.username: u.to_dict() for u in usuarios}
@@ -322,6 +475,81 @@ def relatorios():
         logger.error(f"Erro ao carregar relatórios: {e}")
         return render_template('erro.html',
             mensagem=f"Erro ao carregar relatórios: {e}"), 500
+
+
+@app.route('/auditoria')
+@admin_required
+def auditoria():
+    """Tela de consulta do registro de ações."""
+    sheets_service = app.config.get('sheets_service')
+    if not sheets_service:
+        return render_template('auditoria.html', registros=[], total_registros=0,
+            mensagem_erro='Serviço de planilhas indisponível'), 503
+
+    disponivel, erro_msg = sheets_service.is_available()
+    if not disponivel:
+        return render_template('auditoria.html', registros=[], total_registros=0,
+            mensagem_erro=erro_msg)
+
+    try:
+        registros = sheets_service.get_audit_records()
+
+        def _sort_key(item):
+            texto = str(item.get('Carimbo de data/hora', '')).strip()
+            try:
+                return pd.to_datetime(texto, format='%d/%m/%Y %H:%M:%S', errors='coerce')
+            except Exception:
+                return pd.NaT
+
+        registros = sorted(registros, key=_sort_key, reverse=True)
+
+        filtro_usuario = request.args.get('usuario', '').strip().lower()
+        filtro_acao = request.args.get('acao', '').strip().lower()
+        filtro_entidade = request.args.get('entidade', '').strip().lower()
+        termo = request.args.get('q', '').strip().lower()
+
+        if filtro_usuario or filtro_acao or filtro_entidade or termo:
+            filtrados = []
+            for registro in registros:
+                usuario = str(registro.get('Usuário', '')).strip().lower()
+                acao = str(registro.get('Ação', '')).strip().lower()
+                entidade = str(registro.get('Entidade', '')).strip().lower()
+                identificador = str(registro.get('Identificador', '')).strip().lower()
+                detalhes = str(registro.get('Detalhes', '')).strip().lower()
+
+                if filtro_usuario and filtro_usuario not in usuario:
+                    continue
+                if filtro_acao and filtro_acao not in acao:
+                    continue
+                if filtro_entidade and filtro_entidade not in entidade:
+                    continue
+                if termo and termo not in ' '.join([usuario, acao, entidade, identificador, detalhes]):
+                    continue
+                filtrados.append(registro)
+            registros = filtrados
+
+        total_registros = len(registros)
+        usuarios_unicos = sorted({str(r.get('Usuário', '')).strip() for r in registros if str(r.get('Usuário', '')).strip()})
+        acoes_unicas = sorted({str(r.get('Ação', '')).strip() for r in registros if str(r.get('Ação', '')).strip()})
+        entidades_unicas = sorted({str(r.get('Entidade', '')).strip() for r in registros if str(r.get('Entidade', '')).strip()})
+
+        return render_template(
+            'auditoria.html',
+            registros=registros[:200],
+            total_registros=total_registros,
+            usuarios_unicos=usuarios_unicos,
+            acoes_unicas=acoes_unicas,
+            entidades_unicas=entidades_unicas,
+            filtros={
+                'usuario': request.args.get('usuario', '').strip(),
+                'acao': request.args.get('acao', '').strip(),
+                'entidade': request.args.get('entidade', '').strip(),
+                'q': request.args.get('q', '').strip(),
+            },
+        )
+    except Exception as e:
+        logger.error(f"Erro ao carregar auditoria: {e}", exc_info=True)
+        return render_template('erro.html', mensagem=f"Erro ao carregar auditoria: {e}"), 500
 
 
 @app.route('/tempo-por-funcionario')
@@ -675,6 +903,77 @@ def historico_ferramentas():
     except Exception as e:
         logger.error(f"Erro ao obter histórico: {e}")
         return jsonify({'success': False, 'historico': [], 'error': str(e)})
+
+
+@app.route('/documentos', methods=['GET', 'POST'])
+@admin_required
+def documentos():
+    """Página para upload e listagem de documentos."""
+    DOCUMENTOS_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+    if request.method == 'POST':
+        arquivo = request.files.get('documento')
+
+        if not arquivo or not arquivo.filename:
+            flash('Selecione um arquivo para envio.', 'danger')
+            return redirect(url_for('documentos'))
+
+        nome_original = secure_filename(arquivo.filename)
+        if '.' not in nome_original:
+            flash('Arquivo sem extensão não é permitido.', 'danger')
+            return redirect(url_for('documentos'))
+
+        if nome_original.count('.') != 1:
+            flash('Use nome de arquivo simples, sem múltiplas extensões.', 'danger')
+            return redirect(url_for('documentos'))
+
+        extensao = nome_original.rsplit('.', 1)[1].lower()
+        if extensao not in DOCUMENTOS_EXTENSOES_PERMITIDAS:
+            flash('Extensão não permitida. Use: PDF, imagens ou documentos Office.', 'danger')
+            return redirect(url_for('documentos'))
+
+        tipo_real = _detectar_tipo_documento(arquivo)
+        if not _tipo_compativel_com_extensao(extensao, tipo_real):
+            flash('Tipo de arquivo incompatível com a extensão enviada.', 'danger')
+            return redirect(url_for('documentos'))
+
+        timestamp = pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')
+        nome_salvo = f"{timestamp}_{nome_original}"
+        destino = DOCUMENTOS_UPLOAD_DIR / nome_salvo
+
+        try:
+            arquivo.save(destino)
+            flash('Documento enviado com sucesso.', 'success')
+        except Exception as e:
+            logger.error(f"Erro ao salvar documento: {e}", exc_info=True)
+            flash('Não foi possível salvar o documento.', 'danger')
+
+        return redirect(url_for('documentos'))
+
+    arquivos = []
+    for arquivo in sorted(DOCUMENTOS_UPLOAD_DIR.iterdir(), reverse=True):
+        if not arquivo.is_file():
+            continue
+
+        stat = arquivo.stat()
+        arquivos.append({
+            'nome': arquivo.name,
+            'tamanho_kb': round(stat.st_size / 1024, 1),
+            'modificado_em': pd.Timestamp(stat.st_mtime, unit='s').strftime('%d/%m/%Y %H:%M:%S')
+        })
+
+    return render_template('documentos.html',
+        arquivos=arquivos,
+        extensoes_permitidas=sorted(DOCUMENTOS_EXTENSOES_PERMITIDAS))
+
+
+@app.route('/documentos/download/<path:nome_arquivo>')
+@admin_required
+def download_documento(nome_arquivo):
+    """Faz download de documentos enviados."""
+    DOCUMENTOS_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    nome_seguro = secure_filename(nome_arquivo)
+    return send_from_directory(DOCUMENTOS_UPLOAD_DIR, nome_seguro, as_attachment=True)
 
 
 @app.route('/favicon.ico')

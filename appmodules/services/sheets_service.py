@@ -4,9 +4,11 @@ import gspread
 import logging
 import datetime
 import json
+import re
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
 from google.oauth2.service_account import Credentials
+from gspread.exceptions import APIError
 
 logger = logging.getLogger(__name__)
 
@@ -20,17 +22,20 @@ class SheetsService:
     ]
     
     def __init__(self, creds_file: str, sheet_id: str, sheet_tab: str, 
-                 horario_tab: str, usuarios_tab: str):
+                 horario_tab: str, usuarios_tab: str, audit_tab: str = 'Registro de Ações'):
         """Inicializa o serviço de Sheets."""
         self.sheet_id = sheet_id
         self.sheet_tab = sheet_tab
         self.horario_tab = horario_tab
         self.usuarios_tab = usuarios_tab
+        self.audit_tab = audit_tab
         self.client = None
         self.sheet = None
         self.sheet_horario = None
         self.sheet_usuarios = None
+        self.sheet_auditoria = None
         self.error = None
+        self.last_error = None
         
         self._init_connection(creds_file)
     
@@ -75,6 +80,15 @@ class SheetsService:
                 self.sheet_usuarios = spreadsheet.add_worksheet(title=self.usuarios_tab, rows=1000, cols=10)
                 self.sheet_usuarios.append_row(['Username', 'Senha', 'Role'])
                 logger.info(f"Aba '{self.usuarios_tab}' criada")
+
+            # Conecta à aba de auditoria
+            try:
+                self.sheet_auditoria = spreadsheet.worksheet(self.audit_tab)
+                logger.info(f"Conectado à aba '{self.audit_tab}'")
+            except Exception:
+                self.sheet_auditoria = spreadsheet.add_worksheet(title=self.audit_tab, rows=1000, cols=10)
+                self.sheet_auditoria.append_row(['Carimbo de data/hora', 'Usuário', 'Ação', 'Entidade', 'Identificador', 'Detalhes'])
+                logger.info(f"Aba '{self.audit_tab}' criada")
         
         except FileNotFoundError:
             logger.error("Arquivo 'credentials.json' não encontrado")
@@ -129,26 +143,38 @@ class SheetsService:
         if self.sheet is None:
             return False, self.error or "Sheets não disponível"
         return True, None
+
+    def get_last_error(self) -> Optional[str]:
+        """Retorna a última mensagem de erro operacional do serviço."""
+        return self.last_error
     
     def get_next_id(self) -> int:
         """Obtém o próximo ID disponível."""
         try:
             if not self.sheet:
                 return int(datetime.datetime.now().timestamp())
-            
-            ids_column = self.sheet.col_values(1)
-            if ids_column:
-                ids_column = ids_column[1:]  # Remove cabeçalho
-            
-            ids_numericos = []
-            for id_val in ids_column:
-                try:
-                    if id_val and str(id_val).strip():
-                        ids_numericos.append(int(id_val))
-                except ValueError:
+
+            # Regra principal: sempre usar o último ID válido da coluna A e somar 1.
+            dados = self.sheet.get_all_values()
+            if len(dados) <= 1:
+                return 1
+
+            for row in reversed(dados[1:]):
+                if not row:
                     continue
-            
-            return max(ids_numericos) + 1 if ids_numericos else 1
+
+                id_str = str(row[0]).strip() if len(row) > 0 else ''
+                if not id_str:
+                    continue
+
+                match_numero = re.search(r'\d+(?:[\.,]\d+)?', id_str)
+                if not match_numero:
+                    continue
+
+                valor_normalizado = match_numero.group(0).replace(',', '.')
+                return int(float(valor_normalizado)) + 1
+
+            return 1
         except Exception as e:
             logger.error(f"Erro ao obter próximo ID: {e}")
             return int(datetime.datetime.now().timestamp())
@@ -189,7 +215,8 @@ class SheetsService:
                 os_dict['row_id'] = i
                 
                 # Pula OS canceladas
-                if os_dict.get('Status da OS') != 'Cancelada':
+                status = str(os_dict.get('Status da OS', '')).strip().lower()
+                if status not in ('cancelada', 'cancelado'):
                     os_list.append(os_dict)
             
             return os_list
@@ -245,6 +272,53 @@ class SheetsService:
         except Exception as e:
             logger.error(f"Erro ao adicionar registro de horário: {e}")
             return False
+
+    def add_audit_record(self, usuario: str, acao: str, entidade: str,
+                         identificador: str = '', detalhes: str = '') -> bool:
+        """Adiciona um registro de auditoria de ações do usuário."""
+        try:
+            if not self.sheet_auditoria:
+                return False
+
+            timestamp = datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+            self.sheet_auditoria.append_row([
+                timestamp,
+                usuario,
+                acao,
+                entidade,
+                identificador,
+                detalhes,
+            ])
+            logger.info("Auditoria registrada para %s: %s %s", usuario, acao, entidade)
+            return True
+        except Exception as e:
+            logger.warning(f"Erro ao adicionar auditoria: {e}")
+            return False
+
+    def get_audit_records(self) -> List[dict]:
+        """Obtém todos os registros de auditoria."""
+        try:
+            if not self.sheet_auditoria:
+                return []
+
+            data = self.sheet_auditoria.get_all_values()
+            if len(data) < 2:
+                return []
+
+            headers = data[0]
+            records = []
+
+            for row in data[1:]:
+                if not any(row):
+                    continue
+
+                full_row = row + [''] * (len(headers) - len(row))
+                records.append(dict(zip(headers, full_row)))
+
+            return records
+        except Exception as e:
+            logger.error(f"Erro ao obter registros de auditoria: {e}")
+            return []
     
     def get_time_records(self) -> List[dict]:
         """Obtém todos os registros de controle de horário."""
@@ -283,18 +357,54 @@ class SheetsService:
             logger.error(f"Erro ao obter usuários: {e}")
             return []
     
-    def update_usuario(self, row_id: int, username: str, senha: str, role: str) -> bool:
-        """Atualiza um usuário."""
+    def update_usuario(self, row_id: int, username: Optional[str] = None,
+                       senha: Optional[str] = None, role: Optional[str] = None) -> bool:
+        """Atualiza um usuário apenas nos campos alterados."""
         try:
+            self.last_error = None
             if not self.sheet_usuarios:
+                self.last_error = "Aba de usuários indisponível no Google Sheets."
                 return False
-            
-            self.sheet_usuarios.update_cell(row_id, 1, username)
-            self.sheet_usuarios.update_cell(row_id, 2, senha)
-            self.sheet_usuarios.update_cell(row_id, 3, role)
-            logger.info(f"Usuário {username} atualizado")
+
+            row_values = self.sheet_usuarios.row_values(row_id)
+            current_username = row_values[0] if len(row_values) > 0 else ''
+            current_senha = row_values[1] if len(row_values) > 1 else ''
+            current_role = row_values[2] if len(row_values) > 2 else ''
+
+            updates = []
+            if username is not None and username != current_username:
+                updates.append({'range': f'A{row_id}:A{row_id}', 'values': [[username]]})
+            if senha is not None and senha != current_senha:
+                updates.append({'range': f'B{row_id}:B{row_id}', 'values': [[senha]]})
+            if role is not None and role != current_role:
+                updates.append({'range': f'C{row_id}:C{row_id}', 'values': [[role]]})
+
+            if not updates:
+                logger.info(f"Nenhuma alteração para usuário na linha {row_id}")
+                return True
+
+            self.sheet_usuarios.batch_update(updates)
+            logger.info(f"Usuário na linha {row_id} atualizado")
             return True
+        except APIError as e:
+            error_text = str(e)
+            if 'protected cell' in error_text.lower() or 'protected object' in error_text.lower():
+                self.last_error = (
+                    "Não foi possível atualizar o usuário porque a linha/célula está protegida "
+                    "na aba de usuários. Solicite ao proprietário da planilha a liberação "
+                    "de edição para a conta de serviço."
+                )
+                logger.error(
+                    "Erro ao atualizar usuário: a célula/linha está protegida na aba '%s' (linha %s)",
+                    self.usuarios_tab,
+                    row_id,
+                )
+            else:
+                self.last_error = "Falha ao atualizar usuário no Google Sheets."
+                logger.error(f"Erro ao atualizar usuário: {e}")
+            return False
         except Exception as e:
+            self.last_error = "Falha inesperada ao atualizar usuário no Google Sheets."
             logger.error(f"Erro ao atualizar usuário: {e}")
             return False
     

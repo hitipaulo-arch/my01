@@ -20,6 +20,13 @@
 
     <div class="card">
       <h1>👥 Gerenciar Usuários</h1>
+      {% with flashes = get_flashed_messages(with_categories=true) %}
+        {% if flashes %}
+          {% for category, message in flashes %}
+          <div class="alert alert-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
       {% if mensagem %}
       <div class="alert alert-{{ tipo_mensagem or 'success' }}">{{ mensagem }}</div>
       {% endif %}
@@ -29,10 +36,11 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <input type="hidden" name="acao" value="upsert">
         <input class="form-control" type="text" name="username" placeholder="Username" required>
-        <input class="form-control" type="text" name="senha" placeholder="Senha" required>
+        <input class="form-control" type="password" name="senha" placeholder="Senha" autocomplete="new-password" required>
         <select class="form-select" name="role">
           <option value="admin" selected>admin</option>
-          <option value="user">user</option>
+          <option value="operador">operador</option>
+          <option value="visualizador">visualizador</option>
         </select>
         <button class="btn btn-primary" type="submit">Salvar</button>
       </form>

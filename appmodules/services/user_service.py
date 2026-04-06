@@ -17,7 +17,16 @@ class UserService:
         """Inicializa serviço de usuários."""
         self.sheets_service = sheets_service
         self._usuarios_cache: Dict[str, Usuario] = {}
+        self._last_error: Optional[str] = None
         self._load_usuarios()
+
+    def _set_last_error(self, mensagem: Optional[str]) -> None:
+        """Atualiza erro operacional mais recente do serviço."""
+        self._last_error = mensagem
+
+    def get_last_error(self) -> Optional[str]:
+        """Retorna o erro operacional mais recente."""
+        return self._last_error
     
     def _load_usuarios(self) -> None:
         """Carrega usuários do Sheets ou memória."""
@@ -42,7 +51,7 @@ class UserService:
                 if username and senha:
                     if not Usuario.is_hash_valido(senha):
                         senha = Usuario.criar(username, senha, role).senha_hash
-                        if not self.sheets_service.update_usuario(i, username, senha, role):
+                        if not self.sheets_service.update_usuario(i, senha=senha, role=role):
                             logger.warning("Falha ao migrar senha legada do usuário %s", username)
                     self._usuarios_cache[username] = Usuario(
                         username=username,
@@ -64,8 +73,11 @@ class UserService:
         if os.getenv('DISABLE_LOCAL_ADMIN_FALLBACK', 'false').lower() == 'true':
             return
 
-        username = os.getenv('LOCAL_ADMIN_USER', 'admin').strip()
-        password = os.getenv('LOCAL_ADMIN_PASSWORD', 'admin123').strip()
+        if os.getenv('FLASK_ENV', '').strip().lower() == 'production':
+            return
+
+        username = os.getenv('LOCAL_ADMIN_USER', '').strip()
+        password = os.getenv('LOCAL_ADMIN_PASSWORD', '').strip()
         role = os.getenv('LOCAL_ADMIN_ROLE', 'admin').strip() or 'admin'
 
         if not username or not password:
@@ -90,17 +102,21 @@ class UserService:
     def criar_usuario(self, username: str, senha: str, role: str = 'admin') -> bool:
         """Cria novo usuário."""
         try:
+            self._set_last_error(None)
             role = str(role or Role.ADMIN.value).strip().lower()
             if role not in {r.value for r in Role}:
                 logger.warning("Role inválida ao criar usuário: %s", role)
+                self._set_last_error("Role inválida para criação de usuário.")
                 return False
 
             if not self.sheets_service:
                 logger.error("Sheets service indisponível; não é possível criar usuário")
+                self._set_last_error("Serviço de planilhas indisponível.")
                 return False
 
             if username in self._usuarios_cache:
                 logger.warning(f"Usuário {username} já existe")
+                self._set_last_error("Usuário já existe.")
                 return False
             
             usuario = Usuario.criar(username, senha, role)
@@ -108,6 +124,7 @@ class UserService:
             # Salva no Sheets
             if not self.sheets_service.add_usuario(username, usuario.senha_hash, role):
                 logger.error(f"Falha ao salvar usuário {username} no Sheets")
+                self._set_last_error(self.sheets_service.get_last_error() or "Falha ao salvar usuário no Google Sheets.")
                 return False
             
             # Salva em cache
@@ -116,19 +133,23 @@ class UserService:
             return True
         except Exception as e:
             logger.error(f"Erro ao criar usuário: {e}")
+            self._set_last_error("Erro inesperado ao criar usuário.")
             return False
     
     def atualizar_usuario(self, username: str, senha: Optional[str] = None, 
                          role: Optional[str] = None) -> bool:
         """Atualiza um usuário."""
         try:
+            self._set_last_error(None)
             if not self.sheets_service:
                 logger.error("Sheets service indisponível; não é possível atualizar usuário")
+                self._set_last_error("Serviço de planilhas indisponível.")
                 return False
             
             usuario = self._usuarios_cache.get(username)
             if not usuario:
                 logger.warning(f"Usuário {username} não encontrado")
+                self._set_last_error("Usuário não encontrado.")
                 return False
             
             if senha:
@@ -137,38 +158,57 @@ class UserService:
                 role = str(role).strip().lower()
                 if role not in {r.value for r in Role}:
                     logger.warning("Role inválida ao atualizar usuário: %s", role)
+                    self._set_last_error("Role inválida para atualização de usuário.")
                     return False
                 usuario.role = role
             
             # Atualiza no Sheets (busca por row_id)
             records = self.sheets_service.get_usuarios_raw()
+            updated = False
             for i, record in enumerate(records, start=2):
                 if str(record.get('Username', '')).strip() == username:
-                    if not self.sheets_service.update_usuario(i, username, usuario.senha_hash, usuario.role):
+                    senha_update = usuario.senha_hash if senha else None
+                    role_update = usuario.role if role is not None else None
+                    if not self.sheets_service.update_usuario(i, senha=senha_update, role=role_update):
                         logger.error(f"Falha ao atualizar usuário {username} no Sheets")
+                        self._set_last_error(
+                            self.sheets_service.get_last_error()
+                            or "Falha ao atualizar usuário no Google Sheets."
+                        )
                         return False
+                    updated = True
                     break
+
+            if not updated:
+                logger.error("Usuário %s não encontrado na aba de usuários para atualização", username)
+                self._set_last_error("Usuário não encontrado na aba de usuários do Google Sheets.")
+                return False
             
             logger.info(f"Usuário {username} atualizado")
             return True
         except Exception as e:
             logger.error(f"Erro ao atualizar usuário: {e}")
+            self._set_last_error("Erro inesperado ao atualizar usuário.")
             return False
     
     def deletar_usuario(self, username: str) -> bool:
         """Deleta um usuário."""
         try:
+            self._set_last_error(None)
             if not self.sheets_service:
                 logger.error("Sheets service indisponível; não é possível deletar usuário")
+                self._set_last_error("Serviço de planilhas indisponível.")
                 return False
 
             if username not in self._usuarios_cache:
                 logger.warning(f"Usuário {username} não encontrado")
+                self._set_last_error("Usuário não encontrado.")
                 return False
             
             # Deleta do Sheets
             if not self.sheets_service.delete_usuario(username):
                 logger.error(f"Falha ao deletar usuário {username} do Sheets")
+                self._set_last_error(self.sheets_service.get_last_error() or "Falha ao deletar usuário no Google Sheets.")
                 return False
             
             # Remove do cache
@@ -177,6 +217,7 @@ class UserService:
             return True
         except Exception as e:
             logger.error(f"Erro ao deletar usuário: {e}")
+            self._set_last_error("Erro inesperado ao deletar usuário.")
             return False
     
     def recarregar(self) -> None:

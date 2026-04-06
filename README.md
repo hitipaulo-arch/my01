@@ -8,22 +8,22 @@ Sistema web para gerenciamento de Ordens de Serviço integrado com Google Sheets
 - 🔧 Gerenciamento e edição de chamados
 - 🔍 Consulta pública de status
 - 💾 Cache inteligente (5 minutos TTL)
-- 📝 Logging estruturado
+- 📝 Registros (logging) estruturados
 - ✨ Validação de formulários
 - 🔐 Tratamento seguro de credenciais
 - 🛡️ **Hash de senhas com PBKDF2** (segurança aprimorada)
 - 🔒 **Proteção CSRF** em todos os formulários
 - 🔄 Migração automática de senhas legadas
-- ⚡ **Flask-Caching** para melhor performance
-- 🚨 **Error handlers globais** para tratamento robusto de erros
+- ⚡ **Flask-Caching** para melhor desempenho
+- 🚨 **Tratadores globais de erro** para tratamento robusto de erros
 - ✔️ **Validações centralizadas** com dataclasses
-- 📝 **Type hints** para código mais seguro
+- 📝 **Anotações de tipo (type hints)** para código mais seguro
 
 ## 📋 Pré-requisitos
 
 - Python 3.8+
 - Conta Google Cloud com API Sheets habilitada
-- Service Account do Google Cloud
+- Conta de serviço (Service Account) do Google Cloud
 
 ## 🔧 Instalação
 
@@ -48,7 +48,7 @@ pip install -r requirements.txt
    - Substitua os valores de exemplo pelos dados do seu Service Account
    - **IMPORTANTE**: Compartilhe sua planilha Google Sheets com o email do Service Account (permissão de editor)
 
-4. Configure variáveis de ambiente (opcional):
+4. Configure variáveis de ambiente:
 ```bash
 # .env
 GOOGLE_SHEET_ID=seu_id_da_planilha
@@ -56,6 +56,24 @@ SECRET_KEY=sua_chave_secreta_aqui
 CACHE_TTL_SECONDS=300
 FLASK_DEBUG=false
 ```
+
+### ⚠️ Inicialização de usuário em desenvolvimento
+
+O cadastro público foi desativado. A criação de usuários pelo formulário `/cadastro` exige login de administrador.
+
+Para o primeiro acesso em ambiente de desenvolvimento (quando ainda não há usuários no Sheets), defina credenciais locais explícitas:
+
+```bash
+# Apenas desenvolvimento
+LOCAL_ADMIN_USER=admin_dev
+LOCAL_ADMIN_PASSWORD=senha_forte_aqui
+LOCAL_ADMIN_ROLE=admin
+```
+
+Regras de segurança da alternativa local:
+- Não é carregado em produção (`FLASK_ENV=production`)
+- Não usa mais padrões inseguros (ex: `admin/admin123`)
+- Pode ser desativado totalmente com `DISABLE_LOCAL_ADMIN_FALLBACK=true`
 
 ## ▶️ Executar
 
@@ -95,7 +113,7 @@ projeto_flask/
 3. Configure Secret Files:
    - Nome: `credentials.json`
    - Conteúdo: JSON do Service Account
-4. Configure Environment Variables:
+4. Configure variáveis de ambiente:
    - `GOOGLE_SHEET_ID`
    - `SECRET_KEY`
 5. Deploy automático!
@@ -106,10 +124,15 @@ projeto_flask/
 |----------|-----------|--------|
 | `GOOGLE_SHEET_ID` | ID da planilha Google | - |
 | `GOOGLE_SHEET_TAB` | Nome da aba | "Respostas ao formulário 3" |
+| `GOOGLE_SHEET_AUDITORIA_TAB` | Nome da aba de auditoria de ações | "Registro de Ações" |
 | `SECRET_KEY` | Chave secreta Flask | "dev-secret-key..." |
 | `CACHE_TTL_SECONDS` | Tempo de cache (segundos) | 300 |
 | `FLASK_DEBUG` | Modo debug | false |
 | `PORT` | Porta do servidor | 5000 |
+| `LOCAL_ADMIN_USER` | Usuário admin local para inicialização em dev | - |
+| `LOCAL_ADMIN_PASSWORD` | Senha do admin local para inicialização em dev | - |
+| `LOCAL_ADMIN_ROLE` | Role do usuário local (normalmente `admin`) | `admin` |
+| `DISABLE_LOCAL_ADMIN_FALLBACK` | Desativa alternativa local de admin (`true`/`false`) | `false` |
 
 ### 🔔 Notificação ao abrir OS
 
@@ -227,7 +250,7 @@ TWILIO_CONTENT_MAP="1=numero_pedido,2=prioridade,3=solicitante,4=setor,5=equipam
 ## 📊 Cache
 
 O sistema implementa cache inteligente:
-- **TTL**: 5 minutos configurável
+- **TTL**: 5 minutos (configurável)
 - **Rotas cacheadas**: Gerenciar
 - **Invalidação**: Automática após criar/atualizar OS
 - **Limpeza manual**: `/admin/limpar-cache`
@@ -240,18 +263,20 @@ O sistema implementa cache inteligente:
 - ✅ Validação de entrada
 - ✅ Sanitização de dados
 - ✅ Credenciais não expostas
-- ✅ Secret key configurável
-- ✅ Session cookies com HttpOnly e SameSite
+- ✅ Chave secreta configurável
+- ✅ Cookies de sessão com HttpOnly e SameSite
 - ✅ HTTPS recomendado em produção
+- ✅ Cadastro público desativado (somente admin cria usuários)
+- ✅ Alternativa local de admin somente com variáveis explícitas e bloqueada em produção
 
 **📖 Veja [SECURITY_IMPROVEMENTS.md](SECURITY_IMPROVEMENTS.md) para detalhes das melhorias implementadas.**
 
-## ⚡ Performance & Código
+## ⚡ Desempenho e Código
 
 - ✅ **Flask-Caching** com SimpleCache (Redis ready)
-- ✅ **Error Handlers Globais** (404, 500, Exception)
+- ✅ **Tratadores Globais de Erro** (404, 500, Exception)
 - ✅ **Validações Centralizadas** com dataclasses
-- ✅ **Type Hints** em funções principais
+- ✅ **Anotações de Tipo (Type Hints)** em funções principais
 - ✅ **Configurações Centralizadas** em config.py
 
 **📖 Veja [MEDIUM_PRIORITY_IMPROVEMENTS.md](MEDIUM_PRIORITY_IMPROVEMENTS.md) para detalhes das melhorias de código.**
@@ -267,11 +292,11 @@ Logs estruturados com níveis:
 
 ## 🤝 Contribuindo
 
-1. Fork o projeto
-2. Crie uma branch (`git checkout -b feature/nova-funcionalidade`)
-3. Commit suas mudanças (`git commit -m 'Adiciona nova funcionalidade'`)
-4. Push para a branch (`git push origin feature/nova-funcionalidade`)
-5. Abra um Pull Request
+1. Crie um fork do projeto
+2. Crie uma ramificação (`git checkout -b feature/nova-funcionalidade`)
+3. Faça o commit das suas mudanças (`git commit -m 'Adiciona nova funcionalidade'`)
+4. Envie para a ramificação remota (`git push origin feature/nova-funcionalidade`)
+5. Abra uma solicitação de mesclagem (pull request)
 
 ## 📄 Licença
 

@@ -2,7 +2,9 @@
 
 import datetime
 import logging
-from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app
+import re
+from urllib.parse import quote
+from flask import Blueprint, render_template, request, redirect, url_for, flash, current_app, session
 from appmodules.models import OrdemServico, ValidadorOS
 from appmodules.services import NotificationService
 from appmodules.utils import admin_required
@@ -38,6 +40,8 @@ def criar_os():
         return render_template('index.html', erros=validacao.erros), 400
     
     try:
+        whatsapp_solicitante = request.form.get('whatsapp_solicitante', '').strip()
+
         # Obtém próximo ID
         numero_pedido = sheets_service.get_next_id()
         
@@ -62,13 +66,29 @@ def criar_os():
                 descricao=os_data.descricao,
                 equipamento=os_data.equipamento,
                 timestamp=os_data.timestamp,
-                info_adicional=os_data.info_adicional
+                info_adicional=os_data.info_adicional,
+                whatsapp_destino=whatsapp_solicitante,
             )
         except Exception as e:
             logger.error(f"Erro ao notificar (OS #{numero_pedido}): {e}")
+
+        whatsapp_link = None
+        if whatsapp_solicitante:
+            digits = re.sub(r'\D', '', whatsapp_solicitante)
+            if digits:
+                if not digits.startswith('55'):
+                    digits = f'55{digits}'
+
+                mensagem = (
+                    f"Olá, {os_data.solicitante}! Sua OS #{numero_pedido} foi aberta com sucesso. "
+                    f"Status inicial: {os_data.status}."
+                )
+                whatsapp_link = f"https://wa.me/{digits}?text={quote(mensagem)}"
         
         return render_template('sucesso.html', 
-            nome=os_data.solicitante, os_numero=numero_pedido)
+            nome=os_data.solicitante,
+            os_numero=numero_pedido,
+            whatsapp_link=whatsapp_link)
     
     except Exception as e:
         logger.error(f"Erro ao criar OS: {e}")
@@ -220,6 +240,14 @@ def atualizar_chamado():
             return render_template('erro.html', 
                 mensagem="Erro ao atualizar OS"), 500
         
+        usuario_logado = session.get('usuario', 'Desconhecido')
+        sheets_service.add_audit_record(
+            usuario_logado,
+            'atualizou OS',
+            'OS',
+            str(os_original.get('ID', row_id)),
+            f'Status: {status_original} -> {status_os}',
+        )
         logger.info(f"OS (linha {row_id}) atualizada com status: {status_os}")
         flash('OS atualizada com sucesso!', 'success')
         
@@ -291,4 +319,4 @@ def health():
         'status': 'healthy' if disponivel else 'degraded',
         'sheets_connected': disponivel,
         'timestamp': datetime.datetime.now().isoformat()
-    }, 200
+    }, 200 if disponivel else 503

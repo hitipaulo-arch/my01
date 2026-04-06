@@ -1,6 +1,7 @@
 """Classes de validação para o sistema."""
 
 from dataclasses import dataclass
+import re
 from typing import List, Dict, Any
 
 
@@ -42,6 +43,12 @@ class ValidadorOS:
         prioridade = form_data.get('prioridade')
         if prioridade not in ValidadorOS.PRIORIDADES_VALIDAS:
             erros.append('Prioridade inválida.')
+
+        whatsapp = form_data.get('whatsapp_solicitante', '').strip()
+        if whatsapp:
+            digits = re.sub(r'\D', '', whatsapp)
+            if len(digits) < 10:
+                erros.append('WhatsApp do solicitante inválido. Informe DDD + número.')
         
         return ValidacaoResultado(valido=len(erros) == 0, erros=erros)
     

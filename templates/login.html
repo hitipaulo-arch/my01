@@ -112,7 +112,11 @@
             </form>
 
             <div class="register-link">
+                {% if bootstrap_cadastro_disponivel %}
+                <p>Primeiro acesso? <a href="{{ url_for('auth.cadastro') }}">Criar administrador inicial</a></p>
+                {% else %}
                 <p>Não tem uma conta? <a href="{{ url_for('auth.cadastro') }}">Cadastre-se</a></p>
+                {% endif %}
             </div>
 
             <div class="text-center mt-3">

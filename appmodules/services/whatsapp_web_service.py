@@ -114,4 +114,4 @@ class WhatsAppWebNotificationService:
         digits = ''.join(filter(str.isdigit, phone))
         if not digits.startswith('55'):
             return '+55' + digits
-        return '+55' + digits
+        return '+' + digits

@@ -13,10 +13,11 @@ class SheetsConfig:
     ]
     
     # IDs e nomes das abas (podem ser sobrescritos por variáveis de ambiente)
-    SHEET_ID: str = os.getenv('GOOGLE_SHEET_ID', '1qs3cxlklTnzCp4RpQGhxIrEF4CbeUvid1S0Cp2tC3Xg')
+    SHEET_ID: str = os.getenv('GOOGLE_SHEET_ID', '').strip()
     SHEET_TAB_NAME: str = os.getenv('GOOGLE_SHEET_TAB', 'Respostas ao formulário 3')
     SHEET_HORARIO_TAB: str = os.getenv('GOOGLE_SHEET_HORARIO_TAB', 'Controle de Horário')
     SHEET_USUARIOS_TAB: str = os.getenv('GOOGLE_SHEET_USUARIOS_TAB', 'Usuários')
+    SHEET_AUDITORIA_TAB: str = os.getenv('GOOGLE_SHEET_AUDITORIA_TAB', 'Registro de Ações')
 
 
 # --- CONFIGURAÇÕES DO FLASK ---

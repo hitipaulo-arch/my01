@@ -78,7 +78,7 @@
         <div class="register-card">
             <div class="register-header">
                 <h1>📝 Cadastro</h1>
-                <p>Crie sua conta no sistema</p>
+                <p>{% if bootstrap_mode %}Crie o administrador inicial do sistema{% else %}Crie sua conta no sistema{% endif %}</p>
             </div>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -122,7 +122,13 @@
             </div>
 
             <div class="text-center mt-3">
-                <small class="text-muted">Novos usuários terão acesso completo como administradores</small>
+                <small class="text-muted">
+                    {% if bootstrap_mode %}
+                    Este cadastro é usado apenas para o primeiro administrador do sistema.
+                    {% else %}
+                    Use a tela de usuários para criar contas adicionais com diferentes permissões.
+                    {% endif %}
+                </small>
             </div>
         </div>
     </div>

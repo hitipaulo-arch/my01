@@ -4,6 +4,28 @@
 
 O sistema de gerenciamento de Ordens de Serviço (OS) foi estendido para suportar **3 métodos diferentes** de notificação via WhatsApp. Cada método foi implementado como um serviço independente que pode ser habilitado/desabilitado via variáveis de ambiente.
 
+## Atualizacao de Seguranca (23/03/2026)
+
+Para manter consistencia com a versao atual da aplicacao:
+
+- O cadastro publico foi desativado. A rota /cadastro exige login admin.
+- GOOGLE_SHEET_ID passou a ser obrigatorio para inicializacao do servico de planilhas.
+- A alternativa local de admin so funciona com variaveis explicitas e apenas fora de producao.
+
+Variaveis de bootstrap para desenvolvimento:
+
+```env
+LOCAL_ADMIN_USER=admin_dev
+LOCAL_ADMIN_PASSWORD=senha_forte_aqui
+LOCAL_ADMIN_ROLE=admin
+```
+
+Para desativar a alternativa local em qualquer ambiente:
+
+```env
+DISABLE_LOCAL_ADMIN_FALLBACK=true
+```
+
 ---
 
 ## 🏗️ Arquitetura
@@ -13,11 +35,11 @@ O sistema de gerenciamento de Ordens de Serviço (OS) foi estendido para suporta
 ```
 appmodules/services/
 ├── notification_service.py (modificado)
-│   └── Expands notificar_nova_os() to support all 3 me thods
+│   └── Expande notificar_nova_os() para suportar os 3 métodos
 ├── whatsapp_click_to_chat.py (novo)
-│   └── WhatsAppClickToChatService: Universal wa.me links
+│   └── WhatsAppClickToChatService: links universais wa.me
 └── whatsapp_web_service.py (novo)
-    └── WhatsAppWebNotificationService: pywhatkit automation
+    └── WhatsAppWebNotificationService: automação com pywhatkit
 ```
 
 ### Fluxo de Notificação
@@ -28,26 +50,26 @@ Nova OS Criada
 POST /enviar (app.py)
     ↓
 NotificationService.notificar_nova_os()
-    ├─→ Email (smtplib)
-    ├─→ Twilio ApI (requests)
+    ├─→ E-mail (smtplib)
+    ├─→ API Twilio (requests)
     ├─→ WhatsApp Web (pywhatkit)
     └─→ Click-to-Chat (webbrowser + wa.me links)
     ↓
-Retorna dict com status de cada método
+Retorna dicionário com situacao de cada método
 ```
 
 ---
 
 ## 🔧 Implementação Técnica
 
-### 1. WhatsApp Click-to-Chat Service
+### 1. Serviço WhatsApp Click-to-Chat
 
 **Arquivo:** `appmodules/services/whatsapp_click_to_chat.py`
 
 **Principais Métodos:**
 - `gerar_link_chat(phone, message)` - Gera URL wa.me encoded
-- `abrir_whatsapp(link)` - Cross-platform browser opening (os.startfile para Windows, webbrowser fallback)
-- `enviar_whatsapp_click_to_chat()` - Main notification method
+- `abrir_whatsapp(link)` - Abertura de navegador multiplataforma (os.startfile no Windows, webbrowser como alternativa)
+- `enviar_whatsapp_click_to_chat()` - Método principal de notificação
 - `_montar_mensagem()` - Formata mensagem com emojis
 
 **Como Funciona:**
@@ -57,8 +79,8 @@ Retorna dict com status de cada método
 3. URL-encoda a mensagem
 4. Gera link wa.me: https://wa.me/{numero}?text={mensagem_encoded}
 5. Tenta abrir em Windows com os.startfile() primeiro
-6. Fallback: webbrowser.open() universal
-7. Retorna link para fallback manual se browser não abrir
+6. Alternativa: webbrowser.open() universal
+7. Retorna link para abertura manual se o navegador não abrir
 ```
 
 **Vantagens:**
@@ -72,14 +94,14 @@ Retorna dict com status de cada método
 
 ---
 
-### 2. WhatsApp Web Service
+### 2. Serviço WhatsApp Web
 
 **Arquivo:** `appmodules/services/whatsapp_web_service.py`
 
 **Principais Métodos:**
-- `enviar_whatsapp_web()` - Sends message using pywhatkit.sendwhatmsg_instantly()
-- `_montar_mensagem()` - Shared message formatting
-- `_normalizar_numero()` - Phone number normalization
+- `enviar_whatsapp_web()` - Envia mensagem usando pywhatkit.sendwhatmsg_instantly()
+- `_montar_mensagem()` - Formatação compartilhada da mensagem
+- `_normalizar_numero()` - Normalização do número de telefone
 
 **Como Funciona:**
 ```python
@@ -103,7 +125,7 @@ pip install pywhatkit
 **Configuração Necessária:**
 - WhatsApp Web deve estar **logado continuamente** com +5512991635552
 - Navegador deve estar disponível (Chrome/Firefox/Edge)
-- Mínimo 35+ segundos de delay entre mensagens (timing sensível)
+- Mínimo de 35+ segundos de espera entre mensagens (tempo sensível)
 
 **Vantagens:**
 - ✅ Automático (sem intervenção do usuário)
@@ -117,7 +139,7 @@ pip install pywhatkit
 
 ---
 
-### 3. Twilio WhatsApp API
+### 3. API Twilio para WhatsApp
 
 **Implementação Existente:** `appmodules/services/notification_service.py::enviar_whatsapp()`
 
@@ -128,7 +150,7 @@ pip install pywhatkit
 3. Twilio recebe request
 4. Valida que destinatário está "joined" (sandbox)
 5. Envia WhatsApp se tudo ok
-6. Retorna Message SID ou erro
+6. Retorna o SID da mensagem ou erro
 ```
 
 **Configuração:**
@@ -141,11 +163,11 @@ TWILIO_WHATSAPP_TO=whatsapp:+5512982200009
 
 **Vantagens:**
 - ✅ API simples e confiável
-- ✅ Não requer browser ou intervenção
-- ✅ Funciona em modo server/daemon
+- ✅ Não requer navegador ou intervenção
+- ✅ Funciona em modo servidor/daemon
 
 **Limitações:**
-- ❌ Sandbox requer setup de número (join comando)
+- ❌ Sandbox requer configuracao de número (comando join)
 - ❌ Requer credenciais (Account SID + Auth Token)
 - ❌ Pago em produção
 - ⚠️ Complexo de configurar inicialmente
@@ -159,12 +181,12 @@ TWILIO_WHATSAPP_TO=whatsapp:+5512982200009
 | **Universal** | ✅ Sim | ⚠️ Limitado | ✅ Sim |
 | **Automático** | ❌ Manual | ✅ Sim | ✅ Sim |
 | **Credenciais** | ❌ Nenhuma | ❌ Nenhuma | ✅ Sim (SID+Token) |
-| **Setup** | ✅ Trivial | ⚠️ Médio (pywhatkit) | ❌ Complexo |
+| **Configuração** | ✅ Trivial | ⚠️ Média (pywhatkit) | ❌ Complexa |
 | **Confiabilidade** | ✅ Alta | ⚠️ Média | ✅ Alta |
-| **Custo** | ✅ Free | ✅ Free | ❌ Pago |
-| **Requer Logon** | ❌ Não | ✅ Sim (+5512991635552) | ❌ Não |
-| **Requer Browser** | ⚠️ Opcional | ✅ Sim | ❌ Não |
-| **Taxa de Envio** | Instant | 35+ seg | Instant |
+| **Custo** | ✅ Grátis | ✅ Grátis | ❌ Pago |
+| **Requer Login** | ❌ Não | ✅ Sim (+5512991635552) | ❌ Não |
+| **Requer Navegador** | ⚠️ Opcional | ✅ Sim | ❌ Não |
+| **Taxa de Envio** | Instantânea | 35+ s | Instantânea |
 
 ---
 
@@ -189,7 +211,7 @@ resultados = NotificationService.notificar_nova_os(
     timestamp=timestamp,
     info_adicional=info_adicional
 )
-# 5. Retorna página de sucesso com status notificações
+# 5. Retorna página de sucesso com situacao das notificações
 ```
 
 ### 2. NotificationService.notificar_nova_os()
@@ -244,7 +266,7 @@ def notificar_nova_os(...) -> dict:
 
 ### Exemplo Completo
 ```.env
-# ===== Email Notifications =====
+# ===== Notificações por E-mail =====
 NOTIFY_ENABLED=true
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
@@ -267,6 +289,15 @@ TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
 TWILIO_WHATSAPP_TO=whatsapp:+5512982200009
 TWILIO_CONTENT_VARIABLES_JSON=
 TWILIO_CONTENT_MAP=
+
+# ===== Base da aplicacao (obrigatorio) =====
+GOOGLE_SHEET_ID=seu_id_da_planilha
+
+# ===== Bootstrap admin local (somente desenvolvimento) =====
+LOCAL_ADMIN_USER=admin_dev
+LOCAL_ADMIN_PASSWORD=senha_forte_aqui
+LOCAL_ADMIN_ROLE=admin
+# DISABLE_LOCAL_ADMIN_FALLBACK=true
 ```
 
 ---
@@ -275,21 +306,21 @@ TWILIO_CONTENT_MAP=
 
 ### 1. test_click_to_chat.py
 - Testa geração de links wa.me
-- Testa abertura de browser
-- Valida device info
-- Resultado: ✅ Link gerado, browser aberto, método funciona
+- Testa abertura de navegador
+- Valida informações do dispositivo
+- Resultado: ✅ Link gerado, navegador aberto, método funciona
 
 ### 2. test_fluxo_completo.py
 - Simula criação completa de OS
 - Dispara os 4 métodos de notificação
 - Verifica resultados
-- Resultado: ✅ Email ❌ (credencial), Twilio ✅, Web ✅, Click-Chat ✅
+- Resultado: ✅ E-mail ❌ (credencial), Twilio ✅, Web ✅, Click-Chat ✅
 
 ### 3. diagnostic_whatsapp.py
-- Valida credentials Twilio
-- Verifica Twilio account status
+- Valida credenciais da Twilio
+- Verifica status da conta Twilio
 - Testa conectividade à API
-- Resultados: ✅ Account active, SID válido, credentials corretos
+- Resultados: ✅ Conta ativa, SID válido, credenciais corretas
 
 ---
 
@@ -297,7 +328,7 @@ TWILIO_CONTENT_MAP=
 
 ### Instalação Inicial
 ```bash
-# 1. Clonar/pull do repositório
+# 1. Clonar ou atualizar (pull) o repositório
 cd my01
 
 # 2. Instalar dependências
@@ -306,6 +337,7 @@ pip install -r requirements.txt
 # 3. Configurar .env
 cp .env.example .env
 # Editar .env com suas credenciais
+# Definir GOOGLE_SHEET_ID e, se necessario, bootstrap admin local
 
 # 4. Testar (opcional)
 python test_click_to_chat.py
@@ -324,13 +356,13 @@ python app.py
 
 ## 📦 Dependências
 
-**Requirements.txt:**
+**requirements.txt:**
 ```
 Flask>=2.0.0
-pywhatkit>=6.0  # WhatsApp Web automation
-requests>=2.28  # HTTP requests para Twilio
-python-dotenv>=0.21  # .env configuration
-bleach>=6.0  # HTML sanitization
+pywhatkit>=6.0  # automação do WhatsApp Web
+requests>=2.28  # requisições HTTP para Twilio
+python-dotenv>=0.21  # configuração via .env
+bleach>=6.0  # sanitização de HTML
 ```
 
 **Instalação:**
@@ -342,24 +374,24 @@ pip install -r requirements.txt
 
 ## 🎯 Recomendações para Produção
 
-1. **Use Click-to-Chat como fallback** - Sempre funciona
-2. **Configure WhatsApp Web se tiver SRE** monitoring 24/7
-3. **Use Twilio para garant ia de entrega** - Se orçamento permite
-4. **Monitore logs** de falhas de notificação
+1. **Use Click-to-Chat como alternativa** - Sempre funciona
+2. **Configure WhatsApp Web se tiver equipe SRE** com monitoramento 24/7
+3. **Use Twilio para garantia de entrega** - Se o orçamento permitir
+4. **Monitore os logs** de falhas de notificação
 5. **Teste regularmente** cada método com `diagnostic_whatsapp.py`
-6. **Mantenha .env** com credenciais seguras (nunca commit!)
+6. **Mantenha .env** com credenciais seguras (nunca faça commit!)
 7. **Use variáveis de ambiente** para produção (não arquivos)
 
 ---
 
 ## 📚 Referências
 
-- [wa.me Click-to-Chat Documentation](https://www.whatsapp.com/business/en/downloads/chatting/)
+- [Documentação do Click-to-Chat (wa.me)](https://www.whatsapp.com/business/en/downloads/chatting/)
 - [pywhatkit GitHub](https://github.com/Shayneobrien/pywhatkit)
 - [Twilio WhatsApp API](https://www.twilio.com/docs/sms/whatsapp/api)
 
 ---
 
 **Última atualização:** 2024-12-XX
-**Status:** ✅ Pronto para produção
+**Resultado:** ✅ Pronto para produção
 **Métodos Testados:** 3/3 funcionando

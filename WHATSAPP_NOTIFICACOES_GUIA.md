@@ -2,9 +2,30 @@
 
 Este documento descreve a implementação de 3 métodos diferentes para enviar notificações via WhatsApp quando uma nova ordem de serviço (OS) é criada.
 
+## Atualizacao de Seguranca (23/03/2026)
+
+As mudancas abaixo afetam o ambiente da aplicacao como um todo e devem ser consideradas ao testar notificacoes:
+
+- O cadastro publico foi desativado. A rota /cadastro agora exige usuario administrador autenticado.
+- GOOGLE_SHEET_ID e obrigatorio. A aplicacao nao inicializa o servico de planilhas quando essa variavel nao estiver definida.
+- A alternativa local de admin em desenvolvimento nao usa mais padroes inseguros. Defina explicitamente:
+
+```env
+LOCAL_ADMIN_USER=admin_dev
+LOCAL_ADMIN_PASSWORD=senha_forte_aqui
+LOCAL_ADMIN_ROLE=admin
+```
+
+- Em producao (FLASK_ENV=production), a alternativa local de admin e bloqueada automaticamente.
+- Para desativar totalmente essa alternativa em desenvolvimento, use:
+
+```env
+DISABLE_LOCAL_ADMIN_FALLBACK=true
+```
+
 ## 🚀 Métodos Implementados
 
-### 1. **Click-to-Chat WhatsApp** (Recomendado - UNIVERSAL ✅)
+### 1. **Clique para Conversar (Click-to-Chat) no WhatsApp** (Recomendado - UNIVERSAL ✅)
 
 **O que é:**
 - Gera links `wa.me/` que abrem WhatsApp com a mensagem pré-preenchida
@@ -18,10 +39,10 @@ Este documento descreve a implementação de 3 métodos diferentes para enviar n
 4. Usuário clica "Enviar" para confirmar
 
 **Vantagens:**
-- ✅ Universal (funciona em qualquer OS)
+- ✅ Universal (funciona em qualquer sistema operacional)
 - ✅ Nenhuma credencial necessária
 - ✅ Não requer autenticação
-- ✅ Sempre funciona como fallback
+- ✅ Sempre funciona como alternativa
 
 **Desvantagens:**
 - Requer ação manual do usuário (clic em enviar)
@@ -54,7 +75,7 @@ WHATSAPP_WEB_DELAY_SECONDS=0
 **Desvantagens:**
 - ❌ Requer WhatsApp Web logado continuamente
 - ❌ Requer número específico (+5512991635552)
-- ⚠️ Timing sensível (requer 30+ segundos por mensagem)
+- ⚠️ Tempo sensível (requer 30+ segundos por mensagem)
 - ❌ Pode falhar se navegador não está disponível
 
 **Configuração:**
@@ -71,7 +92,7 @@ pip install pywhatkit
 
 ---
 
-### 3. **Twilio API** (Sandbox Mode)
+### 3. **API Twilio** (Modo Sandbox)
 
 **O que é:**
 - Integracao com API Twilio para enviar WhatsApp
@@ -86,11 +107,11 @@ pip install pywhatkit
 **Vantagens:**
 - ✅ Automático
 - ✅ Não requer WhatsApp Web
-- ✅ Funciona em modo server/background
+- ✅ Funciona em modo servidor/segundo plano
 
 **Desvantagens:**
 - ❌ Requer credenciais Twilio (Account SID, Auth Token)
-- ❌ Sandbox requer validação de número (não llega mensagem sem setup)
+- ❌ O Sandbox requer validação de número (a mensagem não chega sem configuração)
 - ❌ Requer assinatura paga para produção
 - ⚠️ Requer muita configuração
 
@@ -107,14 +128,14 @@ TWILIO_WHATSAPP_TO=whatsapp:+5512982200009
 
 ## 📊 Comparação
 
-| Feature | Click-to-Chat | WebAutomático | Twilio |
+| Recurso | Click-to-Chat | Web Automático | Twilio |
 |---------|--------------|---------------|--------|
-| Universal | ✅ Sim | ⚠️ Limits | ✅ Sim |
+| Universal | ✅ Sim | ⚠️ Limitações | ✅ Sim |
 | Automático | ❌ Não | ✅ Sim | ✅ Sim |
 | Credenciais | ❌ Não | ❌ Não | ✅ Sim |
-| Setup | ✅ Fácil | ⚠️ Médio | ❌ Complexo |
+| Configuração | ✅ Fácil | ⚠️ Média | ❌ Complexa |
 | Confiabilidade | ✅ Alta | ⚠️ Média | ✅ Alta |
-| Custo | ✅ Free | ✅ Free | ❌ Pago |
+| Custo | ✅ Grátis | ✅ Grátis | ❌ Pago |
 
 ---
 
@@ -126,7 +147,7 @@ Quando uma nova OS é criada, o sistema automaticamente:
 3. ✅ Envia via WhatsApp Web (se configurado e logado)
 4. ✅ Gera link Click-to-Chat (sempre disponível)
 
-Resultado retornado contém status de cada método:
+O resultado retornado contém a situacao de cada método:
 ```python
 {
     'email': True/False,
@@ -143,7 +164,7 @@ Resultado retornado contém status de cada método:
 ### Testar Click-to-Chat
 ```bash
 python test_click_to_chat.py
-# Deve abrir WhatsApp com link wa.me e generar bot message
+# Deve abrir o WhatsApp com link wa.me e gerar mensagem de teste
 ```
 
 ### Testar Fluxo Completo
@@ -155,7 +176,7 @@ python test_fluxo_completo.py
 ### Testar Diagnóstico
 ```bash
 python diagnostic_whatsapp.py
-# Valida credenciais, conectividade e dispositivo info
+# Valida credenciais, conectividade e informações do dispositivo
 ```
 
 ---
@@ -164,7 +185,7 @@ python diagnostic_whatsapp.py
 
 Exemplo completo:
 ```ini
-# ----- Email Notifications -----
+# ----- Notificações por E-mail -----
 NOTIFY_ENABLED=true
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
@@ -186,32 +207,41 @@ TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
 TWILIO_WHATSAPP_TO=whatsapp:+5512982200009
 TWILIO_CONTENT_SID=your_content_sid (opcional)
 TWILIO_CONTENT_MAP=1=numero_pedido,2=timestamp,3=solicitante (opcional)
+
+# ----- Configuracao base da aplicacao (obrigatoria) -----
+GOOGLE_SHEET_ID=seu_id_da_planilha
+
+# ----- Bootstrap de admin local (somente desenvolvimento) -----
+LOCAL_ADMIN_USER=admin_dev
+LOCAL_ADMIN_PASSWORD=senha_forte_aqui
+LOCAL_ADMIN_ROLE=admin
+# DISABLE_LOCAL_ADMIN_FALLBACK=true
 ```
 
 ---
 
-## 📋 Troubleshooting
+## 📋 Solução de Problemas
 
-### "Browser não abre WhatsApp"
-- Solução: Click-to-Chat é fallback automático, gera link para abrir manualmente
-- Verifique se WhatsApp Web está acessível em seu browser
+### "Navegador não abre WhatsApp"
+- Solução: Click-to-Chat é alternativa automática, gera link para abrir manualmente
+- Verifique se o WhatsApp Web está acessível no seu navegador
 - Teste webbrowser.open com URL comum primeiro
 
 ### "Twilio mensagem não chegando"
-- Razão: Sandbox requer unirse a WhatsApp template
+- Razão: o Sandbox exige adesão prévia ao template do WhatsApp
 - Solução: Envie "+5514155238886" o texto "join blue-pigeon"
 - Ou use Click-to-Chat e Web Automático como alternativas
 
 ### "Pywhatkit timeout"
 - Razão: WHATSAPP_WEB_DELAY_SECONDS muito baixo
 - Solução: Aumente para 35+ segundos
-- Mensagens requerem tempo para browser carregar e digitar
+- Mensagens precisam de tempo para o navegador carregar e digitar
 
 ## 🎯 Recomendação
 
 Para produção:
-1. **Primary**: Click-to-Chat (sempre funciona)
-2. **Secondary**: WhatsApp Web (automático, mas sensível)
-3. **Tertiary**: Twilio (confiável mas requer setup e custo)
+1. **Primário**: Click-to-Chat (sempre funciona)
+2. **Secundário**: WhatsApp Web (automático, mas sensível)
+3. **Terciário**: Twilio (confiável, mas exige configuração e custo)
 
 Sistema tenta os 3 em paralelo - primeira que funciona é entregue!
