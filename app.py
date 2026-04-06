@@ -712,7 +712,6 @@ def deletar_central(row_id):
     except Exception as e:
         logger.error(f"Erro ao deletar central: {e}", exc_info=True)
         return jsonify({'success': False, 'message': str(e)}), 500
-        return jsonify({'success': False, 'message': str(e)}), 500
 
 
 @app.route('/ferramentas', methods=['GET', 'POST'])
