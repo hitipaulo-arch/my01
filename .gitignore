@@ -48,3 +48,15 @@ Thumbs.db
 
 # Logs
 *.log
+app_debug.log
+
+# Arquivo gerado por pywhatkit (auto-recria)
+PyWhatKit_DB.txt
+
+# Scripts obsoletos (não manter - use pytest ao invés)
+diagnostico_*.py
+exemplo_whatsapp_webhook.py
+send_whatsapp_test.py
+show_report.py
+run_all_tests.py
+test_twilio_mapping.py
