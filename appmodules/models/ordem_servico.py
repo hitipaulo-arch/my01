@@ -29,6 +29,7 @@ class OrdemServico:
     id: str
     timestamp: str
     solicitante: str
+    whatsapp_solicitante: str
     setor: str
     data_solicitacao: str
     descricao: str
@@ -51,6 +52,7 @@ class OrdemServico:
             id=str(numero_pedido),
             timestamp=agora.strftime("%d/%m/%Y %H:%M:%S"),
             solicitante=form_data.get('nome_solicitante', '').strip(),
+            whatsapp_solicitante=form_data.get('whatsapp_solicitante', '').strip(),
             setor=form_data.get('setor', '').strip(),
             data_solicitacao=agora.strftime("%d/%m/%Y"),
             descricao=form_data.get('descricao', '').strip(),
@@ -77,5 +79,6 @@ class OrdemServico:
             self.horario_inicio,
             self.horario_andamento,
             self.horario_termino,
-            self.horas_trabalhadas
+            self.horas_trabalhadas,
+            self.whatsapp_solicitante
         ]

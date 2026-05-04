@@ -35,19 +35,56 @@ WHATSAPP_WEB_DELAY_SECONDS=0
 
 ---
 
-### 2. **WhatsApp Web Automático** (pywhatkit)
+### 2. **WhatsApp Web Automático** (pywhatkit) - ⚡ ENVIO AUTOMÁTICO
 
 **O que é:**
-- Automação de WhatsApp Web usando pywhatkit
-- Abre navegador e envia mensagem automaticamente
-- Requer WhatsApp Web logado
+- Automação completa de WhatsApp Web usando pywhatkit
+- Abre navegador e **ENVIA A MENSAGEM AUTOMATICAMENTE** sem ação manual
+- Requer WhatsApp Web logado no navegador
 
 **Como funciona:**
-1. pywhatkit detecta navegador instalado
-2. Abre WhatsApp Web em abas do navegador
-3. Envia mensagem automaticamente
+1. Sistema detecta quando uma OS é finalizada
+2. pywhatkit abre WhatsApp Web no navegador
+3. Localiza o contato automaticamente
+4. Digita a mensagem
+5. **Envia automaticamente** (sem precisar de clique)
 
 **Vantagens:**
+- ✅ **Envio automático completo** - sem ação manual necessária
+- ✅ Funciona com navegador padrão (Chrome, Firefox, Edge)
+- ✅ Confiável e rápido
+- ✅ Integração com PC/servidor
+
+**Desvantagens:**
+- ⚠️ Requer WhatsApp Web logado no navegador (não em tempo real)
+- ⚠️ Precisa de 15 segundos por mensagem (tempo de processamento)
+- ⚠️ Se WhatsApp Web sair do ar, volta ao fallback click-to-chat
+
+**Configuração:**
+```.env
+WHATSAPP_WEB_ENABLED=true
+WHATSAPP_WEB_TO=5512982200009
+WHATSAPP_WEB_DELAY_SECONDS=15
+```
+
+**⚙️ PRÉ-REQUISITOS IMPORTANTES:**
+1. **Ter o navegador aberto com WhatsApp Web logado**
+   - Acesse: https://web.whatsapp.com/
+   - Faça login com seu QR code
+   - Mantenha o navegador aberto
+
+2. **Instalação:**
+   ```bash
+   pip install pywhatkit
+   ```
+
+3. **Tempo de envio:**
+   - Cada mensagem leva ~15 segundos (tempo necessário para processo completo)
+   - O navegador ficará visível durante o envio (você pode ver o processo)
+
+**Resultado:**
+- ✅ Mensagem aparece automaticamente como "Enviada" no WhatsApp
+- ✅ Sem necessidade de confirmação manual
 - ✅ Automático (sem intervenção do usuário)
 - ✅ Funciona em Windows, Mac, Linux
 

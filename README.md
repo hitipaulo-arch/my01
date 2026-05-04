@@ -64,6 +64,8 @@ FLASK_DEBUG=false
 python app.py
 ```
 
+Se for usar o túnel público com ngrok, prefira a versão oficial instalada a partir de https://ngrok.com/download. A distribuição da Microsoft Store/MSIX pode falhar com o erro `disabled updater should never run`.
+
 **Produção (com Gunicorn):**
 ```bash
 gunicorn -w 4 -b 0.0.0.0:5000 app:app
@@ -108,6 +110,7 @@ projeto_flask/
 | `GOOGLE_SHEET_TAB` | Nome da aba | "Respostas ao formulário 3" |
 | `SECRET_KEY` | Chave secreta Flask | "dev-secret-key..." |
 | `CACHE_TTL_SECONDS` | Tempo de cache (segundos) | 300 |
+| `OS_CACHE_TTL_SECONDS` | TTL do cache de OS no SheetsService (segundos) | 120 |
 | `FLASK_DEBUG` | Modo debug | false |
 | `PORT` | Porta do servidor | 5000 |
 

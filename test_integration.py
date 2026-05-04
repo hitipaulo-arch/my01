@@ -51,53 +51,45 @@ def test_imports():
 
 
 def test_notification_functions():
-    """Testa que as funções de notificação estão definidas em app.py"""
+    """Testa que o serviço de notificação está implementado"""
     print("\n✅ TESTE 3: Funções de Notificação")
     
     try:
-        # Lê o arquivo
-        with open('app.py', 'r', encoding='utf-8') as f:
+        # Lê o arquivo do serviço de notificação
+        with open('appmodules/services/notification_service.py', 'r', encoding='utf-8') as f:
             content = f.read()
         
         # Verifica se as funções existem
         functions_needed = [
-            'enviar_notificacao_abertura_os',
-            'enviar_notificacao_whatsapp_os'
+            'def enviar_email',
+            'def notificar_nova_os'
         ]
         
+        found = 0
         for func in functions_needed:
-            if f"def {func}" in content:
+            if func in content:
                 print(f"  ✓ Função {func} encontrada")
+                found += 1
             else:
                 print(f"  ✗ Função {func} NÃO encontrada")
-                return False
         
-        # Verifica se há chamadas às funções na rota /enviar
-        if "enviar_notificacao_whatsapp_os" in content and "@app.route('/enviar'" in content:
-            print(f"  ✓ Rota /enviar integrada com notificações")
-        
-        return True
+        return found == 2
     except Exception as e:
         print(f"  ✗ Erro ao validar: {e}")
         return False
 
 
-def test_twilio_variables():
-    """Testa suporte a ContentVariables no código"""
-    print("\n✅ TESTE 4: Suporte Twilio ContentVariables")
+def test_whatsapp_services():
+    """Testa que serviços WhatsApp (Click-to-Chat e Web) estão disponíveis"""
+    print("\n✅ TESTE 4: Serviços WhatsApp")
     
     try:
-        with open('app.py', 'r', encoding='utf-8') as f:
+        with open('appmodules/services/notification_service.py', 'r', encoding='utf-8') as f:
             content = f.read()
         
         required_keywords = [
-            'ContentVariables',
-            'TWILIO_CONTENT_SID',
-            'TWILIO_CONTENT_MAP',
-            'TWILIO_ACCOUNT_SID',
-            'TWILIO_AUTH_TOKEN',
-            'TWILIO_WHATSAPP_FROM',
-            'TWILIO_WHATSAPP_TO',
+            'WhatsAppClickToChatService',
+            'WhatsAppWebNotificationService',
         ]
         
         found_count = 0
@@ -106,74 +98,40 @@ def test_twilio_variables():
                 print(f"  ✓ {keyword} encontrado")
                 found_count += 1
             else:
-                print(f"  ⚠️  {keyword} não encontrado (pode ser opcional)")
+                print(f"  ⚠️  {keyword} não encontrado")
         
-        if found_count >= 5:
-            return True
-        else:
-            print(f"  ✗ Poucos keywords encontrados ({found_count}/{len(required_keywords)})")
-            return False
+        return found_count == 2
     except Exception as e:
         print(f"  ✗ Erro ao validar: {e}")
         return False
 
 
-def test_env_example():
-    """Testa que .env.example tem as variáveis Twilio"""
-    print("\n✅ TESTE 5: Variáveis .env.example")
+def test_twilio_removed():
+    """Verifica que Twilio foi removido do código"""
+    print("\n✅ TESTE 5: Remoção de Twilio")
     
     try:
-        with open('.env.example', 'r', encoding='utf-8') as f:
+        with open('appmodules/services/notification_service.py', 'r', encoding='utf-8') as f:
             content = f.read()
         
-        required_vars = [
+        twilio_keywords = [
+            'def enviar_whatsapp(',
             'TWILIO_ACCOUNT_SID',
             'TWILIO_AUTH_TOKEN',
-            'TWILIO_WHATSAPP_FROM',
-            'TWILIO_WHATSAPP_TO',
-            'TWILIO_CONTENT_SID',
         ]
         
-        found = 0
-        for var in required_vars:
-            if var in content:
-                print(f"  ✓ {var} definido em .env.example")
-                found += 1
+        not_found_count = 0
+        for keyword in twilio_keywords:
+            if keyword not in content:
+                print(f"  ✓ {keyword} removido")
+                not_found_count += 1
             else:
-                print(f"  ⚠️  {var} não encontrado em .env.example")
+                print(f"  ✗ {keyword} ainda presente!")
         
-        if found >= 4:
-            return True
-        else:
-            return False
+        return not_found_count == 3
     except Exception as e:
         print(f"  ✗ Erro ao validar: {e}")
         return False
-
-
-def test_documentation():
-    """Testa que a documentação foi atualizada"""
-    print("\n✅ TESTE 6: Documentação Atualizada")
-    
-    docs_needed = {
-        'README.md': 'ContentSid',
-        'GUIA_NOTIFICACOES.md': 'ContentSid',
-        '.env.example': 'TWILIO_CONTENT',
-    }
-    
-    found_count = 0
-    for doc, keyword in docs_needed.items():
-        try:
-            with open(doc, 'r', encoding='utf-8') as f:
-                if keyword in f.read():
-                    print(f"  ✓ {doc} tem documentação de {keyword}")
-                    found_count += 1
-                else:
-                    print(f"  ⚠️  {doc} não menciona {keyword}")
-        except FileNotFoundError:
-            print(f"  ⚠️  {doc} não encontrado")
-    
-    return found_count >= 2
 
 
 def test_requirements():
@@ -227,9 +185,8 @@ def main():
         test_app_syntax,
         test_imports,
         test_notification_functions,
-        test_twilio_variables,
-        test_env_example,
-        test_documentation,
+        test_whatsapp_services,
+        test_twilio_removed,
         test_requirements,
         test_error_handling,
     ]
@@ -262,8 +219,7 @@ def main():
         print("\nProximos passos:")
         print("  1. Configurar variáveis de ambiente em .env (copie de .env.example)")
         print("  2. Adicionar credenciais Gmail (SMTP_USER, SMTP_PASSWORD)")
-        print("  3. Adicionar credenciais Twilio (fornecidas)")
-        print("  4. Testar criar uma nova OS e verificar notificações")
+        print("  3. Testar criar uma nova OS e verificar notificações")
         return 0
     else:
         print(f"\n⚠️  {total - passou} teste(s) falharam.")

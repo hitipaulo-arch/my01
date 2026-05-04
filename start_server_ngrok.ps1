@@ -39,6 +39,37 @@ function Get-NgrokPublicUrl {
     return $null
 }
 
+function Get-NgrokExecutable {
+    $candidatePaths = @(
+        Join-Path $env:LOCALAPPDATA 'ngrok\ngrok.exe'
+        Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages\Ngrok.Ngrok_Microsoft.Winget.Source_8wekyb3d8bbwe\ngrok.exe'
+    )
+
+    foreach ($candidate in $candidatePaths) {
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
+
+    try {
+        $command = Get-Command ngrok -ErrorAction Stop
+        $source = $command.Source
+
+        if ($source -match 'WindowsApps\\ngrok\.exe$') {
+            throw "Foi detectada a versao do ngrok da Microsoft Store/MSIX em $source. Instale a versao oficial do ngrok para evitar a falha 'disabled updater should never run'."
+        }
+
+        return $source
+    }
+    catch {
+        if ($_.Exception.Message) {
+            Write-Host $_.Exception.Message -ForegroundColor Red
+        }
+
+        return $null
+    }
+}
+
 Write-Host ''
 Write-Host '=== INICIANDO FLASK + NGROK ===' -ForegroundColor Cyan
 Write-Host ''
@@ -58,10 +89,17 @@ else {
 Start-Sleep -Seconds $WaitSeconds
 
 # 2) ngrok
+$ngrokExecutable = Get-NgrokExecutable
+if (-not $ngrokExecutable) {
+    Write-Host '[2/2] ngrok nao encontrado ou instalacao invalida.' -ForegroundColor Red
+    Write-Host 'Instale a versao oficial do ngrok em https://ngrok.com/download e tente novamente.' -ForegroundColor Red
+    exit 1
+}
+
 $ngrokRunning = Get-Process ngrok -ErrorAction SilentlyContinue
 if (-not $ngrokRunning) {
     Write-Host "[2/2] Subindo ngrok para http://localhost:$Port ..." -ForegroundColor Yellow
-    Start-Process powershell -ArgumentList "-NoExit", "-Command", "ngrok http $Port"
+    Start-Process powershell -ArgumentList "-NoExit", "-Command", "& '$ngrokExecutable' http $Port"
     Start-Sleep -Seconds 3
 }
 else {

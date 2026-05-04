@@ -1,0 +1,22 @@
+﻿name: Assistente Local Ollama
+version: 1.0.0
+schema: v1
+
+models:
+  - name: Qwen 2.5 3B (Ollama)
+    provider: ollama
+    model: qwen2.5:3b
+    roles:
+      - chat
+      - edit
+      - apply
+
+context:
+  - provider: code
+  - provider: docs
+
+slashCommands:
+  - name: commit
+    description: Gere uma mensagem de commit
+  - name: explain
+    description: Explique o código selecionado

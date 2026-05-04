@@ -67,9 +67,9 @@ def test_email_payload():
     return True
 
 
-def test_whatsapp_payload():
-    """Simula composição de payload WhatsApp com ContentVariables"""
-    print("\n✅ TESTE 2: Payload WhatsApp ContentVariables")
+def test_whatsapp_click_to_chat():
+    """Simula payload WhatsApp Click-to-Chat (sem Twilio)"""
+    print("\n✅ TESTE 2: Payload WhatsApp Click-to-Chat")
     
     # Dados de teste
     os_data = {
@@ -83,99 +83,39 @@ def test_whatsapp_payload():
         'info_adicional': 'Urgente para relatórios'
     }
     
-    # Monta ContentVariables automático (1..8)
-    content_vars = {
-        "1": os_data['numero_pedido'],
-        "2": os_data['timestamp'],
-        "3": os_data['solicitante'],
-        "4": os_data['setor'],
-        "5": os_data['equipamento'],
-        "6": os_data['prioridade'],
-        "7": (os_data['descricao'][:200] + "..." if len(os_data['descricao']) > 200 
-              else os_data['descricao']),
-        "8": os_data['info_adicional'][:100] if os_data['info_adicional'] else None
+    # Constrói mensagem para Click-to-Chat
+    emoji_map = {
+        'Urgente': '🚨',
+        'Alta': '⚠️',
+        'Média': '📋',
+        'Baixa': '📝'
     }
+    emoji = emoji_map.get(os_data['prioridade'], '📋')
     
-    # Remove variável 8 se vazia
-    if not content_vars.get("8"):
-        del content_vars["8"]
+    message_lines = [
+        f"{emoji} *Nova OS #{os_data['numero_pedido']}*",
+        f"Prioridade: *{os_data['prioridade']}*",
+        "",
+        f"📅 {os_data['timestamp']}",
+        f"👤 {os_data['solicitante']}",
+        f"🏢 {os_data['setor']}",
+        f"🔧 {os_data['equipamento']}",
+        "",
+        "📝 Descrição:",
+        os_data['descricao'][:200] + ("..." if len(os_data['descricao']) > 200 else "")
+    ]
     
-    # Simula payload Twilio
-    payload = {
-        "To": "whatsapp:+5512991635552",
-        "From": "whatsapp:+14155238886",
-        "ContentSid": "HXb5b62575e6e4ff6129ad7c8efe1f983e",
-        "ContentVariables": json.dumps(content_vars)
-    }
+    message = '\n'.join(message_lines)
     
-    print(f"  ✓ Payload criado para: {payload['To']}")
-    print(f"  ✓ ContentSid: {payload['ContentSid'][:20]}...")
-    print(f"  ✓ ContentVariables contém {len(content_vars)} variáveis")
+    print(f"  ✓ Mensagem gerada ({len(message)} chars)")
+    print(f"  ✓ Contém emoji de prioridade")
+    print(f"  ✓ Contém dados da OS")
     
-    # Valida JSON
-    parsed_vars = json.loads(payload['ContentVariables'])
-    assert parsed_vars["1"] == "OS-2026-002"
-    assert parsed_vars["3"] == "Maria Santos"
-    assert "não imprime" in parsed_vars["7"]
+    assert os_data['numero_pedido'] in message
+    assert emoji in message
+    assert os_data['solicitante'] in message
     
-    print(f"  ✓ Variáveis:")
-    for k, v in sorted(parsed_vars.items()):
-        print(f"    {k}: {v[:50]}..." if len(v) > 50 else f"    {k}: {v}")
-    
-    print(f"  ✓ Payload WhatsApp OK!")
-    return True
-
-
-def test_custom_mapping():
-    """Testa mapeamento customizado via TWILIO_CONTENT_MAP"""
-    print("\n✅ TESTE 3: Mapeamento Customizado TWILIO_CONTENT_MAP")
-    
-    os_data = {
-        'numero_pedido': 'OS-2026-003',
-        'timestamp': '10/01/2026 16:00:00',
-        'solicitante': 'Pedro Costa',
-        'setor': 'Suporte',
-        'equipamento': 'Notebook',
-        'prioridade': 'Urgente',
-        'descricao': 'Tela do notebook não liga',
-        'info_adicional': ''
-    }
-    
-    # Mapa customizado (inverte ordem)
-    content_map = "1=prioridade,2=numero_pedido,3=setor,4=solicitante,5=equipamento,6=timestamp,7=descricao"
-    
-    # Processa mapeamento
-    field_values = {
-        'numero_pedido': os_data['numero_pedido'],
-        'timestamp': os_data['timestamp'],
-        'solicitante': os_data['solicitante'],
-        'setor': os_data['setor'],
-        'equipamento': os_data['equipamento'],
-        'prioridade': os_data['prioridade'],
-        'descricao': os_data['descricao'][:200],
-        'info': os_data.get('info_adicional', '')[:100] if os_data.get('info_adicional') else ''
-    }
-    
-    custom_vars = {}
-    pairs = [p.strip() for p in content_map.split(',')]
-    for pair in pairs:
-        key, field = pair.split('=')
-        key = key.strip()
-        field = field.strip()
-        if field in field_values:
-            custom_vars[key] = field_values[field]
-    
-    print(f"  ✓ Mapeamento: {content_map}")
-    print(f"  ✓ Variáveis geradas:")
-    for k, v in sorted(custom_vars.items()):
-        print(f"    {k}: {v[:50]}..." if len(v) > 50 else f"    {k}: {v}")
-    
-    # Validações
-    assert custom_vars["1"] == "Urgente", "Var 1 deve ser prioridade"
-    assert custom_vars["2"] == "OS-2026-003", "Var 2 deve ser número"
-    assert custom_vars["3"] == "Suporte", "Var 3 deve ser setor"
-    
-    print(f"  ✓ Mapeamento customizado OK!")
+    print(f"  ✓ Payload WhatsApp Click-to-Chat OK!")
     return True
 
 
@@ -260,54 +200,6 @@ def test_field_truncation():
     return True
 
 
-def test_json_serialization():
-    """Testa serialização para JSON (necessário para Twilio)"""
-    print("\n✅ TESTE 6: Serialização JSON para Twilio")
-    
-    os_data = {
-        'numero_pedido': 'OS-2026-006',
-        'timestamp': '10/01/2026 18:00:00',
-        'solicitante': 'José da Silva',
-        'setor': 'Administrativo',
-        'equipamento': 'Computador & Periféricos',
-        'prioridade': 'Média',
-        'descricao': 'Não consegue acessar VPN - "erro de conexão"',
-        'info_adicional': 'Atenção: Caracteres & Acentos'
-    }
-    
-    content_vars = {
-        "1": os_data['numero_pedido'],
-        "2": os_data['timestamp'],
-        "3": os_data['solicitante'],
-        "4": os_data['setor'],
-        "5": os_data['equipamento'],
-        "6": os_data['prioridade'],
-        "7": os_data['descricao'],
-        "8": os_data['info_adicional']
-    }
-    
-    try:
-        # Serializa para JSON
-        json_str = json.dumps(content_vars, ensure_ascii=False)
-        print(f"  ✓ JSON serializado: {json_str[:80]}...")
-        
-        # Desserializa para validar
-        parsed = json.loads(json_str)
-        assert parsed == content_vars
-        print(f"  ✓ JSON desserializado com sucesso")
-        
-        # Valida acentos e caracteres especiais
-        assert "José" in parsed["3"]
-        assert "&" in parsed["5"]
-        assert "\"" in parsed["7"]
-        print(f"  ✓ Caracteres especiais e acentos preservados")
-        
-        return True
-    except Exception as e:
-        print(f"  ✗ Erro na serialização: {e}")
-        return False
-
-
 def main():
     """Executa todos os testes funcionais"""
     print("=" * 70)
@@ -316,11 +208,9 @@ def main():
     
     tests = [
         test_email_payload,
-        test_whatsapp_payload,
-        test_custom_mapping,
+        test_whatsapp_click_to_chat,
         test_multiple_recipients,
         test_field_truncation,
-        test_json_serialization,
     ]
     
     resultados = []

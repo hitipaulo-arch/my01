@@ -5,7 +5,7 @@ Envia mensagens via WhatsApp Web automático (requer WhatsApp Web logado)
 import os
 import logging
 from datetime import datetime
-import time
+from .whatsapp_utils import normalizar_numero_whatsapp, montar_mensagem_os
 
 try:
     import pywhatkit as kit
@@ -22,9 +22,18 @@ class WhatsAppWebNotificationService:
     """
 
     def __init__(self, phone_from: str = None, phone_to: str = None, delay_seconds: int = None):
-        self.phone_from = phone_from or os.getenv('WHATSAPP_FROM', '+5512991635552')
-        self.phone_to = phone_to or os.getenv('WHATSAPP_WEB_TO', '5512982200009')
+        # Phone numbers MUST come from environment variables, no defaults
+        self.phone_from = phone_from or os.getenv('WHATSAPP_FROM')
+        self.phone_to = phone_to or os.getenv('WHATSAPP_WEB_TO')
         self.delay_seconds = delay_seconds or int(os.getenv('WHATSAPP_WEB_DELAY_SECONDS', '35'))
+        
+        if not self.phone_from or not self.phone_to:
+            logger.warning(
+                "WHATSAPP_FROM ou WHATSAPP_WEB_TO não configurados. "
+                "WhatsApp Web service será desabilitado."
+            )
+            self.enabled = False
+            return
         self.enabled = os.getenv('WHATSAPP_WEB_ENABLED', 'true').lower() == 'true'
 
         if not kit:
@@ -51,18 +60,24 @@ class WhatsAppWebNotificationService:
                 timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
             # Monta mensagem
-            message = self._montar_mensagem(numero_pedido, solicitante, setor,
-                                           prioridade, descricao, equipamento,
-                                           timestamp, info_adicional)
+            message = montar_mensagem_os(numero_pedido, solicitante, setor,
+                                        prioridade, descricao, equipamento,
+                                        timestamp, info_adicional)
 
             # Normaliza número
-            phone_normalized = self._normalizar_numero(self.phone_to)
+            phone_normalized = normalizar_numero_whatsapp(self.phone_to)
 
             # Envia via pywhatkit (síncrono)
             logger.info(f"Enviando via WhatsApp Web para {phone_normalized}...")
             
-            # sendwhatmsg_instantly abre navegador e envia imediatamente
-            kit.sendwhatmsg_instantly(phone_normalized, message, wait_time=2, tab_close=False)
+            # wait_time increased to 15 seconds for reliable auto-sending
+            # pywhatkit needs time to: open browser, load WhatsApp, navigate to chat, type, and send
+            kit.sendwhatmsg_instantly(
+                phone_normalized, 
+                message, 
+                wait_time=15,       # 15 segundos para processamento completo
+                tab_close=False     # Mantém a aba aberta para confirmação visual
+            )
 
             logger.info(f"✅ Mensagem enviada via WhatsApp Web para {phone_normalized}")
             return {
@@ -82,36 +97,43 @@ class WhatsAppWebNotificationService:
                 'error': str(e)
             }
 
-    def _montar_mensagem(self, numero_pedido: str, solicitante: str, setor: str,
-                        prioridade: str, descricao: str, equipamento: str,
-                        timestamp: str, info_adicional: str = None) -> str:
-        """Monta mensagem formatada com prioridade"""
-        emoji_priority = {
-            'urgente': '🚨',
-            'alta': '⚠️',
-            'média': '📋',
-            'baixa': '📝'
-        }
-        emoji = emoji_priority.get(prioridade.lower(), '📋')
+    def enviar_mensagem_direta(self, phone_to: str, message: str) -> dict:
+        """Envia uma mensagem direta para um número específico via WhatsApp Web (com envio automático)."""
+        if not self.enabled:
+            return {
+                'success': False,
+                'phone': phone_to,
+                'method': 'whatsapp_web',
+                'message': 'Serviço desabilitado ou pywhatkit não disponível'
+            }
 
-        message = (
-            f"{emoji} *NOVA OS #{numero_pedido}*\n"
-            f"📅 *Data/Hora:* {timestamp}\n"
-            f"👤 *Solicitante:* {solicitante}\n"
-            f"🏢 *Setor:* {setor}\n"
-            f"🔧 *Equipamento:* {equipamento}\n"
-            f"⚡ *Prioridade:* *{prioridade.upper()}*\n\n"
-            f"📝 *Descrição:*\n{descricao}"
-        )
+        try:
+            phone_normalized = normalizar_numero_whatsapp(phone_to)
+            logger.info(f"Enviando mensagem automaticamente via WhatsApp Web para {phone_normalized}...")
+            
+            # wait_time increased to 15 seconds for reliable auto-sending
+            # pywhatkit needs time to: open browser, load WhatsApp, navigate to chat, type, and send
+            kit.sendwhatmsg_instantly(
+                phone_normalized, 
+                message, 
+                wait_time=15,      # 15 segundos para processamento completo
+                tab_close=False     # Mantém a aba aberta para confirmação visual
+            )
+            logger.info(f"✅ Mensagem enviada AUTOMATICAMENTE via WhatsApp Web para {phone_normalized}")
+            return {
+                'success': True,
+                'phone': phone_normalized,
+                'method': 'whatsapp_web',
+                'message': message,
+                'auto_sent': True
+            }
+        except Exception as e:
+            logger.error(f"Erro ao enviar mensagem automaticamente via WhatsApp Web: {e}", exc_info=True)
+            return {
+                'success': False,
+                'phone': phone_to,
+                'method': 'whatsapp_web',
+                'error': str(e)
+            }
 
-        if info_adicional:
-            message += f"\n\nℹ️ *Info:* {info_adicional}"
 
-        return message
-
-    def _normalizar_numero(self, phone: str) -> str:
-        """Normaliza número para formato +55xxxxxxxxxx"""
-        digits = ''.join(filter(str.isdigit, phone))
-        if not digits.startswith('55'):
-            return '+55' + digits
-        return '+55' + digits

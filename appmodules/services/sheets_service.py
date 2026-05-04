@@ -4,6 +4,8 @@ import gspread
 import logging
 import datetime
 import json
+import os
+import time
 from pathlib import Path
 from typing import Optional, List, Dict, Any, Tuple
 from google.oauth2.service_account import Credentials
@@ -13,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 class SheetsService:
     """Gerencia conexão e operações com Google Sheets."""
+    WHATSAPP_HEADER = 'WhatsApp do solicitante'
     
     SCOPES = [
         'https://www.googleapis.com/auth/spreadsheets',
@@ -31,6 +34,10 @@ class SheetsService:
         self.sheet_horario = None
         self.sheet_usuarios = None
         self.error = None
+        self.usuarios_error = None
+        self._os_cache: List[dict] = []
+        self._os_cache_expires_at = 0.0
+        self._os_cache_ttl_seconds = max(5, int(os.getenv('OS_CACHE_TTL_SECONDS', '120')))
         
         self._init_connection(creds_file)
     
@@ -54,9 +61,12 @@ class SheetsService:
                     'ID', 'Carimbo de data/hora', 'Nome do solicitante', 'Setor',
                     'Data da Solicitação', 'Descrição', 'Equipamento/Local', 'Prioridade',
                     'Status da OS', 'Informações adicionais', 'Serviço realizado',
-                    'Horario de Inicio', 'Horario de Andamento', 'Horario de Término', 'Horas trabalhadas'
+                    'Horario de Inicio', 'Horario de Andamento', 'Horario de Término', 'Horas trabalhadas',
+                    self.WHATSAPP_HEADER
                 ])
                 logger.info(f"Aba '{self.sheet_tab}' criada com cabeçalho")
+
+            self._ensure_whatsapp_column()
             
             # Conecta à aba de horário
             try:
@@ -72,9 +82,14 @@ class SheetsService:
                 self.sheet_usuarios = spreadsheet.worksheet(self.usuarios_tab)
                 logger.info(f"Conectado à aba '{self.usuarios_tab}'")
             except Exception:
-                self.sheet_usuarios = spreadsheet.add_worksheet(title=self.usuarios_tab, rows=1000, cols=10)
-                self.sheet_usuarios.append_row(['Username', 'Senha', 'Role'])
-                logger.info(f"Aba '{self.usuarios_tab}' criada")
+                try:
+                    self.sheet_usuarios = spreadsheet.add_worksheet(title=self.usuarios_tab, rows=1000, cols=10)
+                    self.sheet_usuarios.append_row(['Username', 'Senha', 'Role'])
+                    logger.info(f"Aba '{self.usuarios_tab}' criada")
+                except Exception as e:
+                    self.sheet_usuarios = None
+                    self.usuarios_error = str(e)
+                    logger.warning(f"Não foi possível inicializar a aba '{self.usuarios_tab}': {e}")
         
         except FileNotFoundError:
             logger.error("Arquivo 'credentials.json' não encontrado")
@@ -129,6 +144,70 @@ class SheetsService:
         if self.sheet is None:
             return False, self.error or "Sheets não disponível"
         return True, None
+
+    def _ensure_usuarios_sheet(self) -> bool:
+        """Garante que a aba de usuários esteja disponível."""
+        if self.sheet_usuarios:
+            return True
+
+        if not self.client:
+            self.usuarios_error = self.usuarios_error or "Cliente do Google Sheets indisponível"
+            return False
+
+        try:
+            spreadsheet = self.client.open_by_key(self.sheet_id)
+            try:
+                self.sheet_usuarios = spreadsheet.worksheet(self.usuarios_tab)
+            except Exception:
+                self.sheet_usuarios = spreadsheet.add_worksheet(title=self.usuarios_tab, rows=1000, cols=10)
+                self.sheet_usuarios.append_row(['Username', 'Senha', 'Role'])
+            self.usuarios_error = None
+            return True
+        except Exception as e:
+            self.usuarios_error = str(e)
+            logger.error(f"Erro ao garantir aba de usuários '{self.usuarios_tab}': {e}")
+            return False
+
+    def _normalize_os_ids(self) -> None:
+        """Compatibilidade: migração automática de IDs desativada para preservar rastreabilidade."""
+        return
+
+    def _invalidate_os_cache(self) -> None:
+        """Invalida cache local de OS após qualquer mutação."""
+        self._os_cache = []
+        self._os_cache_expires_at = 0.0
+
+    @staticmethod
+    def _normalize_headers(headers: List[Any]) -> List[str]:
+        """Normaliza cabeçalhos da planilha mantendo compatibilidade com legado."""
+        normalized_headers = []
+        for idx, header in enumerate(headers):
+            header_text = str(header or '').strip()
+            if idx == 0 and header_text in ('', '/'):
+                header_text = 'ID'
+            normalized_headers.append(header_text)
+        return normalized_headers
+
+    def _build_os_list_from_values(self, data: List[List[str]]) -> List[dict]:
+        """Converte matriz da planilha em lista de dicionários de OS."""
+        if len(data) < 2:
+            return []
+
+        normalized_headers = self._normalize_headers(data[0])
+        os_list = []
+
+        for i, row in enumerate(data[1:], start=2):
+            if not any(row):
+                continue
+
+            full_row = row + [''] * (len(normalized_headers) - len(row))
+            os_dict = dict(zip(normalized_headers, full_row))
+            os_dict['row_id'] = i
+
+            if str(os_dict.get('Status da OS', '')).strip().lower() not in ('cancelada', 'cancelado'):
+                os_list.append(os_dict)
+
+        return os_list
     
     def get_next_id(self) -> int:
         """Obtém o próximo ID disponível."""
@@ -152,6 +231,22 @@ class SheetsService:
         except Exception as e:
             logger.error(f"Erro ao obter próximo ID: {e}")
             return int(datetime.datetime.now().timestamp())
+
+    def _ensure_whatsapp_column(self) -> None:
+        """Garante a existência da coluna de WhatsApp do solicitante no cabeçalho."""
+        try:
+            if not self.sheet:
+                return
+
+            headers = self.sheet.row_values(1)
+            if self.WHATSAPP_HEADER in headers:
+                return
+
+            next_col = len(headers) + 1
+            self.sheet.update_cell(1, next_col, self.WHATSAPP_HEADER)
+            logger.info("Coluna '%s' adicionada na aba '%s'", self.WHATSAPP_HEADER, self.sheet_tab)
+        except Exception as e:
+            logger.warning("Falha ao garantir coluna de WhatsApp na aba '%s': %s", self.sheet_tab, e)
     
     def add_os(self, row_data: list) -> bool:
         """Adiciona uma nova OS à planilha."""
@@ -161,41 +256,40 @@ class SheetsService:
             
             self.sheet.append_row(row_data, value_input_option='USER_ENTERED', 
                                  insert_data_option='INSERT_ROWS')
+            self._invalidate_os_cache()
             logger.info(f"Nova OS adicionada (ID: {row_data[0]})")
             return True
         except Exception as e:
             logger.error(f"Erro ao adicionar OS: {e}")
             return False
     
-    def get_all_os(self) -> List[dict]:
+    def get_all_os(self, use_cache: bool = True, force_refresh: bool = False) -> List[dict]:
         """Obtém todas as OS (exceto canceladas)."""
         try:
             if not self.sheet:
                 return []
+
+            now = time.time()
+            if use_cache and not force_refresh and self._os_cache and now < self._os_cache_expires_at:
+                return list(self._os_cache)
             
             data = self.sheet.get_all_values()
-            if len(data) < 2:
-                return []
-            
-            headers = data[0]
-            os_list = []
-            
-            for i, row in enumerate(data[1:], start=2):
-                if not any(row):
-                    continue
-                
-                full_row = row + [''] * (len(headers) - len(row))
-                os_dict = dict(zip(headers, full_row))
-                os_dict['row_id'] = i
-                
-                # Pula OS canceladas
-                if os_dict.get('Status da OS') != 'Cancelada':
-                    os_list.append(os_dict)
-            
+            os_list = self._build_os_list_from_values(data)
+            self._os_cache = os_list
+            self._os_cache_expires_at = now + self._os_cache_ttl_seconds
             return os_list
         except Exception as e:
             logger.error(f"Erro ao obter OS: {e}")
             return []
+
+    def get_open_os(self, use_cache: bool = True) -> List[dict]:
+        """Obtém somente OS em aberto ou em andamento."""
+        status_validos = {'aberto', 'em andamento'}
+        chamados = self.get_all_os(use_cache=use_cache)
+        return [
+            os_item for os_item in chamados
+            if str(os_item.get('Status da OS', '')).strip().lower() in status_validos
+        ]
     
     def update_os(self, row_id: int, row_data: list) -> bool:
         """Atualiza uma OS."""
@@ -206,17 +300,46 @@ class SheetsService:
             # Define a faixa dinamicamente com base na quantidade de colunas.
             ultima_coluna = chr(ord('A') + len(row_data) - 1)
             self.sheet.update(f'A{row_id}:{ultima_coluna}{row_id}', [row_data])
+            self._invalidate_os_cache()
             logger.info(f"OS (linha {row_id}) atualizada")
             return True
         except Exception as e:
             logger.error(f"Erro ao atualizar OS: {e}")
             return False
+
+    def get_os_by_row_id(self, row_id: int) -> Optional[dict]:
+        """Obtém uma OS específica pelo número da linha na planilha."""
+        try:
+            if not self.sheet or row_id < 2:
+                return None
+
+            headers = self._normalize_headers(self.sheet.row_values(1))
+            row_data = self.sheet.row_values(row_id)
+            if not row_data or not any(str(v).strip() for v in row_data):
+                return None
+
+            full_row = row_data + [''] * (len(headers) - len(row_data))
+            os_dict = dict(zip(headers, full_row))
+            os_dict['row_id'] = row_id
+            return os_dict
+        except Exception as e:
+            logger.error(f"Erro ao obter OS por row_id: {e}")
+            return None
     
     def get_os_by_id(self, os_id: str) -> Optional[dict]:
         """Obtém uma OS específica pelo ID."""
         try:
             if not self.sheet:
                 return None
+
+            for os_item in self.get_all_os(use_cache=True):
+                if str(os_item.get('ID', '')).strip() == str(os_id).strip():
+                    return {
+                        'id': os_item.get('ID', ''),
+                        'timestamp': os_item.get('Carimbo de data/hora', ''),
+                        'status': os_item.get('Status da OS', ''),
+                        'descricao': os_item.get('Descrição', '') or os_item.get('Descrição do Problema ou Serviço Solicitado', '')
+                    }
             
             cell = self.sheet.find(str(os_id), in_column=1)
             if cell:
@@ -274,7 +397,7 @@ class SheetsService:
     def get_usuarios_raw(self) -> List[dict]:
         """Obtém todos os usuários do Sheets."""
         try:
-            if not self.sheet_usuarios:
+            if not self._ensure_usuarios_sheet():
                 return []
             
             records = self.sheet_usuarios.get_all_records()
@@ -286,12 +409,10 @@ class SheetsService:
     def update_usuario(self, row_id: int, username: str, senha: str, role: str) -> bool:
         """Atualiza um usuário."""
         try:
-            if not self.sheet_usuarios:
+            if not self._ensure_usuarios_sheet():
                 return False
             
-            self.sheet_usuarios.update_cell(row_id, 1, username)
-            self.sheet_usuarios.update_cell(row_id, 2, senha)
-            self.sheet_usuarios.update_cell(row_id, 3, role)
+            self.sheet_usuarios.update(f'A{row_id}:C{row_id}', [[username, senha, role]])
             logger.info(f"Usuário {username} atualizado")
             return True
         except Exception as e:
@@ -301,20 +422,21 @@ class SheetsService:
     def add_usuario(self, username: str, senha: str, role: str) -> bool:
         """Adiciona novo usuário."""
         try:
-            if not self.sheet_usuarios:
+            if not self._ensure_usuarios_sheet():
                 return False
             
             self.sheet_usuarios.append_row([username, senha, role])
             logger.info(f"Novo usuário {username} adicionado")
             return True
         except Exception as e:
-            logger.error(f"Erro ao adicionar usuário: {e}")
+            self.usuarios_error = str(e)
+            logger.error(f"Erro ao adicionar usuário: {e}", exc_info=True)
             return False
     
     def delete_usuario(self, username: str) -> bool:
         """Deleta um usuário."""
         try:
-            if not self.sheet_usuarios:
+            if not self._ensure_usuarios_sheet():
                 return False
             
             records = self.sheet_usuarios.get_all_records()

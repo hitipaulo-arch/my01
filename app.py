@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 # Imports dos serviços
 from appmodules.services import SheetsService, NotificationService, UserService
+from appmodules.services.whatsapp_webhook_service import WhatsAppWebhookService
 from appmodules.routes.auth_routes import auth_bp
 from appmodules.routes.os_routes import os_bp
 from appmodules.utils import login_required, admin_required
@@ -55,13 +56,31 @@ except Exception as e:
 
 # Flask App
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
+app.secret_key = os.getenv('SECRET_KEY')
+if not app.secret_key:
+    raise ValueError(
+        "\n" + "="*70 + "\n"
+        "ERRO CRÍTICO: SECRET_KEY não configurada!\n"
+        "="*70 + "\n"
+        "A aplicação requer uma SECRET_KEY fixa para manter sessões após restart.\n"
+        "\n"
+        "GERE UMA CHAVE SEGURA:\n"
+        "  python -c 'import secrets; print(secrets.token_hex(32))'\n"
+        "\n"
+        "CONFIGURE em variáveis de ambiente:\n"
+        "  export SECRET_KEY=<chave_gerada>\n"
+        "  OU adicione ao arquivo .env\n"
+        "\n"
+        "Sem esta configuração, todos os usuários serão desconectados\n"
+        "quando o servidor for reiniciado.\n"
+        "="*70
+    )
 app.config.update(
-    SESSION_COOKIE_SECURE=os.getenv('FLASK_ENV') == 'production',
+    SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SAMESITE='Strict',
     WTF_CSRF_ENABLED=True,
-    WTF_CSRF_TIME_LIMIT=None,
+    WTF_CSRF_TIME_LIMIT=3600,
     CACHE_TYPE=os.getenv('CACHE_TYPE', 'SimpleCache'),
     CACHE_DEFAULT_TIMEOUT=int(os.getenv('CACHE_TTL_SECONDS', 300))
 )
@@ -74,9 +93,100 @@ app.config['sheets_service'] = sheets_service
 app.config['user_service'] = user_service
 app.config['notification_service'] = NotificationService
 
+# Inicializa serviço de webhook WhatsApp
+webhook_service = WhatsAppWebhookService(sheets_service=sheets_service)
+app.config['webhook_service'] = webhook_service
+
 # Registra blueprints
 app.register_blueprint(auth_bp)
 app.register_blueprint(os_bp)
+
+# ════════════════════════════════════════════════════════════════════════════════
+# ROTAS DE WEBHOOK (WhatsApp)
+# ════════════════════════════════════════════════════════════════════════════════
+
+@app.route('/webhook/whatsapp', methods=['GET', 'POST'])
+def webhook_whatsapp():
+    """
+    Webhook para receber mensagens do WhatsApp.
+    GET: Validação do webhook pelo provedor
+    POST: Receber mensagens
+    """
+    webhook_service = app.config.get('webhook_service')
+    
+    if not webhook_service:
+        logger.error("Webhook service não inicializado")
+        return jsonify({'erro': 'Serviço indisponível'}), 503
+    
+    if not webhook_service.enabled:
+        logger.warning("Webhook WhatsApp desabilitado")
+        return jsonify({'erro': 'Webhook desabilitado'}), 403
+    
+    # Validação GET (handshake do provedor)
+    if request.method == 'GET':
+        token = request.args.get('hub.verify_token', '')
+        desafio = request.args.get('hub.challenge', '')
+        
+        if webhook_service.validar_token(token):
+            logger.info("Webhook validado com sucesso")
+            return desafio, 200
+        else:
+            logger.warning(f"Token de webhook inválido: {token[:20]}...")
+            return jsonify({'erro': 'Token inválido'}), 403
+    
+    # Processar POST (mensagem recebida)
+    if request.method == 'POST':
+        try:
+            dados = request.get_json() or {}
+            
+            # Extrair dados da mensagem
+            mensagens = dados.get('entry', [{}])[0].get('changes', [{}])[0].get('value', {}).get('messages', [])
+            
+            if not mensagens:
+                logger.debug("Webhook recebido sem mensagens (pode ser status update)")
+                return jsonify({'OK': True}), 200
+            
+            mensagem = mensagens[0]
+            tipo = mensagem.get('type', 'unknown')
+            
+            # Processar apenas mensagens de texto
+            if tipo != 'text':
+                logger.info(f"Tipo de mensagem ignorado: {tipo}")
+                return jsonify({'OK': True}), 200
+            
+            # Extrair dados
+            remetente = mensagem.get('from', '')
+            texto = mensagem.get('text', {}).get('body', '')
+            timestamp_unix = int(mensagem.get('timestamp', 0))
+            
+            # Converter timestamp
+            from datetime import datetime as dt
+            timestamp = dt.fromtimestamp(timestamp_unix).isoformat() if timestamp_unix else dt.now().isoformat()
+            
+            logger.info(f"Mensagem WhatsApp recebida de {remetente}: {texto[:50]}")
+            
+            # Processar mensagem
+            resultado = webhook_service.processar_mensagem({
+                'from': remetente,
+                'text': texto,
+                'timestamp': timestamp
+            })
+            
+            # Log do resultado
+            if resultado.get('sucesso'):
+                logger.info(f"Comando processado: {resultado.get('tipo')} - {resultado.get('numero_os', 'N/A')}")
+            else:
+                logger.warning(f"Erro ao processar: {resultado.get('erro')}")
+            
+            # TODO: Aqui você pode enviar resposta automática via WhatsApp API
+            # exemplo: NotificationService.enviar_resposta_whatsapp(remetente, resultado['resposta'])
+            
+            return jsonify({'OK': True, 'resultado': resultado}), 200
+            
+        except Exception as e:
+            logger.error(f"Erro ao processar webhook: {e}", exc_info=True)
+            return jsonify({'erro': str(e)}), 500
+
 
 # ════════════════════════════════════════════════════════════════════════════════
 # ROTAS DE ADMINISTRAÇÃO
@@ -93,36 +203,49 @@ def usuarios_admin():
     tipo_mensagem = 'success'
     
     if request.method == 'POST':
-        acao = request.form.get('acao')
-        username = request.form.get('username', '').strip()
-        
-        if not username:
-            mensagem = 'Username é obrigatório.'
+        if not user_service:
+            mensagem = 'Serviço de usuários não disponível.'
             tipo_mensagem = 'danger'
         else:
-            if acao == 'delete':
-                if user_service.deletar_usuario(username):
-                    mensagem = f'Usuário {username} removido com sucesso.'
-                else:
-                    mensagem = f'Erro ao remover usuário {username}.'
-                    tipo_mensagem = 'danger'
+            acao = request.form.get('acao')
+            username = request.form.get('username', '').strip()
+            
+            if not username:
+                mensagem = 'Username é obrigatório.'
+                tipo_mensagem = 'danger'
             else:
-                senha = request.form.get('senha', '').strip()
-                role = request.form.get('role', Role.ADMIN.value).strip().lower()
-                roles_validos = {r.value for r in Role}
-                
-                if not senha:
-                    mensagem = 'Senha é obrigatória.'
-                    tipo_mensagem = 'danger'
-                elif role not in roles_validos:
-                    mensagem = 'Role inválida.'
-                    tipo_mensagem = 'danger'
-                else:
-                    if user_service.criar_usuario(username, senha, role):
-                        mensagem = f'Usuário {username} criado com sucesso.'
+                if acao == 'delete':
+                    if user_service.deletar_usuario(username):
+                        mensagem = f'Usuário {username} removido com sucesso.'
                     else:
-                        mensagem = f'Erro ao criar usuário {username}.'
+                        mensagem = f'Erro ao remover usuário {username}.'
                         tipo_mensagem = 'danger'
+                else:
+                    senha = request.form.get('senha', '').strip()
+                    role = request.form.get('role', Role.ADMIN.value).strip().lower()
+                    roles_validos = {r.value for r in Role}
+                    
+                    if not senha:
+                        mensagem = 'Senha é obrigatória.'
+                        tipo_mensagem = 'danger'
+                    elif role not in roles_validos:
+                        mensagem = 'Role inválida.'
+                        tipo_mensagem = 'danger'
+                    else:
+                        if user_service.criar_usuario(username, senha, role):
+                            mensagem = f'Usuário {username} criado com sucesso.'
+                        else:
+                            erro_detalhe = getattr(user_service, 'last_error', None)
+                            if erro_detalhe and 'protected' in erro_detalhe.lower():
+                                mensagem = (
+                                    f'Erro ao criar usuário {username}: a aba de usuários está protegida no Google Sheets. '
+                                    'Remova a proteção ou conceda permissão de edição à service account.'
+                                )
+                            elif erro_detalhe:
+                                mensagem = f'Erro ao criar usuário {username}: {erro_detalhe}'
+                            else:
+                                mensagem = f'Erro ao criar usuário {username}.'
+                            tipo_mensagem = 'danger'
     
     usuarios = user_service.get_todos_usuarios() if user_service else []
     usuarios_dict = {u.username: u.to_dict() for u in usuarios}
@@ -132,6 +255,7 @@ def usuarios_admin():
 
 
 @app.route('/relatorios')
+@app.route('/auditoria')
 @admin_required
 def relatorios():
     """Página de relatórios."""
@@ -165,6 +289,38 @@ def relatorios():
             return pd.to_datetime(texto, format='%d/%m/%Y %H:%M:%S', errors='coerce')
         except Exception:
             return pd.to_datetime(texto, errors='coerce')
+
+    def _parse_datetime_series_maybe_time(serie_valor, serie_base):
+        """Versão vetorizada para evitar apply linha a linha em datasets grandes."""
+        texto = serie_valor.fillna('').astype(str).str.strip()
+        base = pd.to_datetime(serie_base, errors='coerce')
+        resultado = pd.Series(pd.NaT, index=serie_valor.index, dtype='datetime64[ns]')
+
+        mask_vazio = texto.eq('')
+        mask_data_completa = (~mask_vazio) & texto.str.contains('/', regex=False)
+        mask_somente_hora = (~mask_vazio) & (~mask_data_completa) & texto.str.contains(':', regex=False)
+
+        if mask_data_completa.any():
+            resultado.loc[mask_data_completa] = pd.to_datetime(
+                texto.loc[mask_data_completa], format='%d/%m/%Y %H:%M:%S', errors='coerce'
+            )
+
+        if mask_somente_hora.any():
+            base_text = base.dt.strftime('%Y-%m-%d')
+
+            candidatos_hms = base_text.loc[mask_somente_hora] + ' ' + texto.loc[mask_somente_hora]
+            parsed_hms = pd.to_datetime(candidatos_hms, format='%Y-%m-%d %H:%M:%S', errors='coerce')
+
+            faltantes = parsed_hms.isna()
+            if faltantes.any():
+                candidatos_hm = base_text.loc[mask_somente_hora].loc[faltantes] + ' ' + texto.loc[mask_somente_hora].loc[faltantes]
+                parsed_hms.loc[faltantes] = pd.to_datetime(
+                    candidatos_hm, format='%Y-%m-%d %H:%M', errors='coerce'
+                )
+
+            resultado.loc[mask_somente_hora] = parsed_hms
+
+        return resultado
 
     _empty = dict(
         labels_prioridade=[], dados_prioridade=[],
@@ -243,14 +399,8 @@ def relatorios():
         tempo_medio = 'N/A'
         if col_andamento and col_termino:
             df_fin = df[status_lower.isin(['finalizada', 'concluido', 'concluído'])].copy()
-            df_fin['_inicio'] = df_fin.apply(
-                lambda r: _parse_datetime_maybe_time(r.get(col_andamento, ''), r.get('_ts', pd.NaT)),
-                axis=1
-            )
-            df_fin['_termino'] = df_fin.apply(
-                lambda r: _parse_datetime_maybe_time(r.get(col_termino, ''), r.get('_ts', pd.NaT)),
-                axis=1
-            )
+            df_fin['_inicio'] = _parse_datetime_series_maybe_time(df_fin[col_andamento], df_fin['_ts'])
+            df_fin['_termino'] = _parse_datetime_series_maybe_time(df_fin[col_termino], df_fin['_ts'])
             delta = (df_fin['_termino'] - df_fin['_inicio']).dropna()
             delta = delta[delta.dt.total_seconds() > 0]
             if not delta.empty:
@@ -273,14 +423,8 @@ def relatorios():
         labels_tempo_resolucao, dados_tempo_resolucao = [], []
         if col_andamento and col_termino:
             df_res = df.copy()
-            df_res['_inicio'] = df_res.apply(
-                lambda r: _parse_datetime_maybe_time(r.get(col_andamento, ''), r.get('_ts', pd.NaT)),
-                axis=1
-            )
-            df_res['_termino'] = df_res.apply(
-                lambda r: _parse_datetime_maybe_time(r.get(col_termino, ''), r.get('_ts', pd.NaT)),
-                axis=1
-            )
+            df_res['_inicio'] = _parse_datetime_series_maybe_time(df_res[col_andamento], df_res['_ts'])
+            df_res['_termino'] = _parse_datetime_series_maybe_time(df_res[col_termino], df_res['_ts'])
             df_res['_delta_h'] = (df_res['_termino'] - df_res['_inicio']).dt.total_seconds() / 3600
             df_res = df_res.dropna(subset=['_ts', '_delta_h'])
             df_res = df_res[df_res['_delta_h'] > 0]
@@ -418,7 +562,7 @@ def get_or_create_centrais_worksheet(sheets_service):
         spreadsheet = sheets_service.client.open_by_key(sheets_service.sheet_id)
         try:
             worksheet = spreadsheet.worksheet(CENTRAIS_TAB)
-        except:
+        except Exception:
             # Aba não existe, cria
             worksheet = spreadsheet.add_worksheet(title=CENTRAIS_TAB, rows=100, cols=10)
             worksheet.append_row(['Número de Portas', 'Código de Série', 'Status', 'Obra Utilizada', 'Data Cadastro'])
@@ -433,8 +577,54 @@ def get_centrais_list(sheets_service):
     """Obtém lista de centrais."""
     try:
         worksheet = get_or_create_centrais_worksheet(sheets_service)
-        dados = worksheet.get_all_records()
-        return dados if dados else []
+        data = worksheet.get_all_values()
+        if len(data) < 2:
+            return []
+
+        headers = [str(h or '').strip() for h in data[0]]
+
+        def _norm(texto):
+            return (
+                str(texto or '')
+                .strip()
+                .lower()
+                .replace('á', 'a')
+                .replace('à', 'a')
+                .replace('â', 'a')
+                .replace('ã', 'a')
+                .replace('é', 'e')
+                .replace('ê', 'e')
+                .replace('í', 'i')
+                .replace('ó', 'o')
+                .replace('ô', 'o')
+                .replace('õ', 'o')
+                .replace('ú', 'u')
+                .replace('ç', 'c')
+            )
+
+        header_map = {_norm(h): i for i, h in enumerate(headers) if h}
+
+        def _get_val(row, *aliases):
+            for alias in aliases:
+                idx = header_map.get(_norm(alias))
+                if idx is not None and idx < len(row):
+                    return str(row[idx] or '').strip()
+            return ''
+
+        centrais_normalizadas = []
+        for linha in data[1:]:
+            if not any(str(c or '').strip() for c in linha):
+                continue
+
+            centrais_normalizadas.append({
+                'Número de Portas': _get_val(linha, 'Número de Portas', 'Numero de Portas', 'Portas'),
+                'Código de Série': _get_val(linha, 'Código de Série', 'Codigo de Serie', 'Codigo', 'Série'),
+                'Status': _get_val(linha, 'Status'),
+                'Obra Utilizada': _get_val(linha, 'Obra Utilizada', 'Obra'),
+                'Data Cadastro': _get_val(linha, 'Data Cadastro', 'Data de Cadastro', 'Cadastro', 'Data'),
+            })
+
+        return centrais_normalizadas
     except Exception as e:
         logger.warning(f"Erro ao obter centrais: {e}")
         return []
@@ -457,9 +647,8 @@ def atualizar_central(row_id):
         status = request.form.get('status', '')
         obra = request.form.get('obra', '')
         
-        # Atualiza células específicas (colunas C=Status, D=Obra)
-        worksheet.update_cell(row_num, 3, status)
-        worksheet.update_cell(row_num, 4, obra)
+        # Atualiza as duas colunas em uma única chamada.
+        worksheet.update(f'C{row_num}:D{row_num}', [[status, obra]])
         
         return jsonify({'success': True, 'message': 'Central atualizada!'})
     except Exception as e:
@@ -541,7 +730,7 @@ def get_or_create_ferramentas_worksheet(sheets_service):
             worksheet = spreadsheet.worksheet(FERRAMENTAS_TAB)
             headers = worksheet.row_values(1)
             if 'Responsável' not in headers:
-                worksheet.update_cell(1, 7, 'Responsável')
+                worksheet.update('G1', [['Responsável']])
         except Exception:
             worksheet = spreadsheet.add_worksheet(title=FERRAMENTAS_TAB, rows=500, cols=10)
             worksheet.append_row(['Nome', 'Patrocínio', 'Data de Cadastro',
@@ -611,10 +800,10 @@ def atualizar_ferramenta(row_id):
         old_status = dados_atuais[4] if len(dados_atuais) > 4 else ''
         old_observacao = dados_atuais[5] if len(dados_atuais) > 5 else ''
         old_responsavel = dados_atuais[6] if len(dados_atuais) > 6 else ''
-        worksheet.update_cell(row_num, 4, nova_manutencao)
-        worksheet.update_cell(row_num, 5, novo_status)
-        worksheet.update_cell(row_num, 6, nova_observacao)
-        worksheet.update_cell(row_num, 7, novo_responsavel)
+        worksheet.update(
+            f'D{row_num}:G{row_num}',
+            [[nova_manutencao, novo_status, nova_observacao, novo_responsavel]]
+        )
         changes = []
         if novo_responsavel != old_responsavel:
             changes.append(f"Responsável: {old_responsavel or '-'} → {novo_responsavel or '-'}")

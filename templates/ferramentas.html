@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Controle de Ferramentas</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='unified.css') }}">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -50,6 +51,15 @@
         .badge-indisponivel { background: #dc3545; }
 
         .btn-action { margin: 0 3px; padding: 5px 10px; font-size: 12px; }
+
+        .filtro-tools {
+            margin-bottom: 16px;
+        }
+
+        .filtro-tools .form-control,
+        .filtro-tools .form-select {
+            min-height: 42px;
+        }
     </style>
 </head>
 <body>
@@ -124,8 +134,35 @@
         <div class="table-card">
             <h3 class="mb-4">📋 Ferramentas Cadastradas</h3>
 
+            <div class="filtro-tools row g-2 align-items-center">
+                <div class="col-md-5">
+                    <input
+                        type="text"
+                        id="filtroFerramentas"
+                        class="form-control"
+                        placeholder="Filtrar por nome, patrocínio, responsável, status..."
+                    >
+                </div>
+                <div class="col-md-3">
+                    <select id="filtroStatusFerramenta" class="form-select">
+                        <option value="">Todos os status</option>
+                        <option value="Disponível">Disponível</option>
+                        <option value="Em Manutenção">Em Manutenção</option>
+                        <option value="Indisponível">Indisponível</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <select id="filtroResponsavelFerramenta" class="form-select">
+                        <option value="">Todos os responsáveis</option>
+                    </select>
+                </div>
+                <div class="col-md-1 d-grid">
+                    <button type="button" id="limparFiltrosFerramenta" class="btn btn-outline-secondary">Limpar</button>
+                </div>
+            </div>
+
             {% if ferramentas %}
-            <table class="table table-hover">
+            <table class="table table-hover" id="tabelaFerramentas">
                 <thead class="table-light">
                     <tr>
                         <th>#</th>
@@ -139,7 +176,7 @@
                         <th>Ações</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="corpoFerramentas">
                     {% for ferramenta in ferramentas %}
                     <tr>
                         <td>{{ loop.index }}</td>
@@ -286,6 +323,26 @@
             editModal = new bootstrap.Modal(document.getElementById('editModal'));
             historicoModal = new bootstrap.Modal(document.getElementById('historicoModal'));
 
+            const campoFiltro = document.getElementById('filtroFerramentas');
+            const filtroStatus = document.getElementById('filtroStatusFerramenta');
+            const filtroResponsavel = document.getElementById('filtroResponsavelFerramenta');
+            const botaoLimpar = document.getElementById('limparFiltrosFerramenta');
+
+            if (campoFiltro) {
+                campoFiltro.addEventListener('input', filtrarFerramentas);
+            }
+            if (filtroStatus) {
+                filtroStatus.addEventListener('change', filtrarFerramentas);
+            }
+            if (filtroResponsavel) {
+                filtroResponsavel.addEventListener('change', filtrarFerramentas);
+            }
+            if (botaoLimpar) {
+                botaoLimpar.addEventListener('click', limparFiltrosFerramentas);
+            }
+
+            preencherFiltroResponsavel();
+
             document.querySelectorAll('.js-edit-ferramenta').forEach(button => {
                 button.addEventListener('click', () => {
                     editarFerramenta(
@@ -306,6 +363,66 @@
                 button.addEventListener('click', () => deletarFerramenta(button.dataset.rowId));
             });
         });
+
+        function filtrarFerramentas() {
+            const campoFiltro = document.getElementById('filtroFerramentas');
+            const filtroStatus = document.getElementById('filtroStatusFerramenta');
+            const filtroResponsavel = document.getElementById('filtroResponsavelFerramenta');
+            const corpoTabela = document.getElementById('corpoFerramentas');
+            if (!campoFiltro || !corpoTabela) return;
+
+            const termo = campoFiltro.value.trim().toLowerCase();
+            const statusSelecionado = (filtroStatus?.value || '').trim().toLowerCase();
+            const responsavelSelecionado = (filtroResponsavel?.value || '').trim().toLowerCase();
+            const linhas = corpoTabela.querySelectorAll('tr');
+
+            linhas.forEach(linha => {
+                const textoLinha = linha.textContent.toLowerCase();
+                const colunas = linha.querySelectorAll('td');
+                const responsavelLinha = (colunas[3]?.textContent || '').trim().toLowerCase();
+                const statusLinha = (colunas[6]?.textContent || '').trim().toLowerCase();
+
+                const matchTexto = !termo || textoLinha.includes(termo);
+                const matchStatus = !statusSelecionado || statusLinha === statusSelecionado;
+                const matchResponsavel = !responsavelSelecionado || responsavelLinha === responsavelSelecionado;
+                const visivel = matchTexto && matchStatus && matchResponsavel;
+                linha.style.display = visivel ? '' : 'none';
+            });
+        }
+
+        function preencherFiltroResponsavel() {
+            const corpoTabela = document.getElementById('corpoFerramentas');
+            const filtroResponsavel = document.getElementById('filtroResponsavelFerramenta');
+            if (!corpoTabela || !filtroResponsavel) return;
+
+            const responsaveis = new Set();
+            corpoTabela.querySelectorAll('tr').forEach(linha => {
+                const colunas = linha.querySelectorAll('td');
+                const responsavel = (colunas[3]?.textContent || '').trim();
+                if (responsavel && responsavel !== '-') {
+                    responsaveis.add(responsavel);
+                }
+            });
+
+            Array.from(responsaveis).sort((a, b) => a.localeCompare(b, 'pt-BR')).forEach(nome => {
+                const option = document.createElement('option');
+                option.value = nome;
+                option.textContent = nome;
+                filtroResponsavel.appendChild(option);
+            });
+        }
+
+        function limparFiltrosFerramentas() {
+            const campoFiltro = document.getElementById('filtroFerramentas');
+            const filtroStatus = document.getElementById('filtroStatusFerramenta');
+            const filtroResponsavel = document.getElementById('filtroResponsavelFerramenta');
+
+            if (campoFiltro) campoFiltro.value = '';
+            if (filtroStatus) filtroStatus.value = '';
+            if (filtroResponsavel) filtroResponsavel.value = '';
+
+            filtrarFerramentas();
+        }
 
         const eventoClasses = {
             'Cadastro': 'badge bg-success',

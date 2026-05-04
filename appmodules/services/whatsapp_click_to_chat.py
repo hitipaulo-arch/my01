@@ -7,7 +7,7 @@ import webbrowser
 import logging
 from urllib.parse import quote
 from datetime import datetime
-
+from .whatsapp_utils import montar_mensagem_os
 logger = logging.getLogger(__name__)
 
 
@@ -74,9 +74,9 @@ class WhatsAppClickToChatService:
                 timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 
             # Formata mensagem com emojis
-            message = self._montar_mensagem(numero_pedido, solicitante, setor, 
-                                          prioridade, descricao, equipamento,
-                                          timestamp, info_adicional)
+            message = montar_mensagem_os(numero_pedido, solicitante, setor, 
+                                        prioridade, descricao, equipamento,
+                                        timestamp, info_adicional)
 
             # Gera link wa.me
             link = self.gerar_link_chat(self.phone_to, message)
@@ -104,45 +104,4 @@ class WhatsAppClickToChatService:
                 'error': str(e)
             }
 
-    def _montar_mensagem(self, numero_pedido: str, solicitante: str, setor: str,
-                        prioridade: str, descricao: str, equipamento: str,
-                        timestamp: str, info_adicional: str = None) -> str:
-        """Monta mensagem formatada com emojis"""
-        # Mapa de prioridades com emojis
-        emoji_priority = {
-            'urgente': '🚨',
-            'alta': '⚠️',
-            'média': '📋',
-            'baixa': '📝'
-        }
-        emoji = emoji_priority.get(prioridade.lower(), '📋')
 
-        message = (
-            f"{emoji} *NOVA OS #{numero_pedido}*\n"
-            f"📅 *Data/Hora:* {timestamp}\n"
-            f"👤 *Solicitante:* {solicitante}\n"
-            f"🏢 *Setor:* {setor}\n"
-            f"🔧 *Equipamento:* {equipamento}\n"
-            f"⚡ *Prioridade:* *{prioridade.upper()}*\n\n"
-            f"📝 *Descrição:*\n{descricao}"
-        )
-
-        if info_adicional:
-            message += f"\n\nℹ️ *Info:* {info_adicional}"
-
-        return message
-
-    def obter_info_dispositivo(self) -> dict:
-        """Retorna info do dispositivo/SO"""
-        return {
-            'os_name': os.name,
-            'platform': os.sys.platform if hasattr(os, 'sys') else 'unknown',
-            'python_version': os.sys.version if hasattr(os, 'sys') else 'unknown'
-        }
-
-    def _normalizar_numero(self, phone: str) -> str:
-        """Normaliza número de telefone para formato +55xxx"""
-        digits = ''.join(filter(str.isdigit, phone))
-        if not digits.startswith('55'):
-            return '+55' + digits
-        return '+55' + digits

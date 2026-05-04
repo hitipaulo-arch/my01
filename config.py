@@ -59,7 +59,7 @@ class ValidationConfig:
     MIN_PASSWORD_LENGTH: int = 6
     
     # OS
-    MIN_DESCRICAO_LENGTH: int = 10
+    MIN_DESCRICAO_LENGTH: int = 5
     PRIORIDADES_VALIDAS: List[str] = ['Baixa', 'Média', 'Alta', 'Urgente']
     STATUS_VALIDOS: List[str] = ['Aberto', 'Em Andamento', 'Concluído', 'Cancelado']
 

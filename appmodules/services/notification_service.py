@@ -5,6 +5,8 @@ import logging
 import smtplib
 import json
 import requests
+import re
+from concurrent.futures import ThreadPoolExecutor
 from email.message import EmailMessage
 from typing import Optional
 
@@ -16,6 +18,58 @@ logger = logging.getLogger(__name__)
 
 class NotificationService:
     """Gerencia notificações via email e WhatsApp."""
+
+    _executor = ThreadPoolExecutor(max_workers=int(os.getenv('NOTIFICATION_MAX_WORKERS', '4')))
+
+    @staticmethod
+    def _run_async(task_name: str, target, *args, **kwargs) -> bool:
+        """Executa uma tarefa em background para não bloquear a resposta HTTP."""
+        async_enabled = os.getenv('NOTIFICATION_ASYNC_ENABLED', 'true').strip().lower() in ('1', 'true', 'yes', 'on')
+
+        if not async_enabled:
+            try:
+                target(*args, **kwargs)
+                return True
+            except Exception as e:
+                logger.error("Erro ao executar tarefa síncrona %s: %s", task_name, e)
+                return False
+
+        def _runner():
+            try:
+                target(*args, **kwargs)
+            except Exception as e:
+                logger.error("Erro em tarefa assíncrona %s: %s", task_name, e)
+
+        try:
+            NotificationService._executor.submit(_runner)
+            return True
+        except Exception as e:
+            logger.error("Falha ao enfileirar tarefa assíncrona %s: %s", task_name, e)
+            return False
+
+    @staticmethod
+    def _normalizar_destino_whatsapp(numero: str) -> Optional[str]:
+        """Normaliza número para formato com DDI 55 para uso em integrações WhatsApp."""
+        if not numero:
+            return None
+
+        raw = str(numero).strip()
+        if raw.lower().startswith('whatsapp:'):
+            sufixo = raw.split(':', 1)[1].strip()
+            digitos = re.sub(r'\D', '', sufixo)
+            if len(digitos) < 10:
+                return None
+            if not digitos.startswith('55'):
+                digitos = f"55{digitos}"
+            return digitos
+
+        digitos = re.sub(r'\D', '', raw)
+        if len(digitos) < 10:
+            return None
+        if not digitos.startswith('55'):
+            digitos = f"55{digitos}"
+
+        return digitos
     
     @staticmethod
     def enviar_email(
@@ -100,139 +154,7 @@ class NotificationService:
             logger.error(f"Falha ao enviar email (OS #{numero_pedido}): {e}")
             return False
     
-    @staticmethod
-    def enviar_whatsapp(
-        numero_pedido: str,
-        solicitante: str,
-        setor: str,
-        prioridade: str,
-        descricao: str,
-        equipamento: str,
-        timestamp: str,
-        info_adicional: str = ''
-    ) -> bool:
-        """Envia notificação por WhatsApp via Twilio."""
-        
-        enabled = os.getenv('WHATSAPP_ENABLED', 'false').strip().lower() in ('1', 'true', 'yes', 'on')
-        if not enabled:
-            return False
-        
-        account_sid = os.getenv('TWILIO_ACCOUNT_SID', '').strip()
-        auth_token = os.getenv('TWILIO_AUTH_TOKEN', '').strip()
-        from_number = os.getenv('TWILIO_WHATSAPP_FROM', '').strip()
-        to_raw = os.getenv('TWILIO_WHATSAPP_TO', '').strip()
-        
-        if not all([account_sid, auth_token, from_number, to_raw]):
-            logger.warning("WhatsApp habilitado, mas credenciais Twilio não configuradas")
-            return False
-        
-        recipients = [n.strip() for n in to_raw.split(',') if n.strip()]
-        if not recipients:
-            logger.warning("WhatsApp habilitado, mas TWILIO_WHATSAPP_TO está vazio")
-            return False
-        
-        emoji_priority = {
-            'Urgente': '🚨',
-            'Alta': '⚠️',
-            'Média': '📋',
-            'Baixa': '📝'
-        }
-        emoji = emoji_priority.get(prioridade, '📋')
-        
-        message_lines = [
-            f"{emoji} *Nova OS #{numero_pedido}*",
-            f"Prioridade: *{prioridade}*",
-            "",
-            f"📅 {timestamp}",
-            f"👤 {solicitante}",
-            f"🏢 {setor}",
-            f"🔧 {equipamento}",
-            "",
-            "📝 Descrição:",
-            (descricao or "").strip()[:200] + ("..." if len(descricao or "") > 200 else "")
-        ]
-        if info_adicional and info_adicional.strip():
-            message_lines += ["", "ℹ️ Info adicional:", info_adicional.strip()[:100]]
-        
-        message_body = '\n'.join(message_lines)
-        
-        url = f"https://api.twilio.com/2010-04-01/Accounts/{account_sid}/Messages.json"
-        timeout = float(os.getenv('TWILIO_TIMEOUT_SECONDS', '10'))
-        content_sid = os.getenv('TWILIO_CONTENT_SID', '').strip()
-        content_vars_json = os.getenv('TWILIO_CONTENT_VARIABLES_JSON', '').strip()
-        content_map = os.getenv('TWILIO_CONTENT_MAP', '').strip()
-        
-        success_count = 0
-        for recipient in recipients:
-            try:
-                payload = {
-                    'From': from_number,
-                    'To': recipient,
-                }
-                
-                if content_sid:
-                    payload['ContentSid'] = content_sid
-                    auto_vars = None
-                    if not content_vars_json:
-                        try:
-                            field_values = {
-                                'numero_pedido': str(numero_pedido or ''),
-                                'timestamp': str(timestamp or ''),
-                                'solicitante': str(solicitante or ''),
-                                'setor': str(setor or ''),
-                                'equipamento': str(equipamento or ''),
-                                'prioridade': str(prioridade or ''),
-                                'descricao': (str(descricao or '')[:200] + ("..." if len(str(descricao or '')) > 200 else '')),
-                                'info': (info_adicional.strip()[:100] if info_adicional and info_adicional.strip() else '')
-                            }
-                            
-                            auto_vars = {}
-                            if content_map:
-                                pairs = [p.strip() for p in content_map.split(',') if p.strip()]
-                                for pair in pairs:
-                                    try:
-                                        key, field = [x.strip() for x in pair.split('=', 1)]
-                                        if key and field and field in field_values:
-                                            auto_vars[str(key)] = field_values[field]
-                                    except Exception:
-                                        continue
-                            else:
-                                auto_vars = {
-                                    "1": field_values['numero_pedido'],
-                                    "2": field_values['timestamp'],
-                                    "3": field_values['solicitante'],
-                                    "4": field_values['setor'],
-                                    "5": field_values['equipamento'],
-                                    "6": field_values['prioridade'],
-                                    "7": field_values['descricao']
-                                }
-                                if field_values['info']:
-                                    auto_vars["8"] = field_values['info']
-                            
-                            if auto_vars:
-                                content_vars_json = json.dumps(auto_vars, ensure_ascii=False)
-                        except Exception as e:
-                            logger.error(f"Falha ao montar ContentVariables: {e}")
-                            content_vars_json = None
-                    
-                    if content_vars_json:
-                        payload['ContentVariables'] = content_vars_json
-                    else:
-                        payload['Body'] = message_body
-                else:
-                    payload['Body'] = message_body
-                
-                response = requests.post(url, auth=(account_sid, auth_token), 
-                                       data=payload, timeout=timeout)
-                if response.status_code in (200, 201):
-                    logger.info(f"WhatsApp enviado para {recipient} (OS #{numero_pedido})")
-                    success_count += 1
-                else:
-                    logger.error(f"Falha WhatsApp para {recipient}: {response.status_code}")
-            except Exception as e:
-                logger.error(f"Erro ao enviar WhatsApp para {recipient}: {e}")
-        
-        return success_count > 0
+
     
     @staticmethod
     def notificar_nova_os(
@@ -249,7 +171,6 @@ class NotificationService:
         
         resultados = {
             'email': False,
-            'whatsapp_twilio': False,
             'whatsapp_web': False,
             'whatsapp_click_to_chat': False
         }
@@ -262,14 +183,7 @@ class NotificationService:
         except Exception as e:
             logger.error(f"Erro ao notificar email: {e}")
         
-        try:
-            resultados['whatsapp_twilio'] = NotificationService.enviar_whatsapp(
-                numero_pedido, solicitante, setor, prioridade,
-                descricao, equipamento, timestamp, info_adicional
-            )
-        except Exception as e:
-            logger.error(f"Erro ao notificar whatsapp (Twilio): {e}")
-        
+
         # WhatsApp Web Automático
         try:
             service_web = WhatsAppWebNotificationService()
@@ -293,3 +207,100 @@ class NotificationService:
             logger.error(f"Erro ao notificar whatsapp (Click-to-Chat): {e}")
         
         return resultados
+
+    @staticmethod
+    def enqueue_notificar_nova_os(
+        numero_pedido: str,
+        solicitante: str,
+        setor: str,
+        prioridade: str,
+        descricao: str,
+        equipamento: str,
+        timestamp: str,
+        info_adicional: str = ''
+    ) -> bool:
+        """Agenda envio de notificações de nova OS sem bloquear a requisição."""
+        return NotificationService._run_async(
+            'notificar_nova_os',
+            NotificationService.notificar_nova_os,
+            numero_pedido,
+            solicitante,
+            setor,
+            prioridade,
+            descricao,
+            equipamento,
+            timestamp,
+            info_adicional,
+        )
+
+    @staticmethod
+    def notificar_finalizacao_os(
+        numero_pedido: str,
+        solicitante: str,
+        whatsapp_solicitante: str,
+        servico_realizado: str = '',
+        status_os: str = 'Finalizada'
+    ) -> bool:
+        """Envia WhatsApp para o solicitante quando a OS é finalizada usando WhatsApp Web no PC."""
+        enabled = os.getenv('WHATSAPP_WEB_ENABLED', 'true').strip().lower() in ('1', 'true', 'yes', 'on')
+        if not enabled:
+            logger.warning("Notificação de finalização desativada: WHATSAPP_WEB_ENABLED=false (OS #%s)", numero_pedido)
+            return False
+
+        to_number = NotificationService._normalizar_destino_whatsapp(whatsapp_solicitante)
+        if not to_number:
+            logger.warning("Número de WhatsApp do solicitante inválido para OS #%s", numero_pedido)
+            return False
+
+        mensagem = f"Sua OS #{numero_pedido} já está terminada, agradecemos seu contato!!"
+        logger.info("Iniciando notificação de finalização da OS #%s para %s", numero_pedido, to_number)
+
+        try:
+            service_web = WhatsAppWebNotificationService(phone_to=to_number)
+            result_web = service_web.enviar_mensagem_direta(phone_to=to_number, message=mensagem)
+            if result_web.get('success', False):
+                logger.info("WhatsApp de finalização enviado via WhatsApp Web para %s (OS #%s)", to_number, numero_pedido)
+                return True
+
+            logger.warning(
+                "Falha no envio direto via WhatsApp Web (OS #%s, destino=%s): %s",
+                numero_pedido,
+                to_number,
+                result_web.get('error') or result_web.get('message') or 'erro não informado'
+            )
+
+            service_chat = WhatsAppClickToChatService(phone_to=to_number)
+            result_chat = service_chat.gerar_link_chat(to_number, mensagem)
+            opened = service_chat.abrir_whatsapp(result_chat)
+            if opened:
+                logger.info("Fallback click-to-chat aberto para %s (OS #%s, link=%s)", to_number, numero_pedido, result_chat)
+                return True
+
+            logger.error(
+                "Falha no envio de finalização via WhatsApp Web e fallback click-to-chat (OS #%s, destino=%s)",
+                numero_pedido,
+                to_number
+            )
+            return False
+        except Exception as e:
+            logger.error("Erro ao enviar WhatsApp de finalização (OS #%s): %s", numero_pedido, e)
+            return False
+
+    @staticmethod
+    def enqueue_notificar_finalizacao_os(
+        numero_pedido: str,
+        solicitante: str,
+        whatsapp_solicitante: str,
+        servico_realizado: str = '',
+        status_os: str = 'Finalizada'
+    ) -> bool:
+        """Agenda notificação de finalização sem bloquear a atualização da OS."""
+        return NotificationService._run_async(
+            'notificar_finalizacao_os',
+            NotificationService.notificar_finalizacao_os,
+            numero_pedido,
+            solicitante,
+            whatsapp_solicitante,
+            servico_realizado,
+            status_os,
+        )

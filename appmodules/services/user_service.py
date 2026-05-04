@@ -17,6 +17,7 @@ class UserService:
         """Inicializa serviço de usuários."""
         self.sheets_service = sheets_service
         self._usuarios_cache: Dict[str, Usuario] = {}
+        self.last_error: Optional[str] = None
         self._load_usuarios()
     
     def _load_usuarios(self) -> None:
@@ -61,12 +62,25 @@ class UserService:
 
     def _load_local_fallback_user(self) -> None:
         """Cria usuário admin local para ambiente de desenvolvimento."""
-        if os.getenv('DISABLE_LOCAL_ADMIN_FALLBACK', 'false').lower() == 'true':
+        # Exigir configuração explícita para permitir fallback (nunca usar padrões inseguros)
+        if os.getenv('ALLOW_LOCAL_ADMIN_FALLBACK', 'false').lower() != 'true':
+            logger.critical(
+                "Google Sheets indisponível e ALLOW_LOCAL_ADMIN_FALLBACK não configurado. "
+                "Nenhum usuário local será criado. Configure variáveis de ambiente explicitamente em produção."
+            )
             return
 
-        username = os.getenv('LOCAL_ADMIN_USER', 'admin').strip()
-        password = os.getenv('LOCAL_ADMIN_PASSWORD', 'admin123').strip()
+        # Se permitido, EXIGIR credenciais via variáveis de ambiente (sem defaults inseguros)
+        username = os.getenv('LOCAL_ADMIN_USER', '').strip()
+        password = os.getenv('LOCAL_ADMIN_PASSWORD', '').strip()
         role = os.getenv('LOCAL_ADMIN_ROLE', 'admin').strip() or 'admin'
+        
+        if not username or not password:
+            logger.critical(
+                "LOCAL_ADMIN_USER ou LOCAL_ADMIN_PASSWORD não definidos. "
+                "Fallback local exigido mas credenciais faltando."
+            )
+            return
 
         if not username or not password:
             return
@@ -93,28 +107,39 @@ class UserService:
             role = str(role or Role.ADMIN.value).strip().lower()
             if role not in {r.value for r in Role}:
                 logger.warning("Role inválida ao criar usuário: %s", role)
+                self.last_error = "Role inválida"
                 return False
 
             if not self.sheets_service:
                 logger.error("Sheets service indisponível; não é possível criar usuário")
+                self.last_error = "Sheets service indisponível"
                 return False
 
             if username in self._usuarios_cache:
                 logger.warning(f"Usuário {username} já existe")
+                self.last_error = f"Usuário {username} já existe"
                 return False
             
             usuario = Usuario.criar(username, senha, role)
             
             # Salva no Sheets
             if not self.sheets_service.add_usuario(username, usuario.senha_hash, role):
-                logger.error(f"Falha ao salvar usuário {username} no Sheets")
+                erro_sheets = getattr(self.sheets_service, 'usuarios_error', None)
+                if erro_sheets:
+                    self.last_error = erro_sheets
+                    logger.error(f"Falha ao salvar usuário {username} no Sheets: {erro_sheets}")
+                else:
+                    self.last_error = "Falha ao salvar usuário no Sheets"
+                    logger.error(f"Falha ao salvar usuário {username} no Sheets")
                 return False
             
             # Salva em cache
             self._usuarios_cache[username] = usuario
+            self.last_error = None
             logger.info(f"Usuário {username} criado com sucesso")
             return True
         except Exception as e:
+            self.last_error = str(e)
             logger.error(f"Erro ao criar usuário: {e}")
             return False
     
