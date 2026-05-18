@@ -30,6 +30,8 @@ instance/
 # Environment variables
 .env
 .env.local
+# Local env file (contains secrets) - IGNORE
+.env
 
 # Credentials (IMPORTANTE: nunca commitar credenciais!)
 credentials.json

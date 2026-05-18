@@ -19,6 +19,7 @@
   <div class="container">
     {% include '_top_nav.html' %}
 
+
     <div class="card">
       <h1>👥 Gerenciar Usuários</h1>
       {% if mensagem %}
@@ -62,6 +63,7 @@
             <tr>
               <th>👤 Username</th>
               <th>🔑 Role</th>
+              <th>📅 Data Cadastro</th>
               <th>⚙️ Ações</th>
             </tr>
           </thead>
@@ -78,6 +80,7 @@
                   {{ dados.role if dados.role else 'admin' }}
                 </span>
               </td>
+              <td>{{ dados.data_cadastro or '' }}</td>
               <td>
                 <form method="POST" style="display:inline;">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>

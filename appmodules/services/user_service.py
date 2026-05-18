@@ -45,10 +45,13 @@ class UserService:
                         senha = Usuario.criar(username, senha, role).senha_hash
                         if not self.sheets_service.update_usuario(i, username, senha, role):
                             logger.warning("Falha ao migrar senha legada do usuário %s", username)
+                    # Tenta ler coluna de data de cadastro se existir (compatibilidade com planilhas antigas)
+                    data_cadastro = str(record.get('Data de Cadastro') or record.get('DataCadastro') or record.get('Data') or '').strip()
                     self._usuarios_cache[username] = Usuario(
                         username=username,
                         senha_hash=senha,
-                        role=role
+                        role=role,
+                        data_cadastro=data_cadastro
                     )
             
             if not self._usuarios_cache:
@@ -95,7 +98,14 @@ class UserService:
     
     def get_usuario(self, username: str) -> Optional[Usuario]:
         """Obtém um usuário pelo username."""
-        return self._usuarios_cache.get(username)
+        username_normalizado = str(username or '').strip().lower()
+        if not username_normalizado:
+            return None
+
+        for usuario in self._usuarios_cache.values():
+            if str(usuario.username or '').strip().lower() == username_normalizado:
+                return usuario
+        return None
     
     def get_todos_usuarios(self) -> List[Usuario]:
         """Obtém todos os usuários."""
@@ -104,6 +114,7 @@ class UserService:
     def criar_usuario(self, username: str, senha: str, role: str = 'admin') -> bool:
         """Cria novo usuário."""
         try:
+            username = str(username or '').strip()
             role = str(role or Role.ADMIN.value).strip().lower()
             if role not in {r.value for r in Role}:
                 logger.warning("Role inválida ao criar usuário: %s", role)
@@ -115,7 +126,7 @@ class UserService:
                 self.last_error = "Sheets service indisponível"
                 return False
 
-            if username in self._usuarios_cache:
+            if self.get_usuario(username):
                 logger.warning(f"Usuário {username} já existe")
                 self.last_error = f"Usuário {username} já existe"
                 return False
@@ -151,7 +162,7 @@ class UserService:
                 logger.error("Sheets service indisponível; não é possível atualizar usuário")
                 return False
             
-            usuario = self._usuarios_cache.get(username)
+            usuario = self.get_usuario(username)
             if not usuario:
                 logger.warning(f"Usuário {username} não encontrado")
                 return False
@@ -168,7 +179,7 @@ class UserService:
             # Atualiza no Sheets (busca por row_id)
             records = self.sheets_service.get_usuarios_raw()
             for i, record in enumerate(records, start=2):
-                if str(record.get('Username', '')).strip() == username:
+                if str(record.get('Username', '')).strip().lower() == str(username or '').strip().lower():
                     if not self.sheets_service.update_usuario(i, username, usuario.senha_hash, usuario.role):
                         logger.error(f"Falha ao atualizar usuário {username} no Sheets")
                         return False
@@ -187,17 +198,18 @@ class UserService:
                 logger.error("Sheets service indisponível; não é possível deletar usuário")
                 return False
 
-            if username not in self._usuarios_cache:
+            usuario = self.get_usuario(username)
+            if not usuario:
                 logger.warning(f"Usuário {username} não encontrado")
                 return False
             
             # Deleta do Sheets
-            if not self.sheets_service.delete_usuario(username):
+            if not self.sheets_service.delete_usuario(usuario.username):
                 logger.error(f"Falha ao deletar usuário {username} do Sheets")
                 return False
             
             # Remove do cache
-            del self._usuarios_cache[username]
+            self._usuarios_cache.pop(usuario.username, None)
             logger.info(f"Usuário {username} deletado")
             return True
         except Exception as e:

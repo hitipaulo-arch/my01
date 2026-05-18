@@ -16,6 +16,20 @@ logger = logging.getLogger(__name__)
 class SheetsService:
     """Gerencia conexão e operações com Google Sheets."""
     WHATSAPP_HEADER = 'WhatsApp do solicitante'
+    PRODUCAO_HEADERS = [
+        'ID',
+        'Carimbo de data/hora',
+        'Nome do item',
+        'Código',
+        'Número do projeto MTC',
+        'Quantidade produzida',
+        'Meta de produção',
+        'Status',
+        'Observação',
+        'Responsável',
+        'Informações adicionais',
+        'Origem',
+    ]
     
     SCOPES = [
         'https://www.googleapis.com/auth/spreadsheets',
@@ -23,21 +37,26 @@ class SheetsService:
     ]
     
     def __init__(self, creds_file: str, sheet_id: str, sheet_tab: str, 
-                 horario_tab: str, usuarios_tab: str):
+                 horario_tab: str, usuarios_tab: str, producao_tab: str):
         """Inicializa o serviço de Sheets."""
         self.sheet_id = sheet_id
         self.sheet_tab = sheet_tab
         self.horario_tab = horario_tab
         self.usuarios_tab = usuarios_tab
+        self.producao_tab = producao_tab
         self.client = None
         self.sheet = None
         self.sheet_horario = None
         self.sheet_usuarios = None
+        self.sheet_producao = None
         self.error = None
         self.usuarios_error = None
         self._os_cache: List[dict] = []
         self._os_cache_expires_at = 0.0
         self._os_cache_ttl_seconds = max(5, int(os.getenv('OS_CACHE_TTL_SECONDS', '120')))
+        self._producao_cache: List[dict] = []
+        self._producao_cache_expires_at = 0.0
+        self._producao_cache_ttl_seconds = max(5, int(os.getenv('PRODUCAO_CACHE_TTL_SECONDS', '30')))
         
         self._init_connection(creds_file)
     
@@ -84,12 +103,27 @@ class SheetsService:
             except Exception:
                 try:
                     self.sheet_usuarios = spreadsheet.add_worksheet(title=self.usuarios_tab, rows=1000, cols=10)
-                    self.sheet_usuarios.append_row(['Username', 'Senha', 'Role'])
+                    self.sheet_usuarios.append_row(['Username', 'Senha', 'Role', 'Data de Cadastro'])
                     logger.info(f"Aba '{self.usuarios_tab}' criada")
                 except Exception as e:
                     self.sheet_usuarios = None
                     self.usuarios_error = str(e)
                     logger.warning(f"Não foi possível inicializar a aba '{self.usuarios_tab}': {e}")
+
+                # Conecta à aba de produção
+                try:
+                    self.sheet_producao = spreadsheet.worksheet(self.producao_tab)
+                    logger.info(f"Conectado à aba '{self.producao_tab}'")
+                except Exception:
+                    try:
+                        self.sheet_producao = spreadsheet.add_worksheet(title=self.producao_tab, rows=2000, cols=20)
+                        self.sheet_producao.append_row(self.PRODUCAO_HEADERS)
+                        logger.info(f"Aba '{self.producao_tab}' criada com cabeçalho")
+                    except Exception as e:
+                        self.sheet_producao = None
+                        logger.warning(f"Não foi possível inicializar a aba '{self.producao_tab}': {e}")
+                else:
+                    self._ensure_producao_headers()
         
         except FileNotFoundError:
             logger.error("Arquivo 'credentials.json' não encontrado")
@@ -160,8 +194,15 @@ class SheetsService:
                 self.sheet_usuarios = spreadsheet.worksheet(self.usuarios_tab)
             except Exception:
                 self.sheet_usuarios = spreadsheet.add_worksheet(title=self.usuarios_tab, rows=1000, cols=10)
-                self.sheet_usuarios.append_row(['Username', 'Senha', 'Role'])
+                self.sheet_usuarios.append_row(['Username', 'Senha', 'Role', 'Data de Cadastro'])
             self.usuarios_error = None
+            # Garantir coluna extra 'Data de Cadastro' caso aba exista sem ela
+            try:
+                headers = self.sheet_usuarios.row_values(1)
+                if 'Data de Cadastro' not in headers:
+                    self.sheet_usuarios.update_cell(1, len(headers) + 1, 'Data de Cadastro')
+            except Exception:
+                pass
             return True
         except Exception as e:
             self.usuarios_error = str(e)
@@ -176,6 +217,11 @@ class SheetsService:
         """Invalida cache local de OS após qualquer mutação."""
         self._os_cache = []
         self._os_cache_expires_at = 0.0
+
+    def _invalidate_producao_cache(self) -> None:
+        """Invalida cache local de produção após qualquer mutação."""
+        self._producao_cache = []
+        self._producao_cache_expires_at = 0.0
 
     @staticmethod
     def _normalize_headers(headers: List[Any]) -> List[str]:
@@ -262,6 +308,177 @@ class SheetsService:
         except Exception as e:
             logger.error(f"Erro ao adicionar OS: {e}")
             return False
+
+    def _ensure_producao_sheet(self) -> bool:
+        """Garante que a aba de produção esteja disponível."""
+        if self.sheet_producao:
+            self._ensure_producao_headers()
+            return True
+
+        if not self.client:
+            return False
+
+        try:
+            spreadsheet = self.client.open_by_key(self.sheet_id)
+            try:
+                self.sheet_producao = spreadsheet.worksheet(self.producao_tab)
+                self._ensure_producao_headers()
+            except Exception:
+                self.sheet_producao = spreadsheet.add_worksheet(title=self.producao_tab, rows=2000, cols=20)
+                self.sheet_producao.append_row(self.PRODUCAO_HEADERS)
+            return True
+        except Exception as e:
+            logger.error(f"Erro ao garantir aba de produção '{self.producao_tab}': {e}")
+            return False
+
+    def _ensure_producao_headers(self) -> None:
+        """Garante que a aba de produção tenha todos os cabeçalhos necessários."""
+        try:
+            if not self.sheet_producao:
+                return
+
+            headers = self.sheet_producao.row_values(1)
+            if 'Origem' not in headers:
+                self.sheet_producao.update_cell(1, len(headers) + 1, 'Origem')
+        except Exception as e:
+            logger.warning(f"Não foi possível garantir cabeçalhos de produção: {e}")
+
+    @staticmethod
+    def _normalize_producao_headers(headers: List[Any]) -> List[str]:
+        """Normaliza cabeçalhos da aba de produção."""
+        normalized = []
+        for idx, header in enumerate(headers):
+            header_text = str(header or '').strip()
+            if idx == 0 and header_text in ('', '/'):
+                header_text = 'ID'
+            normalized.append(header_text)
+        return normalized
+
+    def _build_producao_list_from_values(self, data: List[List[str]]) -> List[dict]:
+        """Converte matriz da planilha em lista de itens de produção."""
+        if len(data) < 2:
+            return []
+
+        normalized_headers = self._normalize_producao_headers(data[0])
+        itens = []
+
+        for i, row in enumerate(data[1:], start=2):
+            if not any(row):
+                continue
+
+            full_row = row + [''] * (len(normalized_headers) - len(row))
+            item = dict(zip(normalized_headers, full_row))
+            item['row_id'] = i
+            itens.append(item)
+
+        return itens
+
+    def add_producao(self, row_data: list) -> bool:
+        """Adiciona um novo item de produção."""
+        try:
+            if not self._ensure_producao_sheet():
+                return False
+
+            self.sheet_producao.append_row(
+                row_data,
+                value_input_option='USER_ENTERED',
+                insert_data_option='INSERT_ROWS'
+            )
+            self._invalidate_producao_cache()
+            logger.info(f"Novo item de produção adicionado (ID: {row_data[0]})")
+            return True
+        except Exception as e:
+            logger.error(f"Erro ao adicionar item de produção: {e}")
+            return False
+
+    def get_all_producao(self, use_cache: bool = True, force_refresh: bool = False) -> List[dict]:
+        """Obtém todos os itens de produção."""
+        try:
+            if not self._ensure_producao_sheet():
+                return []
+
+            now = time.time()
+            if use_cache and not force_refresh and self._producao_cache and now < self._producao_cache_expires_at:
+                return list(self._producao_cache)
+
+            data = self.sheet_producao.get_all_values()
+            producao_list = self._build_producao_list_from_values(data)
+            self._producao_cache = producao_list
+            self._producao_cache_expires_at = now + self._producao_cache_ttl_seconds
+            return producao_list
+        except Exception as e:
+            logger.error(f"Erro ao obter produção: {e}")
+            return []
+
+    def get_producao_by_row_id(self, row_id: int) -> Optional[dict]:
+        """Obtém um item de produção específico pela linha da planilha."""
+        try:
+            if not self._ensure_producao_sheet() or row_id < 2:
+                return None
+
+            headers = self._normalize_producao_headers(self.sheet_producao.row_values(1))
+            row_data = self.sheet_producao.row_values(row_id)
+            if not row_data or not any(str(v).strip() for v in row_data):
+                return None
+
+            full_row = row_data + [''] * (len(headers) - len(row_data))
+            item = dict(zip(headers, full_row))
+            item['row_id'] = row_id
+            return item
+        except Exception as e:
+            logger.error(f"Erro ao obter item de produção por row_id: {e}")
+            return None
+
+    def update_producao(self, row_id: int, row_data: list) -> bool:
+        """Atualiza um item de produção."""
+        try:
+            if not self._ensure_producao_sheet():
+                return False
+
+            ultima_coluna = chr(ord('A') + len(row_data) - 1)
+            self.sheet_producao.update(f'A{row_id}:{ultima_coluna}{row_id}', [row_data])
+            self._invalidate_producao_cache()
+            logger.info(f"Item de produção (linha {row_id}) atualizado")
+            return True
+        except Exception as e:
+            logger.error(f"Erro ao atualizar item de produção: {e}")
+            return False
+
+    def marcar_origem_padrao_producao(self, origem_padrao: str = 'produção') -> int:
+        """Marca registros antigos sem origem explícita com uma origem padrão.
+
+        Retorna a quantidade de linhas atualizadas.
+        """
+        try:
+            if not self._ensure_producao_sheet():
+                return 0
+
+            headers = self.sheet_producao.row_values(1)
+            if 'Origem' not in headers:
+                self.sheet_producao.update_cell(1, len(headers) + 1, 'Origem')
+                headers = self.sheet_producao.row_values(1)
+
+            origem_col = headers.index('Origem') + 1
+            rows = self.sheet_producao.get_all_values()
+            total_atualizadas = 0
+
+            for row_num, row in enumerate(rows[1:], start=2):
+                origem_atual = ''
+                if len(row) >= origem_col:
+                    origem_atual = str(row[origem_col - 1] or '').strip()
+
+                if origem_atual:
+                    continue
+
+                self.sheet_producao.update_cell(row_num, origem_col, origem_padrao)
+                total_atualizadas += 1
+
+            self._invalidate_producao_cache()
+            logger.info("Migração de origem concluída: %s linhas atualizadas", total_atualizadas)
+            return total_atualizadas
+        except Exception as e:
+            logger.error(f"Erro ao marcar origem padrão em produção: {e}")
+            return 0
     
     def get_all_os(self, use_cache: bool = True, force_refresh: bool = False) -> List[dict]:
         """Obtém todas as OS (exceto canceladas)."""
@@ -411,8 +628,8 @@ class SheetsService:
         try:
             if not self._ensure_usuarios_sheet():
                 return False
-            
-            self.sheet_usuarios.update(f'A{row_id}:C{row_id}', [[username, senha, role]])
+            # Atualiza Username, Senha, Role e preserva/insere Data de Cadastro como vazia
+            self.sheet_usuarios.update(f'A{row_id}:D{row_id}', [[username, senha, role, '']])
             logger.info(f"Usuário {username} atualizado")
             return True
         except Exception as e:
@@ -424,8 +641,8 @@ class SheetsService:
         try:
             if not self._ensure_usuarios_sheet():
                 return False
-            
-            self.sheet_usuarios.append_row([username, senha, role])
+            ts = datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+            self.sheet_usuarios.append_row([username, senha, role, ts])
             logger.info(f"Novo usuário {username} adicionado")
             return True
         except Exception as e:

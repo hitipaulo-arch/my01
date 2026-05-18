@@ -21,33 +21,51 @@
 <div class="top-nav">
   <div class="user-info">
     👤 {{ session.usuario }}
-    {% if session.role == 'admin' %}
+    {% set _role = (session.role|string).lower() %}
+    {% if 'admin' in _role %}
     <span class="badge bg-danger ms-2">Admin</span>
+    {% elif 'operador' in _role %}
+    <span class="badge bg-warning text-dark ms-2">Operador</span>
+    {% elif 'visualizador' in _role %}
+    <span class="badge bg-info text-dark ms-2">Visualizador</span>
     {% endif %}
   </div>
   <div>
-    {% if session.role == 'admin' %}
-    <a href="/" class="btn btn-sm btn-outline-success me-2">📝 Nova OS</a>
-    <a href="/upload-documento" class="btn btn-sm btn-outline-secondary me-2">📎 Enviar Arquivo</a>
-    <a href="/gerenciar" class="btn btn-sm btn-outline-primary me-2">📋 Gerenciar</a>
-    <a href="/os-abertas" class="btn btn-sm btn-outline-info me-2">🟢 OS Abertas</a>
-    <a href="/centrais" class="btn btn-sm btn-outline-primary me-2">📡 Centrais</a>
-    <a href="/ferramentas" class="btn btn-sm btn-outline-primary me-2">🔧 Ferramentas</a>
-    <a href="/relatorios" class="btn btn-sm btn-outline-primary me-2">📈 Relatórios</a>
-    <a href="/usuarios" class="btn btn-sm btn-outline-primary me-2">👥 Usuários</a>
+    {% set _role = (session.role|string).lower() %}
+    {% if 'admin' in _role %}
+    <a href="{{ url_for('os.homepage') }}" class="btn btn-sm btn-outline-success me-2">📝 Nova OS</a>
+    <a href="{{ url_for('os.upload_documento') }}" class="btn btn-sm btn-outline-secondary me-2">📎 Enviar Arquivo</a>
+    <a href="{{ url_for('os.gerenciar') }}" class="btn btn-sm btn-outline-primary me-2">📋 Gerenciar</a>
+    <a href="{{ url_for('os.os_abertas') }}" class="btn btn-sm btn-outline-info me-2">🟢 OS Abertas</a>
+    <a href="{{ url_for('centrais') }}" class="btn btn-sm btn-outline-primary me-2">📡 Centrais</a>
+    <a href="{{ url_for('ferramentas') }}" class="btn btn-sm btn-outline-primary me-2">🔧 Ferramentas</a>
+    <a href="{{ url_for('producao') }}" class="btn btn-sm btn-outline-success me-2">🏭 Produção</a>
+    <a href="{{ url_for('dashboard_producao') }}" class="btn btn-sm btn-outline-dark me-2">📊 Dashboard</a>
+    <a href="{{ url_for('itens') }}" class="btn btn-sm btn-outline-warning me-2">📦 Itens</a>
+    <a href="{{ url_for('relatorios') }}" class="btn btn-sm btn-outline-primary me-2">📈 Relatórios</a>
+    <!-- Botão NVIDIA removido após reversão -->
+    <a href="{{ url_for('usuarios_admin') }}" class="btn btn-sm btn-outline-primary me-2">👥 Usuários</a>
+    {% elif 'operador' in _role or 'visualizador' in _role %}
+    <a href="{{ url_for('os.homepage') }}" class="btn btn-sm btn-outline-success me-2">📝 Nova OS</a>
+    <a href="{{ url_for('os.upload_documento') }}" class="btn btn-sm btn-outline-secondary me-2">📎 Enviar Arquivo</a>
+    <a href="{{ url_for('os.os_abertas') }}" class="btn btn-sm btn-outline-info me-2">🟢 OS Abertas</a>
+    <a href="{{ url_for('os.consultar_pedido') }}" class="btn btn-sm btn-outline-info me-2">🔍 Consultar OS</a>
+    <a href="{{ url_for('producao') }}" class="btn btn-sm btn-outline-success me-2">🏭 Produção</a>
+    <a href="{{ url_for('dashboard_producao') }}" class="btn btn-sm btn-outline-dark me-2">📊 Dashboard</a>
+    <a href="{{ url_for('itens') }}" class="btn btn-sm btn-outline-warning me-2">📦 Itens</a>
     {% endif %}
-    <a href="/logout" class="btn-logout">Sair</a>
+    <a href="{{ url_for('auth.logout') }}" class="btn-logout">Sair</a>
   </div>
   </div>
 {% else %}
 <div class="top-nav">
   <div class="user-info">🔓 Acesso Público</div>
   <div>
-    <a href="/" class="btn btn-sm btn-outline-success me-2">📝 Nova OS</a>
-    <a href="/upload-documento" class="btn btn-sm btn-outline-secondary me-2">📎 Enviar Arquivo</a>
-    <a href="/login" class="btn btn-sm btn-outline-primary me-2">🔐 Login</a>
-    <a href="/os-abertas" class="btn btn-sm btn-outline-success me-2">🟢 OS Abertas</a>
-    <a href="/consultar" class="btn btn-sm btn-outline-info">🔍 Consultar OS</a>
+    <a href="{{ url_for('os.homepage') }}" class="btn btn-sm btn-outline-success me-2">📝 Nova OS</a>
+    <a href="{{ url_for('os.upload_documento') }}" class="btn btn-sm btn-outline-secondary me-2">📎 Enviar Arquivo</a>
+    <a href="{{ url_for('auth.login') }}" class="btn btn-sm btn-outline-primary me-2">🔐 Login</a>
+    <a href="{{ url_for('os.os_abertas') }}" class="btn btn-sm btn-outline-success me-2">🟢 OS Abertas</a>
+    <a href="{{ url_for('os.consultar_pedido') }}" class="btn btn-sm btn-outline-info">🔍 Consultar OS</a>
   </div>
 </div>
 {% endif %}

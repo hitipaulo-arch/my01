@@ -7,11 +7,10 @@ Ponto de entrada principal da aplicação.
 import os
 import logging
 import secrets
+import json
 import pandas as pd
+import datetime
 from pathlib import Path
-from flask import Flask, render_template, jsonify, request, redirect, url_for, flash, session
-from flask_wtf.csrf import CSRFProtect
-from flask_caching import Cache
 
 # Carrega variáveis do .env, se disponível
 try:
@@ -19,6 +18,12 @@ try:
     load_dotenv()
 except ImportError:
     pass  # python-dotenv não instalado, usando variáveis de ambiente do sistema
+
+from flask import Flask, render_template, jsonify, request, redirect, url_for, flash, session
+from flask_wtf.csrf import CSRFProtect
+from flask_caching import Cache
+
+
 
 # Configuração de logging
 logging.basicConfig(
@@ -44,9 +49,10 @@ USUARIOS_TAB = os.getenv('GOOGLE_SHEET_USUARIOS_TAB', 'Usuários')
 CENTRAIS_TAB = os.getenv('GOOGLE_SHEET_CENTRAIS_TAB', 'Controle de Centrais')
 FERRAMENTAS_TAB = os.getenv('GOOGLE_SHEET_FERRAMENTAS_TAB', 'Controle de Ferramentas')
 HISTORICO_FERRAMENTAS_TAB = os.getenv('GOOGLE_SHEET_HISTORICO_FERRAMENTAS_TAB', 'Histórico de Ferramentas')
+PRODUCAO_TAB = os.getenv('GOOGLE_SHEET_PRODUCAO_TAB', 'Controle de Produção')
 
 try:
-    sheets_service = SheetsService(str(CREDS_FILE), SHEET_ID, SHEET_TAB, HORARIO_TAB, USUARIOS_TAB)
+    sheets_service = SheetsService(str(CREDS_FILE), SHEET_ID, SHEET_TAB, HORARIO_TAB, USUARIOS_TAB, PRODUCAO_TAB)
     user_service = UserService(sheets_service)
     logger.info("Serviços inicializados com sucesso")
 except Exception as e:
@@ -75,8 +81,15 @@ if not app.secret_key:
         "quando o servidor for reiniciado.\n"
         "="*70
     )
+app_env = os.getenv('APP_ENV', os.getenv('FLASK_ENV', 'production')).strip().lower()
+session_cookie_secure = os.getenv('SESSION_COOKIE_SECURE')
+if session_cookie_secure is None:
+    session_cookie_secure = app_env == 'production'
+else:
+    session_cookie_secure = session_cookie_secure.strip().lower() in ('1', 'true', 'yes', 'on')
+
 app.config.update(
-    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_SECURE=session_cookie_secure,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Strict',
     WTF_CSRF_ENABLED=True,
@@ -525,7 +538,8 @@ def centrais():
                 'Código de Série': request.form.get('codigo_serie', ''),
                 'Status': request.form.get('status', ''),
                 'Obra Utilizada': request.form.get('obra', ''),
-                'Data Cadastro': pd.Timestamp.now().strftime('%d/%m/%Y %H:%M:%S')
+                'Data Cadastro': pd.Timestamp.now().strftime('%d/%m/%Y %H:%M:%S'),
+                'Programação': ''
             }
             
             # Garante que a aba existe
@@ -560,17 +574,146 @@ def get_or_create_centrais_worksheet(sheets_service):
     """Obtém ou cria a worksheet de centrais."""
     try:
         spreadsheet = sheets_service.client.open_by_key(sheets_service.sheet_id)
+        headers_padrao = ['Número de Portas', 'Código de Série', 'Status', 'Obra Utilizada', 'Data Cadastro', 'Programação', 'Programação Resumo']
         try:
             worksheet = spreadsheet.worksheet(CENTRAIS_TAB)
         except Exception:
             # Aba não existe, cria
             worksheet = spreadsheet.add_worksheet(title=CENTRAIS_TAB, rows=100, cols=10)
-            worksheet.append_row(['Número de Portas', 'Código de Série', 'Status', 'Obra Utilizada', 'Data Cadastro'])
+            worksheet.append_row(headers_padrao)
             logger.info(f"Aba '{CENTRAIS_TAB}' criada")
+        else:
+            current_headers = [str(valor or '').strip() for valor in worksheet.row_values(1)]
+            # Detecta cabeçalhos duplicados (após normalização) e loga avisos
+            normalized_counts = {}
+            for h in current_headers:
+                key = _normalizar_texto_basico(h)
+                if not key:
+                    continue
+                normalized_counts[key] = normalized_counts.get(key, 0) + 1
+            duplicates = [k for k, v in normalized_counts.items() if v > 1]
+            if duplicates:
+                logger.warning(f"Cabeçalhos duplicados detectados na aba '{CENTRAIS_TAB}': {duplicates}")
+            # Garante que as colunas de programação existam
+            need_prog = not any(_normalizar_texto_basico(campo) == 'programacao' for campo in current_headers)
+            need_prog_resumo = not any(_normalizar_texto_basico(campo) == 'programacao resumo' for campo in current_headers)
+            # Garante que a coluna Data Cadastro exista (compatibilidade com versões antigas)
+            need_data_cadastro = not any(_normalizar_texto_basico(campo) in ('data cadastro', 'data', 'cadastro') for campo in current_headers)
+            if need_prog or need_prog_resumo:
+                novos = list(current_headers)
+                if need_prog:
+                    novos.append('Programação')
+                if need_prog_resumo:
+                    novos.append('Programação Resumo')
+                if need_data_cadastro:
+                    # Inserir Data Cadastro antes da Programação, se possível
+                    # Se não houver espaço claro, acrescenta ao final
+                    insert_at = None
+                    try:
+                        idx_obra = next(i for i, h in enumerate(novos) if _normalizar_texto_basico(h) == 'obra utilizada' or _normalizar_texto_basico(h) == 'obra')
+                        insert_at = idx_obra + 1
+                    except StopIteration:
+                        insert_at = None
+                    if insert_at is not None and insert_at <= len(novos):
+                        novos.insert(insert_at, 'Data Cadastro')
+                    else:
+                        novos.append('Data Cadastro')
+                worksheet.update('A1', [novos])
         return worksheet
     except Exception as e:
         logger.error(f"Erro ao obter/criar worksheet: {e}")
         raise
+
+
+def _normalizar_texto_basico(texto):
+    """Normaliza texto para comparação simples de cabeçalhos."""
+    return (
+        str(texto or '')
+        .strip()
+        .lower()
+        .replace('á', 'a')
+        .replace('à', 'a')
+        .replace('â', 'a')
+        .replace('ã', 'a')
+        .replace('é', 'e')
+        .replace('ê', 'e')
+        .replace('í', 'i')
+        .replace('ó', 'o')
+        .replace('ô', 'o')
+        .replace('õ', 'o')
+        .replace('ú', 'u')
+        .replace('ç', 'c')
+    )
+
+
+def _programacao_json_to_summary(programacao_raw: str, total_portas: int) -> str:
+    """Converte JSON de programação em resumo legível: '1→2,3; 2→1'."""
+    try:
+        if not programacao_raw:
+            return ''
+
+        parsed = json.loads(programacao_raw)
+    except Exception:
+        return ''
+
+    linhas = [[] for _ in range(max(0, int(total_portas or 0)))]
+
+    def process_row_item(row_index, item):
+        if row_index < 0 or row_index >= len(linhas):
+            return
+
+        # item can be list, number, or other
+        if isinstance(item, list):
+            # if elements numeric-like -> treat as numbers
+            numeric_elements = True
+            for x in item:
+                if not (isinstance(x, (int, float)) or (isinstance(x, str) and str(x).strip().lstrip('-').isdigit())):
+                    numeric_elements = False
+                    break
+
+            if numeric_elements:
+                for x in item:
+                    try:
+                        n = int(float(x)) - 1
+                        if 0 <= n < len(linhas) and n not in linhas[row_index]:
+                            linhas[row_index].append(n)
+                    except Exception:
+                        continue
+                return
+
+            # Otherwise, look for 'X' markers
+            for idx, val in enumerate(item):
+                if str(val or '').strip().upper() == 'X':
+                    if idx not in linhas[row_index]:
+                        linhas[row_index].append(idx)
+            return
+
+        # single numeric value
+        if isinstance(item, (int, float)) or (isinstance(item, str) and str(item).strip().lstrip('-').isdigit()):
+            try:
+                n = int(float(item)) - 1
+                if 0 <= n < len(linhas) and n not in linhas[row_index]:
+                    linhas[row_index].append(n)
+            except Exception:
+                pass
+
+    # parsed formats: dict with 'selecoes', array of arrays, array of numbers
+    if isinstance(parsed, dict) and 'selecoes' in parsed and isinstance(parsed['selecoes'], list):
+        for i, itm in enumerate(parsed['selecoes']):
+            process_row_item(i, itm)
+    elif isinstance(parsed, list):
+        for i, itm in enumerate(parsed):
+            process_row_item(i, itm)
+
+    parts = []
+    for i, cols in enumerate(linhas):
+        if not cols:
+            continue
+        cols_sorted = sorted(set(cols))
+        cols_text = ','.join(str(c + 1) for c in cols_sorted)
+        parts.append(f"{i + 1}→{cols_text}")
+
+    return '; '.join(parts)
 
 
 def get_centrais_list(sheets_service):
@@ -583,30 +726,18 @@ def get_centrais_list(sheets_service):
 
         headers = [str(h or '').strip() for h in data[0]]
 
-        def _norm(texto):
-            return (
-                str(texto or '')
-                .strip()
-                .lower()
-                .replace('á', 'a')
-                .replace('à', 'a')
-                .replace('â', 'a')
-                .replace('ã', 'a')
-                .replace('é', 'e')
-                .replace('ê', 'e')
-                .replace('í', 'i')
-                .replace('ó', 'o')
-                .replace('ô', 'o')
-                .replace('õ', 'o')
-                .replace('ú', 'u')
-                .replace('ç', 'c')
-            )
-
-        header_map = {_norm(h): i for i, h in enumerate(headers) if h}
+        # Constroi um mapa de cabeçalhos preservando a PRIMEIRA ocorrência normalizada
+        header_map = {}
+        for i, h in enumerate(headers):
+            if not h:
+                continue
+            key = _normalizar_texto_basico(h)
+            if key and key not in header_map:
+                header_map[key] = i
 
         def _get_val(row, *aliases):
             for alias in aliases:
-                idx = header_map.get(_norm(alias))
+                idx = header_map.get(_normalizar_texto_basico(alias))
                 if idx is not None and idx < len(row):
                     return str(row[idx] or '').strip()
             return ''
@@ -622,6 +753,8 @@ def get_centrais_list(sheets_service):
                 'Status': _get_val(linha, 'Status'),
                 'Obra Utilizada': _get_val(linha, 'Obra Utilizada', 'Obra'),
                 'Data Cadastro': _get_val(linha, 'Data Cadastro', 'Data de Cadastro', 'Cadastro', 'Data'),
+                'Programação': _get_val(linha, 'Programação', 'Programacao'),
+                'Programação Resumo': _get_val(linha, 'Programação Resumo', 'Programacao Resumo', 'ProgramacaoResumo', 'Programacao_Resumo'),
             })
 
         return centrais_normalizadas
@@ -640,19 +773,126 @@ def atualizar_central(row_id):
     
     try:
         worksheet = get_or_create_centrais_worksheet(sheets_service)
-        
+
         # row_id é baseado em 1, mas começa do header, então +2
         row_num = row_id + 2
-        
+
         status = request.form.get('status', '')
         obra = request.form.get('obra', '')
-        
-        # Atualiza as duas colunas em uma única chamada.
-        worksheet.update(f'C{row_num}:D{row_num}', [[status, obra]])
+
+        # Localiza dinamicamente as colunas por nome para evitar sobrescritas
+        headers = [str(h or '').strip() for h in worksheet.row_values(1)]
+        header_map = {}
+        for i, h in enumerate(headers):
+            key = _normalizar_texto_basico(h)
+            if key and key not in header_map:
+                header_map[key] = i
+
+        def col_letter(idx: int) -> str:
+            # Converte índice 0-based para letra de coluna A..Z, AA, AB...
+            result = ''
+            i = idx + 1
+            while i > 0:
+                i, rem = divmod(i - 1, 26)
+                result = chr(65 + rem) + result
+            return result
+
+        # Possíveis chaves para 'Status' e 'Obra Utilizada'
+        status_keys = ('status',)
+        obra_keys = ('obra utilizada', 'obra')
+
+        status_idx = next((header_map[k] for k in status_keys if k in header_map), None)
+        obra_idx = next((header_map[k] for k in obra_keys if k in header_map), None)
+
+        if status_idx is not None and obra_idx is not None:
+            start = col_letter(min(status_idx, obra_idx))
+            end = col_letter(max(status_idx, obra_idx))
+            worksheet.update(f'{start}{row_num}:{end}{row_num}', [[status if status_idx<=obra_idx else obra, obra if status_idx<=obra_idx else status]])
+        elif status_idx is not None:
+            col = col_letter(status_idx)
+            worksheet.update(f'{col}{row_num}:{col}{row_num}', [[status]])
+        elif obra_idx is not None:
+            col = col_letter(obra_idx)
+            worksheet.update(f'{col}{row_num}:{col}{row_num}', [[obra]])
+        else:
+            # fallback legacy: colunas C:D
+            worksheet.update(f'C{row_num}:D{row_num}', [[status, obra]])
         
         return jsonify({'success': True, 'message': 'Central atualizada!'})
     except Exception as e:
         logger.error(f"Erro ao atualizar central: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/centrais/programacao/<int:row_id>', methods=['POST'])
+@admin_required
+def atualizar_programacao_central(row_id):
+    """Atualiza a programação de uma central."""
+    sheets_service = app.config.get('sheets_service')
+    if not sheets_service:
+        return jsonify({'success': False, 'message': 'Serviço indisponível'}), 503
+
+    try:
+
+        worksheet = get_or_create_centrais_worksheet(sheets_service)
+        row_num = row_id + 2
+        programacao = request.form.get('programacao', '')
+
+        # Normaliza/compacta JSON para armazenamento
+        if programacao:
+            try:
+                parsed = json.loads(programacao)
+                programacao_compact = json.dumps(parsed, ensure_ascii=False, separators=(',', ':'))
+            except Exception:
+                programacao_compact = str(programacao)
+        else:
+            programacao_compact = ''
+
+        # Identifica índices das colunas dinamicamente, criando colunas se necessário
+        headers = [str(h or '').strip() for h in worksheet.row_values(1)]
+        header_map = {_normalizar_texto_basico(h): i for i, h in enumerate(headers) if h}
+
+        prog_idx = header_map.get(_normalizar_texto_basico('Programação'))
+        resumo_idx = header_map.get(_normalizar_texto_basico('Programação Resumo'))
+
+        # Se as colunas não existirem, adiciona-as ao final
+        if prog_idx is None or resumo_idx is None:
+            new_headers = list(headers)
+            if prog_idx is None:
+                new_headers.append('Programação')
+                prog_idx = len(new_headers) - 1
+            if resumo_idx is None:
+                new_headers.append('Programação Resumo')
+                resumo_idx = len(new_headers) - 1
+            worksheet.update('A1', [new_headers])
+
+        # Recarrega a linha para obter o número de portas
+        row_values = worksheet.row_values(row_num)
+        num_portas = 0
+        portas_idx = header_map.get(_normalizar_texto_basico('Número de Portas'))
+        if portas_idx is not None and portas_idx < len(row_values):
+            try:
+                num_portas = int(float(str(row_values[portas_idx]).strip().replace(',', '.')))
+            except Exception:
+                num_portas = 0
+
+        resumo = _programacao_json_to_summary(programacao_compact, num_portas)
+
+        # Grava programação e resumo nas colunas correspondentes (1-based col)
+        try:
+            # gspread usa índices 1-based para update_cell
+            worksheet.update_cell(row_num, prog_idx + 1, programacao_compact)
+            worksheet.update_cell(row_num, resumo_idx + 1, resumo)
+        except Exception:
+            # fallback: tenta atualizar por range usando letras (menos provável de falhar)
+            try:
+                worksheet.update(range_name=f'F{row_num}:G{row_num}', values=[[programacao_compact, resumo]])
+            except Exception as e:
+                raise
+
+        return jsonify({'success': True, 'message': 'Programação atualizada!', 'resumo': resumo})
+    except Exception as e:
+        logger.error(f"Erro ao atualizar programação da central: {e}", exc_info=True)
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
@@ -674,6 +914,356 @@ def deletar_central(row_id):
         logger.error(f"Erro ao deletar central: {e}", exc_info=True)
         return jsonify({'success': False, 'message': str(e)}), 500
         return jsonify({'success': False, 'message': str(e)}), 500
+
+
+def _parse_int_field(value, default=0):
+    """Converte valores numéricos vindos de formulário em inteiro seguro."""
+    try:
+        texto = str(value or '').strip().replace('.', '').replace(',', '.')
+        if not texto:
+            return default
+        return int(float(texto))
+    except Exception:
+        return default
+
+
+def _format_codigo_code(value):
+    """Normaliza o código do item para o formato ##-##-#####.
+
+    Alterações recentes mostraram que códigos alfanuméricos eram perdidos
+    porque a função removia tudo que não fosse dígito. Para evitar perda de
+    dados, mantemos o valor original quando ele contém letras. Apenas
+    normalizamos (extraímos dígitos e inserimos hífens) quando o valor contém
+    apenas dígitos ou símbolos. A função é idempotente para formatos já
+    compatíveis.
+    """
+    raw = str(value or '').strip()
+    if not raw:
+        return ''
+
+    # Se tiver letras, não alteramos para evitar perda de informação
+    if any(ch.isalpha() for ch in raw):
+        return raw
+
+    # Extrai apenas dígitos e formata
+    digits = ''.join(ch for ch in raw if ch.isdigit())
+    if not digits:
+        return raw
+    if len(digits) <= 2:
+        return digits
+    if len(digits) <= 4:
+        return f"{digits[:2]}-{digits[2:]}"
+    return f"{digits[:2]}-{digits[2:4]}-{digits[4:9]}"
+
+
+def _format_mtc_code(value):
+    """Normaliza o número MTC para o formato #### (4 dígitos)."""
+    digits = ''.join(ch for ch in str(value or '') if ch.isdigit())
+    return digits[:4] if digits else ''
+
+
+def _append_producao_info(existing_info: str, nova_info: str) -> str:
+    """Concatena informações adicionais com histórico simples."""
+    existing_info = str(existing_info or '').strip()
+    nova_info = str(nova_info or '').strip()
+    if not nova_info:
+        return existing_info
+
+    timestamp = pd.Timestamp.now().strftime('%d/%m/%Y %H:%M:%S')
+    extra = f"[{timestamp}] {nova_info}"
+    if existing_info:
+        return existing_info + "\n" + extra
+    return extra
+
+
+def _get_current_user_role():
+    """Retorna a role do usuário logado, se disponível."""
+    username = session.get('usuario')
+    if not username:
+        return None
+
+    user_service = app.config.get('user_service')
+    if not user_service:
+        return session.get('role')
+
+    user_data = user_service.get_usuario(username)
+    if user_data:
+        return user_data.role
+
+    return session.get('role')
+
+
+@app.route('/producao', methods=['GET', 'POST'])
+@login_required
+def producao():
+    """Página de cadastro e acompanhamento de produção."""
+    sheets_service = app.config.get('sheets_service')
+    if not sheets_service:
+        return render_template('producao.html',
+            itens=[], mensagem="Serviço de planilhas indisponível",
+            read_only=True,
+            tipo_mensagem='danger'), 503
+
+    user_role = _get_current_user_role()
+    read_only = user_role != Role.ADMIN.value
+
+    if request.method == 'POST':
+        if read_only:
+            flash('Operadores têm acesso somente visualização nesta página.', 'warning')
+            return redirect(url_for('producao'))
+
+        try:
+            dados = [
+                pd.Timestamp.now().strftime('%d/%m/%Y %H:%M:%S'),
+                request.form.get('nome_item', '').strip(),
+                _format_codigo_code(request.form.get('codigo_item', '').strip()),
+                _format_mtc_code(request.form.get('mtc_projeto', '')),
+                str(_parse_int_field(request.form.get('quantidade_produzida', 0), 0)),
+                str(_parse_int_field(request.form.get('meta_producao', 0), 0)),
+                request.form.get('status', 'Em andamento').strip() or 'Em andamento',
+                request.form.get('observacao', '').strip(),
+                request.form.get('responsavel', '').strip(),
+                request.form.get('informacoes_adicionais', '').strip(),
+                'produção',
+            ]
+
+            if not dados[1] or not dados[2]:
+                flash('Nome do item e código são obrigatórios.', 'danger')
+                return redirect(url_for('producao'))
+
+            item_id = int(pd.Timestamp.now().timestamp())
+            row_data = [str(item_id)] + dados
+
+            if not sheets_service.add_producao(row_data):
+                flash('Erro ao salvar item de produção.', 'danger')
+                return redirect(url_for('producao'))
+
+            flash('Item de produção cadastrado com sucesso!', 'success')
+            return redirect(url_for('producao'))
+        except Exception as e:
+            logger.error(f"Erro ao cadastrar produção: {e}", exc_info=True)
+            flash(f'Erro ao cadastrar item: {e}', 'danger')
+            return redirect(url_for('producao'))
+
+    try:
+        itens = sheets_service.get_all_producao(use_cache=True)
+        itens_ordenados = sorted(itens, key=lambda item: item.get('row_id', 0), reverse=True)
+        return render_template('producao.html', itens=itens_ordenados, read_only=read_only)
+    except Exception as e:
+        logger.error(f"Erro ao carregar produção: {e}", exc_info=True)
+        return render_template('erro.html', mensagem=f"Erro ao processar dados: {e}"), 500
+
+
+@app.route('/producao/atualizar/<int:row_id>', methods=['POST'])
+@admin_required
+def atualizar_producao(row_id):
+    """Atualiza um item de produção existente."""
+    sheets_service = app.config.get('sheets_service')
+    if not sheets_service:
+        return jsonify({'success': False, 'message': 'Serviço indisponível'}), 503
+
+    try:
+        original = sheets_service.get_producao_by_row_id(row_id) or {}
+        if not original:
+            return jsonify({'success': False, 'message': 'Item não encontrado.'}), 404
+
+        row_data = [
+            str(original.get('ID', '') or original.get('id', '') or row_id),
+            str(original.get('Carimbo de data/hora', '')).strip(),
+            request.form.get('nome_item', original.get('Nome do item', '')).strip(),
+            _format_codigo_code(request.form.get('codigo_item', original.get('Código', '')).strip()),
+            _format_mtc_code(request.form.get('mtc_projeto', original.get('Número do projeto MTC', ''))),
+            str(_parse_int_field(request.form.get('quantidade_produzida', original.get('Quantidade produzida', 0)), 0)),
+            str(_parse_int_field(request.form.get('meta_producao', original.get('Meta de produção', 0)), 0)),
+            request.form.get('status', original.get('Status', 'Em andamento')).strip() or 'Em andamento',
+            request.form.get('observacao', original.get('Observação', '')).strip(),
+            request.form.get('responsavel', original.get('Responsável', '')).strip(),
+            _append_producao_info(
+                original.get('Informações adicionais', ''),
+                request.form.get('nova_informacao', '')
+            ),
+                str(original.get('Origem', 'produção')).strip() or 'produção',
+        ]
+
+        if not row_data[2] or not row_data[3]:
+            return jsonify({'success': False, 'message': 'Nome do item e código são obrigatórios.'}), 400
+
+        if not sheets_service.update_producao(row_id, row_data):
+            return jsonify({'success': False, 'message': 'Não foi possível atualizar o item.'}), 500
+
+        return jsonify({'success': True, 'message': 'Item atualizado com sucesso!'}), 200
+    except Exception as e:
+        logger.error(f"Erro ao atualizar produção: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/producao/dados')
+@admin_required
+def producao_dados():
+    """Retorna os dados agregados da produção para atualização em tempo real."""
+    sheets_service = app.config.get('sheets_service')
+    if not sheets_service:
+        return jsonify({'success': False, 'message': 'Serviço indisponível'}), 503
+
+    try:
+        itens = sheets_service.get_all_producao(use_cache=False, force_refresh=True)
+
+        summary = {
+            'total_itens': len(itens),
+            'total_produzido': 0,
+            'total_meta': 0,
+            'total_faltante': 0,
+            'percentual_global': 0,
+        }
+
+        barras = []
+        status_counts = {'Concluído': 0, 'Em andamento': 0, 'Pendente': 0}
+
+        def _status_bucket(valor):
+            texto = str(valor or '').strip().lower()
+            if texto in ('concluído', 'concluido', 'finalizado', 'finalizada'):
+                return 'Concluído'
+            if texto in ('em andamento', 'andamento'):
+                return 'Em andamento'
+            return 'Pendente'
+
+        for item in itens:
+            produzido = _parse_int_field(item.get('Quantidade produzida', 0), 0)
+            meta = _parse_int_field(item.get('Meta de produção', 0), 0)
+            restante = max(meta - produzido, 0)
+
+            summary['total_produzido'] += produzido
+            summary['total_meta'] += meta
+            barras.append({
+                'nome': item.get('Nome do item', ''),
+                'produzido': produzido,
+                'restante': restante,
+                'meta': meta,
+                'status': item.get('Status', ''),
+                'percentual': round((produzido / meta) * 100, 1) if meta else 0,
+            })
+            status_counts[_status_bucket(item.get('Status', ''))] += 1
+
+        summary['total_faltante'] = max(summary['total_meta'] - summary['total_produzido'], 0)
+        summary['percentual_global'] = round((summary['total_produzido'] / summary['total_meta']) * 100, 1) if summary['total_meta'] else 0
+
+        # Ordena os itens por status mais comum (segundo status_counts), depois por nome
+        status_order = [k for k, v in sorted(status_counts.items(), key=lambda kv: -kv[1])]
+        status_rank = {s: i for i, s in enumerate(status_order)}
+        barras = sorted(barras, key=lambda item: (status_rank.get(item.get('status', ''), len(status_rank)), item.get('nome', '') or ''))
+
+        return jsonify({
+            'success': True,
+            'summary': summary,
+            'items': barras,
+            'status_counts': status_counts,
+        }), 200
+    except Exception as e:
+        logger.error(f"Erro ao gerar dados de produção: {e}", exc_info=True)
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/dashboard-producao')
+@login_required
+def dashboard_producao():
+    """Exibe o painel visual de produção."""
+    sheets_service = app.config.get('sheets_service')
+    if not sheets_service:
+        return render_template('dashboard_producao.html', mensagem_erro='Serviço indisponível'), 503
+
+    return render_template('dashboard_producao.html')
+
+
+@app.route('/itens', methods=['GET', 'POST'])
+@app.route('/compras', methods=['GET', 'POST'])
+@login_required
+def itens():
+    """Exibe e cadastra itens com alerta automático de compra."""
+    sheets_service = app.config.get('sheets_service')
+    if not sheets_service:
+        return render_template('compras.html', itens=[], read_only=True), 503
+
+    user_role = _get_current_user_role()
+    read_only = user_role != Role.ADMIN.value
+
+    try:
+        if request.method == 'POST':
+            if read_only:
+                flash('Operadores têm acesso somente visualização nesta página.', 'warning')
+                return redirect(url_for('itens'))
+
+            nome_item = request.form.get('nome_item', '').strip()
+            codigo_item = _format_codigo_code(request.form.get('codigo_item', '').strip())
+            mtc_projeto = _format_mtc_code(request.form.get('mtc_projeto', ''))
+            quantidade = str(_parse_int_field(request.form.get('quantidade', 0), 0))
+            observacao = request.form.get('observacao', '').strip()
+
+            if not nome_item or not codigo_item:
+                flash('Nome do item e código são obrigatórios.', 'danger')
+                return redirect(url_for('itens'))
+
+            row_data = [
+                str(int(pd.Timestamp.now().timestamp())),
+                pd.Timestamp.now().strftime('%d/%m/%Y %H:%M:%S'),
+                nome_item,
+                codigo_item,
+                mtc_projeto,
+                quantidade,
+                '0',
+                'Em andamento',
+                observacao,
+                '',
+                '',
+                'item',
+            ]
+
+            if not sheets_service.add_producao(row_data):
+                flash('Não foi possível adicionar o item.', 'danger')
+                return redirect(url_for('itens'))
+
+            flash('Item adicionado com sucesso!', 'success')
+            return redirect(url_for('itens'))
+
+        sheets_service.marcar_origem_padrao_producao('produção')
+        itens = sheets_service.get_all_producao(use_cache=True)
+        itens_alerta = []
+        itens_normais = []
+
+        for item in itens:
+            origem = str(item.get('Origem', '')).strip().lower()
+            if origem != 'item':
+                continue
+            # Recupera a quantidade tentando várias possíveis colunas para
+            # manter compatibilidade com planilhas antigas/variações.
+            quantidade = _parse_int_field(
+                item.get('Quantidade produzida',
+                          item.get('Quantidade',
+                                   item.get('Quantidade Item',
+                                            item.get('Quantidade produzida ', 0)
+                                   )
+                          )
+                ), 0)
+            status_compra = 'precisa solicitar comprar' if quantidade <= 10 else 'não precisa solicitar comprar'
+            item_compra = {
+                'nome_item': item.get('Nome do item', ''),
+                'codigo_item': item.get('Código', ''),
+                'mtc_projeto': _format_mtc_code(item.get('Número do projeto MTC', '')),
+                'quantidade': quantidade,
+                'status_compra': status_compra,
+                'row_id': item.get('row_id'),
+            }
+
+            if quantidade <= 10:
+                itens_alerta.append(item_compra)
+            else:
+                itens_normais.append(item_compra)
+
+        itens_alerta = sorted(itens_alerta, key=lambda item: item.get('quantidade', 0))
+        itens_normais = sorted(itens_normais, key=lambda item: item.get('quantidade', 0), reverse=True)
+        return render_template('compras.html', itens_alerta=itens_alerta, itens_normais=itens_normais, read_only=read_only)
+    except Exception as e:
+        logger.error(f"Erro ao carregar compras: {e}", exc_info=True)
+        return render_template('erro.html', mensagem=f"Erro ao processar dados: {e}"), 500
 
 
 @app.route('/ferramentas', methods=['GET', 'POST'])

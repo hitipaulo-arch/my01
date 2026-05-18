@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from enum import Enum
 from werkzeug.security import generate_password_hash, check_password_hash
+import datetime
+from typing import Optional
 
 
 class Role(str, Enum):
@@ -19,12 +21,14 @@ class Usuario:
     username: str
     senha_hash: str
     role: str = Role.ADMIN.value
+    data_cadastro: Optional[str] = ''
     
     @classmethod
     def criar(cls, username: str, senha: str, role: str = Role.ADMIN.value) -> 'Usuario':
         """Cria novo usuário com senha hasheada."""
         senha_hash = generate_password_hash(senha, method='pbkdf2:sha256')
-        return cls(username=username, senha_hash=senha_hash, role=role)
+        ts = datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+        return cls(username=username, senha_hash=senha_hash, role=role, data_cadastro=ts)
 
     @staticmethod
     def is_hash_valido(valor: str) -> bool:
@@ -46,8 +50,9 @@ class Usuario:
         return {
             'senha': self.senha_hash,
             'role': self.role
+            , 'data_cadastro': self.data_cadastro
         }
     
     def to_sheet_row(self) -> list:
         """Converte para linha do Google Sheets."""
-        return [self.username, self.senha_hash, self.role]
+        return [self.username, self.senha_hash, self.role, self.data_cadastro or '']

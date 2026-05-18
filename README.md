@@ -57,6 +57,15 @@ CACHE_TTL_SECONDS=300
 FLASK_DEBUG=false
 ```
 
+### Gravar a chave de produção localmente
+
+Garanta que o arquivo `.env` esteja em `.gitignore` e copie `.env.example` para `.env` preenchendo os valores reais.
+
+Não inclua chaves reais no repositório. Use `.env` local (gitignored) ou variáveis de ambiente do sistema.
+
+
+```
+
 ## ▶️ Executar
 
 **Desenvolvimento:**
@@ -113,6 +122,18 @@ projeto_flask/
 | `OS_CACHE_TTL_SECONDS` | TTL do cache de OS no SheetsService (segundos) | 120 |
 | `FLASK_DEBUG` | Modo debug | false |
 | `PORT` | Porta do servidor | 5000 |
+
+
+Também existe um endpoint administrativo para teste direto no Flask:
+
+```bash
+POST /admin/nvidia/stream
+Content-Type: application/json
+
+{"prompt":"Explique em uma frase como validar uma integracao de API com streaming."}
+```
+
+O endpoint exige autenticação de administrador e retorna o texto em streaming.
 
 ### 🔔 Notificação ao abrir OS
 

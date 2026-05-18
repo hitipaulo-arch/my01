@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Produção</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='unified.css') }}">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+</head>
+<body class="page-shell">
+    <div class="page-wrap">
+        {% include '_top_nav.html' %}
+
+    
+        <div class="page-header">
+            <h1>🏭 Controle de Produção</h1>
+            <p class="production-subtitle">Cadastre itens, atualize produções e acompanhe o avanço do projeto MTC em tempo real.</p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% if read_only %}
+        <div class="alert alert-info" role="alert">
+            Modo somente visualização ativo para este usuário.
+        </div>
+        {% endif %}
+
+        {% if not read_only %}
+        <div class="form-card">
+            <h3 class="mb-4">➕ Cadastrar novo item</h3>
+            <form method="POST" action="{{ url_for('producao') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Nome do item <span class="text-danger">*</span></label>
+                        <input type="text" name="nome_item" class="form-control" placeholder="Ex: Estrutura metálica" required>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Código <span class="text-danger">*</span></label>
+                        <input type="text" name="codigo_item" class="form-control js-codigo-code" placeholder="Ex: 12-34-56789" required>
+                        <small class="text-muted">Formato: ##-##-#####</small>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">MTC</label>
+                        <input type="text" name="mtc_projeto" class="form-control js-mtc-code" placeholder="Ex: 1234" inputmode="numeric" maxlength="4" pattern="\d{4}">
+                        <small class="text-muted">4 dígitos</small>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Qtd. produzida</label>
+                        <input type="number" name="quantidade_produzida" class="form-control" value="0" min="0" required>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Meta</label>
+                        <input type="number" name="meta_producao" class="form-control" value="0" min="0" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Responsável</label>
+                        <input type="text" name="responsavel" class="form-control" placeholder="Ex: João Silva">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Status</label>
+                        <select name="status" class="form-select">
+                            <option value="Em andamento" selected>Em andamento</option>
+                            <option value="Pendente">Pendente</option>
+                            <option value="Aguardando compra">Aguardando compra</option>
+                            <option value="Concluído">Concluído</option>
+                            <option value="Bloqueado">Bloqueado</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Observação</label>
+                        <input type="text" name="observacao" class="form-control" placeholder="Observações rápidas sobre o item">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Informações adicionais</label>
+                        <textarea name="informacoes_adicionais" class="form-control" rows="3" placeholder="Detalhes, contexto, pendências ou qualquer informação complementar"></textarea>
+                    </div>
+                </div>
+                <div class="d-flex gap-2 mt-4">
+                    <button type="submit" class="btn btn-success">💾 Salvar item</button>
+                    <a href="{{ url_for('dashboard_producao') }}" class="btn btn-outline-dark">📊 Abrir dashboard</a>
+                    <a href="{{ url_for('producao_dados') }}" class="btn btn-outline-primary" target="_blank" rel="noopener noreferrer">🔄 Ver dados brutos</a>
+                </div>
+            </form>
+        </div>
+        {% endif %}
+
+        <div class="table-card">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                <h3 class="mb-0">📋 Itens cadastrados</h3>
+                <div class="w-100 w-md-auto" style="max-width: 420px;">
+                    <input type="text" id="filtroProducao" class="form-control" placeholder="Filtrar por qualquer campo...">
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-hover table-striped{% if not read_only %} table-clickable{% endif %} align-middle mb-0" id="tabelaProducao">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>#</th>
+                            <th>Item</th>
+                            <th>Código</th>
+                            <th>MTC</th>
+                            <th>Produzido</th>
+                            <th>Meta</th>
+                            <th>Status</th>
+                            <th>Responsável</th>
+                            <th>Observação</th>
+                        </tr>
+                    </thead>
+                    <tbody id="corpoProducao">
+                        {% if itens %}
+                            {% for item in itens %}
+                            {% set produzido = item.get('Quantidade produzida', '0')|int %}
+                            {% set meta = item.get('Meta de produção', '0')|int %}
+                            {% set percentual = ((produzido / meta) * 100) if meta else 0 %}
+                            <tr{% if not read_only %} data-bs-toggle="modal" data-bs-target="#modalEdicaoProducao"{% endif %}
+                                data-row-id="{{ item['row_id'] }}"
+                                data-id="{{ item.get('ID', '') }}"
+                                data-nome-item="{{ item.get('Nome do item', '') | e }}"
+                                data-codigo-item="{{ item.get('Código', '') | e }}"
+                                data-mtc-projeto="{{ item.get('Número do projeto MTC', '') | e }}"
+                                data-quantidade-produzida="{{ item.get('Quantidade produzida', '') | e }}"
+                                data-meta-producao="{{ item.get('Meta de produção', '') | e }}"
+                                data-status="{{ item.get('Status', '') | e }}"
+                                data-observacao="{{ item.get('Observação', '') | e }}"
+                                data-responsavel="{{ item.get('Responsável', '') | e }}"
+                                data-informacoes-adicionais="{{ item.get('Informações adicionais', '') | e }}"
+                            >
+                                <td><strong>#{{ loop.index }}</strong></td>
+                                <td>{{ item.get('Nome do item', '-') }}</td>
+                                <td><code>{{ item.get('Código', '-') }}</code></td>
+                                <td>{{ item.get('Número do projeto MTC', '-') or '-' }}</td>
+                                <td>
+                                    <strong>{{ produzido }}</strong>
+                                    <div class="progress mt-2" style="height: 7px;">
+                                        <div class="progress-bar bg-success" role="progressbar" style="width: {{ percentual if percentual <= 100 else 100 }}%"></div>
+                                    </div>
+                                </td>
+                                <td>{{ meta }}</td>
+                                <td>
+                                    <span class="badge {% if item.get('Status', '') == 'Concluído' %}bg-success{% elif item.get('Status', '') == 'Em andamento' %}bg-primary{% elif item.get('Status', '') == 'Aguardando compra' %}bg-warning{% elif item.get('Status', '') == 'Bloqueado' %}bg-danger{% else %}bg-secondary{% endif %}">
+                                        {{ item.get('Status', 'Sem status') }}
+                                    </span>
+                                </td>
+                                <td>{{ item.get('Responsável', '-') or '-' }}</td>
+                                <td>{{ item.get('Observação', '-') or '-' }}</td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="9" class="text-center py-4">Nenhum item de produção cadastrado ainda.</td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    {% if not read_only %}
+    <div class="modal fade" id="modalEdicaoProducao" tabindex="-1" aria-labelledby="modalEdicaoProducaoLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <form id="formEdicaoProducao">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="modalEdicaoProducaoLabel">Editar item de produção</h5>
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-sm btn-success">💾 Salvar</button>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                        </div>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <input type="hidden" id="edit-row-id" name="row_id">
+
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Nome do item</label>
+                                <input type="text" class="form-control" id="edit-nome-item" name="nome_item" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Código</label>
+                                <input type="text" class="form-control js-codigo-code" id="edit-codigo-item" name="codigo_item" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">MTC</label>
+                                <input type="text" class="form-control js-mtc-code" id="edit-mtc-projeto" name="mtc_projeto" inputmode="numeric" maxlength="4" pattern="\d{4}">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Qtd. produzida</label>
+                                <input type="number" class="form-control" id="edit-quantidade-produzida" name="quantidade_produzida" min="0" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Meta</label>
+                                <input type="number" class="form-control" id="edit-meta-producao" name="meta_producao" min="0" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Responsável</label>
+                                <input type="text" class="form-control" id="edit-responsavel" name="responsavel">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Status</label>
+                                <select class="form-select" id="edit-status" name="status">
+                                    <option value="Pendente">Pendente</option>
+                                    <option value="Em andamento">Em andamento</option>
+                                    <option value="Aguardando compra">Aguardando compra</option>
+                                    <option value="Bloqueado">Bloqueado</option>
+                                    <option value="Concluído">Concluído</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Observação</label>
+                                <input type="text" class="form-control" id="edit-observacao" name="observacao">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Informações adicionais</label>
+                                <textarea class="form-control" id="edit-informacoes-adicionais" name="informacoes_adicionais" rows="4"></textarea>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Acrescentar nova informação</label>
+                                <textarea class="form-control" id="edit-nova-informacao" name="nova_informacao" rows="3" placeholder="Escreva uma atualização que será adicionada ao histórico do item"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Salvar alterações</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        {% if not read_only %}
+        function preencherEdicaoProducao(linha) {
+            const attrs = {
+                rowId: linha.getAttribute('data-row-id') || '',
+                nomeItem: linha.getAttribute('data-nome-item') || '',
+                codigoItem: linha.getAttribute('data-codigo-item') || '',
+                mtcProjeto: linha.getAttribute('data-mtc-projeto') || '',
+                quantidadeProduzida: linha.getAttribute('data-quantidade-produzida') || '0',
+                metaProducao: linha.getAttribute('data-meta-producao') || '0',
+                status: linha.getAttribute('data-status') || 'Em andamento',
+                observacao: linha.getAttribute('data-observacao') || '',
+                responsavel: linha.getAttribute('data-responsavel') || '',
+                informacoesAdicionais: linha.getAttribute('data-informacoes-adicionais') || ''
+            };
+
+            document.getElementById('edit-row-id').value = attrs.rowId;
+            document.getElementById('edit-nome-item').value = attrs.nomeItem;
+            document.getElementById('edit-codigo-item').value = attrs.codigoItem;
+            document.getElementById('edit-mtc-projeto').value = attrs.mtcProjeto;
+            document.getElementById('edit-quantidade-produzida').value = attrs.quantidadeProduzida;
+            document.getElementById('edit-meta-producao').value = attrs.metaProducao;
+            document.getElementById('edit-status').value = attrs.status;
+            document.getElementById('edit-observacao').value = attrs.observacao;
+            document.getElementById('edit-responsavel').value = attrs.responsavel;
+            document.getElementById('edit-informacoes-adicionais').value = attrs.informacoesAdicionais;
+            document.getElementById('edit-nova-informacao').value = '';
+        }
+
+        document.querySelectorAll('#tabelaProducao tbody tr[data-bs-toggle="modal"]').forEach(function(linha) {
+            linha.addEventListener('click', function() {
+                preencherEdicaoProducao(linha);
+            });
+        });
+
+        document.getElementById('filtroProducao').addEventListener('input', function() {
+            const filtro = this.value.toLowerCase();
+            document.querySelectorAll('#corpoProducao tr').forEach(function(linha) {
+                const texto = linha.textContent.toLowerCase();
+                linha.style.display = texto.indexOf(filtro) > -1 ? '' : 'none';
+            });
+        });
+
+        document.getElementById('formEdicaoProducao').addEventListener('submit', function(event) {
+            event.preventDefault();
+            const rowId = document.getElementById('edit-row-id').value;
+            const formData = new FormData(this);
+
+            fetch(`/producao/atualizar/${rowId}`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(function(response) { return response.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    window.location.reload();
+                } else {
+                    alert('Erro: ' + data.message);
+                }
+            })
+            .catch(function(error) {
+                alert('Erro ao atualizar item: ' + error);
+            });
+        });
+        {% endif %}
+
+        function formatarCodigoCode(valor) {
+            const digits = String(valor || '').replace(/\D/g, '').slice(0, 9);
+            if (digits.length <= 2) {
+                return digits;
+            }
+            if (digits.length <= 4) {
+                return digits.slice(0, 2) + '-' + digits.slice(2);
+            }
+            return digits.slice(0, 2) + '-' + digits.slice(2, 4) + '-' + digits.slice(4);
+        }
+
+        function formatarMtcCode(valor) {
+            const digits = String(valor || '').replace(/\D/g, '').slice(0, 4);
+            return digits;
+        }
+
+        document.querySelectorAll('.js-codigo-code').forEach(function(input) {
+            input.addEventListener('input', function() {
+                const cursorAtEnd = this.selectionStart === this.value.length;
+                this.value = formatarCodigoCode(this.value);
+                if (cursorAtEnd) {
+                    this.setSelectionRange(this.value.length, this.value.length);
+                }
+            });
+
+            input.addEventListener('blur', function() {
+                this.value = formatarCodigoCode(this.value);
+            });
+        });
+
+        document.querySelectorAll('.js-mtc-code').forEach(function(input) {
+            input.addEventListener('input', function() {
+                const cursorAtEnd = this.selectionStart === this.value.length;
+                this.value = formatarMtcCode(this.value);
+                if (cursorAtEnd) {
+                    this.setSelectionRange(this.value.length, this.value.length);
+                }
+            });
+
+            input.addEventListener('blur', function() {
+                this.value = formatarMtcCode(this.value);
+            });
+        });
+    </script>
+</body>
+</html>

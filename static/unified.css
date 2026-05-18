@@ -258,6 +258,34 @@ body {
     margin-bottom: 5px;
 }
 
+.progress-ring {
+    min-height: 160px;
+}
+
+.chart-legend-inline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.chart-legend-inline .badge {
+    padding: 8px 12px;
+}
+
+.table-clickable tbody tr {
+    cursor: pointer;
+}
+
+.production-subtitle {
+    color: var(--ui-muted);
+    margin-bottom: 0;
+}
+
+.production-kpi {
+    min-height: 128px;
+}
+
 .stat-label {
     color: var(--ui-muted);
     font-size: 14px;
@@ -370,6 +398,11 @@ body {
 .analytics-pager-spread {
     justify-content: space-between;
     margin-top: 12px;
+}
+
+/* Forçar a cor da fonte dos status/badges para preto, sobrescrevendo classes do Bootstrap */
+.badge {
+    color: #000 !important;
 }
 
 h1, h2, h3, h4 {

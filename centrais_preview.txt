@@ -1,0 +1,21 @@
+Headers (count=8):
+0 Número de Portas
+1 Código de Série
+2 Status
+3 Obra Utilizada
+4 Data Cadastro
+5 Local na Obra
+6 Programação
+7 Programação Resumo
+
+First 10 data rows:
+['4', '03414026', 'Pronta para Uso', '', '23/01/2026 17:15:56', '23/01/2026 17:15:56', '', '']
+['2', '04889007', 'Utilizada', 'LAFEPE', '25/02/2026 14:31:43', 'Entrada Visitantes', '{"selecoes":[[2],[1]]}', '1→2; 2→1']
+['2', '03864030', 'Em Teste', '', '25/02/2026 14:57:56', '', '{"selecoes":[[2],[1]]}', '1→2; 2→1']
+['2', '04889013', 'Utilizada', 'LAFEPE', '25/02/2026 15:34:47', 'Saida de residuos', '{"selecoes":[[2],[1]]}', '1→2; 2→1']
+['2', '04889016', 'Utilizada', 'LAFEPE', '25/02/2026 15:53:06', 'Paramentação', '{"selecoes":[[2],[1]]}', '1→2; 2→1']
+['2', '04889040', 'Utilizada', 'LAFEPE', '25/02/2026 16:22:37', 'ACP', '{"selecoes":[[2],[1]]}', '1→2; 2→1']
+['2', '04889048', 'Utilizada', 'LAFEPE', '25/02/2026 16:44:54', 'ACM', '{"selecoes":[[2],[1]]}', '1→2; 2→1']
+['2', '04889037', 'Utilizada', 'LAFEPE', '26/02/2026 07:36:48', 'ACP', '{"selecoes":[[2],[1]]}', '1→2; 2→1']
+['2', '04889025', 'Utilizada', 'LAFEPE', '26/02/2026 07:50:26', 'ACP', '{"selecoes":[[2],[1]]}', '1→2; 2→1']
+['2', '4889039', 'Utilizada', 'LAFEPE', '26/02/2026 08:16:33', 'ACP', '{"selecoes":[[2],[1]]}', '1→2; 2→1']

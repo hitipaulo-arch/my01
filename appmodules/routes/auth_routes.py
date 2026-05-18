@@ -28,7 +28,7 @@ def login():
         
         # Verifica senha
         if usuario.verificar_senha(password):
-            session['usuario'] = username
+            session['usuario'] = usuario.username
             session['role'] = usuario.role
             session.permanent = True
             flash(f'Bem-vindo, {username}!', 'success')
@@ -36,6 +36,8 @@ def login():
             next_page = request.args.get('next')
             if next_page and next_page.startswith('/'):
                 return redirect(next_page)
+            if usuario.role in ('operador', 'visualizador'):
+                return redirect(url_for('producao'))
             return redirect(url_for('os.homepage'))
         
         return render_template('login.html', erro='Usuário ou senha inválidos.')

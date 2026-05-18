@@ -1,264 +1,4 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Controle de Centrais</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='unified.css') }}">
-    <style>
-        .programacao-grid-wrap {
-            overflow-x: auto;
-        }
-
-        .programacao-table {
-            min-width: 100%;
-            table-layout: fixed;
-        }
-
-        .programacao-label {
-            min-width: 84px;
-            font-size: 0.85rem;
-            font-weight: 600;
-            background: #f8f9fa;
-        }
-
-        .programacao-cell {
-            width: 56px;
-            height: 48px;
-            border: 1px solid #ced4da;
-            border-radius: 0.5rem;
-            background: #fff;
-            color: #198754;
-            font-weight: 700;
-            transition: all 0.15s ease;
-        }
-
-        .programacao-cell:hover {
-            border-color: #0d6efd;
-            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.12);
-        }
-
-        .programacao-cell.active {
-            background: #198754;
-            border-color: #198754;
-            color: #fff;
-        }
-
-        .programacao-cell.empty {
-            color: transparent;
-        }
-
-        .programacao-matrix-note {
-            font-size: 0.9rem;
-        }
-    </style>
-</head>
-<body class="page-shell">
-    <div class="page-wrap">
-    {% include '_top_nav.html' %}
-
-        <div class="page-header">
-            <h1>📡 Controle de Centrais</h1>
-            <p class="text-muted">Gerencie centrais telefônicas/elétricas</p>
-        </div>
-        
-        {% if mensagem %}
-        <div class="alert alert-{{ tipo_mensagem }} alert-dismissible fade show" role="alert">
-            {{ mensagem }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-        {% endif %}
-        
-        <!-- Formulário de Cadastro -->
-        <div class="form-card">
-            <h3 class="mb-4">➕ Cadastrar Nova Central</h3>
-            <form method="POST" action="/centrais">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                
-                <div class="row">
-                    <div class="col-md-3 mb-3">
-                        <label class="form-label">Número de Portas</label>
-                        <input type="number" name="num_portas" class="form-control" 
-                               placeholder="Ex: 8, 16, 32" required>
-                    </div>
-                    
-                    <div class="col-md-3 mb-3">
-                        <label class="form-label">Código de Série</label>
-                        <input type="text" name="codigo_serie" class="form-control" 
-                               placeholder="Ex: ABC-12345" required>
-                    </div>
-                    
-                    <div class="col-md-3 mb-3">
-                        <label class="form-label">Status</label>
-                        <select name="status" class="form-select" required>
-                            <option value="">Selecione...</option>
-                            <option value="Pronta para Uso">Pronta para Uso</option>
-                            <option value="Em Teste">Em Teste</option>
-                            <option value="Utilizada">Utilizada</option>
-                        </select>
-                    </div>
-                    
-                    <div class="col-md-3 mb-3">
-                        <label class="form-label">Obra Utilizada</label>
-                        <input type="text" name="obra" class="form-control" 
-                               placeholder="Nome da obra (se aplicável)">
-                    </div>
-                </div>
-                
-                <button type="submit" class="btn btn-primary">
-                    💾 Cadastrar Central
-                </button>
-            </form>
-        </div>
-        
-        <!-- Tabela de Centrais -->
-        <div class="table-card">
-            <h3 class="mb-4">📋 Centrais Cadastradas</h3>
-            
-            {% if centrais %}
-            <table class="table table-hover">
-                <thead class="table-light">
-                    <tr>
-                        <th>#</th>
-                        <th>Portas</th>
-                        <th>Código de Série</th>
-                        <th>Status</th>
-                        <th>Obra Utilizada</th>
-                        <th>Data Cadastro</th>
-                        <th>Programação</th>
-                        <th>Ações</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for central in centrais %}
-                    <tr id="row-{{ loop.index0 }}">
-                        <td>{{ loop.index }}</td>
-                        <td><strong>{{ central['Número de Portas'] }}</strong></td>
-                        <td><code>{{ central['Código de Série'] }}</code></td>
-                        <td>
-                            <span class="badge 
-                                {% if central['Status'] == 'Pronta para Uso' %}badge-pronta
-                                {% elif central['Status'] == 'Em Teste' %}badge-teste
-                                {% elif central['Status'] == 'Utilizada' %}badge-utilizada
-                                {% endif %}">
-                                {{ central['Status'] }}
-                            </span>
-                        </td>
-                        <td>{{ central.get('Obra Utilizada', '-') }}</td>
-                        <td>{{ central.get('Data Cadastro', '-') }}</td>
-                        <td>
-                            <div class="d-flex flex-column">
-                                <div>
-                                    <button id="program-btn-{{ loop.index0 }}" class="btn btn-sm btn-outline-primary btn-action"
-                                            onclick='abrirProgramacao({{ loop.index0 }}, {{ central.get("Número de Portas", 0)|int }}, {{ central.get("Programação", "")|tojson }})'>
-                                        ⚙️ Programação
-                                    </button>
-                                </div>
-                                    <small id="program-summary-{{ loop.index0 }}" class="text-muted mt-1" 
-                                        data-programacao={{ central.get("Programação", "")|tojson }} 
-                                        data-programacao-resumo={{ central.get("Programação Resumo", "")|tojson }}
-                                        data-portas="{{ central.get('Número de Portas', 0)|int }}">
-                                </small>
-                            </div>
-                        </td>
-                        <td>
-                            <button class="btn btn-sm btn-warning btn-action" 
-                                    onclick="editarCentral({{ loop.index0 }}, '{{ central['Status'] }}', '{{ central.get('Obra Utilizada', '') }}')">
-                                ✏️ Editar
-                            </button>
-                            <button class="btn btn-sm btn-danger btn-action" 
-                                    onclick="deletarCentral({{ loop.index0 }})">
-                                🗑️ Deletar
-                            </button>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <div class="alert alert-info">
-                ℹ️ Nenhuma central cadastrada ainda.
-            </div>
-            {% endif %}
-        </div>
-        <footer class="page-footer">
-            <span>Paulo Vieira 2025</span>
-        </footer>
-    </div>
-    
-    <!-- Modal de Edição -->
-    <div class="modal fade" id="editModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Editar Central</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="editForm">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-                        <input type="hidden" id="edit_row_id" name="row_id">
-                        
-                        <div class="mb-3">
-                            <label class="form-label">Status</label>
-                            <select id="edit_status" name="status" class="form-select" required>
-                                <option value="Pronta para Uso">Pronta para Uso</option>
-                                <option value="Em Teste">Em Teste</option>
-                                <option value="Utilizada">Utilizada</option>
-                            </select>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label">Obra Utilizada</label>
-                            <input type="text" id="edit_obra" name="obra" class="form-control">
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-primary" onclick="salvarEdicao()">Salvar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="programacaoModal" tabindex="-1">
-        <div class="modal-dialog modal-xl modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <div>
-                        <h5 class="modal-title mb-1">Programação da Central</h5>
-                        <small class="text-muted">Clique em uma célula para marcar com X a porta fechada para cada porta aberta.</small>
-                    </div>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" id="programacao_row_id">
-                    <input type="hidden" id="programacao_total_portas">
-                    <input type="hidden" id="programacao_matrix_data">
-
-                    <div id="programacao_alert_container"></div>
-
-                    <div class="programacao-grid-wrap mb-3">
-                        <div id="programacao_grid" class="w-100"></div>
-                    </div>
-
-                    <div class="alert alert-light border programacao-matrix-note mb-0">
-                        A primeira coluna representa as <strong>portas abertas</strong> e a primeira linha representa as <strong>portas fechadas</strong>.
-                        Cada linha pode ter mais de um <strong>X</strong>.
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" class="btn btn-primary" onclick="salvarProgramacao()">Salvar programação</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
+﻿
         let editModal;
         let programacaoModal;
         let programacaoEstados = [];
@@ -277,7 +17,7 @@
                 const cols = Array.isArray(estados[i]) ? estados[i] : [];
                 if (!cols || cols.length === 0) continue;
                 const colsText = cols.map(c => (c + 1)).join(',');
-                parts.push(`${i + 1}→${colsText}`);
+                parts.push(`${i + 1}â†’${colsText}`);
             }
             return parts.join('; ');
         }
@@ -298,9 +38,9 @@
                 const portas = parseInt(el.getAttribute('data-portas') || '0', 10) || 0;
                 const estados = parseProgramacaoToEstados(raw, portas);
                 const summary = formatProgramacaoSummaryFromEstados(estados);
-                el.textContent = summary || '—';
+                el.textContent = summary || 'â€”';
             } catch (e) {
-                el.textContent = '—';
+                el.textContent = 'â€”';
             }
         }
 
@@ -389,7 +129,7 @@
             }
 
             if (!totalPortas || totalPortas <= 0) {
-                container.innerHTML = '<div class="alert alert-warning mb-0">Número de portas inválido para montar a programação.</div>';
+                container.innerHTML = '<div class="alert alert-warning mb-0">NÃºmero de portas invÃ¡lido para montar a programaÃ§Ã£o.</div>';
                 return;
             }
 
@@ -489,26 +229,26 @@
                     if (data.success) {
                         container.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
 
-                        // Atualiza o botão na tabela para indicar sucesso sem recarregar
+                        // Atualiza o botÃ£o na tabela para indicar sucesso sem recarregar
                         try {
                             const btn = document.getElementById('program-btn-' + rowId);
                             if (btn) {
                                 btn.classList.remove('btn-outline-primary');
                                 btn.classList.add('btn-success');
-                                btn.textContent = '⚙️ Programação ✓';
+                                btn.textContent = 'âš™ï¸ ProgramaÃ§Ã£o âœ“';
                             }
                         } catch (e) {
-                            console.warn('Não foi possível atualizar botão da tabela', e);
+                            console.warn('NÃ£o foi possÃ­vel atualizar botÃ£o da tabela', e);
                         }
 
-                        // Atualiza o resumo na tabela usando o estado atual em memória
+                        // Atualiza o resumo na tabela usando o estado atual em memÃ³ria
                         try {
                             const summaryEl = document.getElementById('program-summary-' + rowId);
                             if (summaryEl) {
                                 // atualiza atributo data-programacao para refletir novo valor
                                 const novoRaw = JSON.stringify({ selecoes: programacaoEstados.map((item) => Array.isArray(item) ? item.map((c) => c + 1) : []) });
                                 summaryEl.setAttribute('data-programacao', novoRaw);
-                                // se o servidor retornou o resumo, use-o; caso contrário, recalcule localmente
+                                // se o servidor retornou o resumo, use-o; caso contrÃ¡rio, recalcule localmente
                                 if (data.resumo) {
                                     summaryEl.setAttribute('data-programacao-resumo', data.resumo);
                                 } else {
@@ -517,10 +257,10 @@
                                 renderSummaryElement(summaryEl);
                             }
                         } catch (e) {
-                            console.warn('Não foi possível atualizar resumo da tabela', e);
+                            console.warn('NÃ£o foi possÃ­vel atualizar resumo da tabela', e);
                         }
 
-                        // Fecha o modal após um curto delay
+                        // Fecha o modal apÃ³s um curto delay
                         setTimeout(() => {
                             container.innerHTML = '';
                             programacaoModal.hide();
@@ -531,7 +271,7 @@
             })
             .catch(error => {
                 const container = document.getElementById('programacao_alert_container');
-                container.innerHTML = '<div class="alert alert-danger">Erro ao salvar programação: ' + error + '</div>';
+                container.innerHTML = '<div class="alert alert-danger">Erro ao salvar programaÃ§Ã£o: ' + error + '</div>';
             });
         }
         
@@ -589,6 +329,4 @@
                 alert('Erro ao deletar: ' + error);
             });
         }
-    </script>
-</body>
-</html>
+    
