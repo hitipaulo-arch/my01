@@ -58,37 +58,37 @@
                                 -->
                                 <tr data-bs-toggle="modal" data-bs-target="#modalEdicao" 
                                     data-row-id="{{ chamado['row_id'] }}"
-                                    data-os-numero="{{ chamado.get('ID', chamado['row_id']) }}"
-                                    data-solicitante="{{ chamado['Nome do solicitante'] }}"
-                                    data-whatsapp="{{ chamado.get('WhatsApp do solicitante') or chamado.get('WhatsApp') or chamado.get('Whatsapp do solicitante') or chamado.get('Whatsapp') or '' }}"
-                                    data-setor="{{ chamado['Setor em que será realizado o serviço'] }}"
-                                    data-data-solicitacao="{{ chamado['Data da Solicitação'] }}"
-                                    data-descricao="{{ chamado['Descrição do Problema ou Serviço Solicitado'] }}"
-                                    data-equipamento="{{ chamado['Equipamento ou Local afetado'] }}"
-                                    data-prioridade="{{ chamado['Nível de prioridade'] }}"
-                                    data-status="{{ chamado['Status da OS'] }}"
-                                    data-info-adicional="{{ chamado['Informações adicionais (Opcional)'] }}"
-                                    data-servico-realizado="{{ chamado['Serviço realizado'] }}"
-                                    data-horario-inicio="{{ chamado['Horario de Inicio'] }}"
-                                    data-horario-andamento="{{ chamado['Horario de Andamento'] }}"
-                                    data-horario-termino="{{ chamado['Horario de Término'] }}"
-                                    data-horas-trabalhadas="{{ chamado['Horas trabalhadas'] }}"
+                                    data-os-numero="{{ chamado.get('ID', chamado['row_id']) | e }}"
+                                    data-solicitante="{{ chamado['Nome do solicitante'] | e }}"
+                                    data-whatsapp="{{ (chamado.get('WhatsApp do solicitante') or chamado.get('WhatsApp') or chamado.get('Whatsapp do solicitante') or chamado.get('Whatsapp') or '') | e }}"
+                                    data-setor="{{ chamado['Setor em que será realizado o serviço'] | e }}"
+                                    data-data-solicitacao="{{ chamado['Data da Solicitação'] | e }}"
+                                    data-descricao="{{ chamado['Descrição do Problema ou Serviço Solicitado'] | e }}"
+                                    data-equipamento="{{ chamado['Equipamento ou Local afetado'] | e }}"
+                                    data-prioridade="{{ chamado['Nível de prioridade'] | e }}"
+                                    data-status="{{ chamado['Status da OS'] | e }}"
+                                    data-info-adicional="{{ chamado['Informações adicionais (Opcional)'] | e }}"
+                                    data-servico-realizado="{{ chamado['Serviço realizado'] | e }}"
+                                    data-horario-inicio="{{ chamado['Horario de Inicio'] | e }}"
+                                    data-horario-andamento="{{ chamado['Horario de Andamento'] | e }}"
+                                    data-horario-termino="{{ chamado['Horario de Término'] | e }}"
+                                    data-horas-trabalhadas="{{ chamado['Horas trabalhadas'] | e }}"
                                     >
                                     
                                     <td><strong>#{{ chamado.get('ID', chamado['row_id']) }}</strong></td>
-                                    <td>{{ chamado['Data da Solicitação'] }}</td>
-                                    <td>{{ chamado['Nome do solicitante'] }}</td>
+                                    <td>{{ chamado['Data da Solicitação'] | e }}</td>
+                                    <td>{{ chamado['Nome do solicitante'] | e }}</td>
                                     <td>
                                         {% set whats = chamado.get('WhatsApp do solicitante') or chamado.get('WhatsApp') or chamado.get('Whatsapp do solicitante') or chamado.get('Whatsapp') or '' %}
                                         {% if whats %}
-                                            <a href="#" class="whatsapp-link" data-whatsapp="{{ whats }}" target="_blank" rel="noopener noreferrer">{{ whats }}</a>
+                                            <a href="#" class="whatsapp-link" data-whatsapp="{{ whats | e }}" target="_blank" rel="noopener noreferrer">{{ whats | e }}</a>
                                         {% else %}
                                             -
                                         {% endif %}
                                     </td>
-                                    <td>{{ chamado['Setor em que será realizado o serviço'] }}</td>
-                                    <td>{{ chamado['Descrição do Problema ou Serviço Solicitado'] | truncate(40) }}</td>
-                                    <td>{{ chamado['Equipamento ou Local afetado'] | truncate(30) }}</td>
+                                    <td>{{ chamado['Setor em que será realizado o serviço'] | e }}</td>
+                                    <td>{{ (chamado['Descrição do Problema ou Serviço Solicitado'] | truncate(40)) | e }}</td>
+                                    <td>{{ (chamado['Equipamento ou Local afetado'] | truncate(30)) | e }}</td>
                                     <td>
                                         <!-- Lógica para colorir o 'badge' de status -->
                                         {% set status = chamado['Status da OS'] %}
@@ -99,7 +99,7 @@
                                             {% elif status == 'Cancelada' %} bg-danger
                                             {% else %} bg-secondary
                                             {% endif %}">
-                                            {{ status if status else 'Sem Status' }}
+                                            {{ status|e if status else 'Sem Status' }}
                                         </span>
                                     </td>
                                 </tr>

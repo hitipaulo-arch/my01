@@ -47,10 +47,10 @@ class Usuario:
     
     def to_dict(self) -> dict:
         """Converte para dicionário."""
+        # Nunca expor hashes de senha em dicionários serializáveis.
         return {
-            'senha': self.senha_hash,
-            'role': self.role
-            , 'data_cadastro': self.data_cadastro
+            'role': self.role,
+            'data_cadastro': self.data_cadastro
         }
     
     def to_sheet_row(self) -> list:

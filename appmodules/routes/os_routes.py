@@ -1,6 +1,7 @@
 """Rotas de Ordens de Serviço."""
 
 import datetime
+import os
 import io
 import logging
 from pathlib import Path
@@ -142,9 +143,10 @@ def criar_os():
             nome=os_data.solicitante, os_numero=numero_pedido)
     
     except Exception as e:
-        logger.error(f"Erro ao criar OS: {e}")
-        return render_template('erro.html', 
-            mensagem=f"Erro ao salvar seu requerimento: {e}"), 500
+        logger.error(f"Erro ao criar OS: {e}", exc_info=True)
+        if os.getenv('APP_ENV', os.getenv('FLASK_ENV', 'production')).strip().lower() == 'production':
+            return render_template('erro.html', mensagem="Erro ao processar sua solicitação"), 500
+        return render_template('erro.html', mensagem=f"Erro ao salvar seu requerimento: {e}"), 500
 
 
 @os_bp.route('/gerenciar')
@@ -187,9 +189,10 @@ def gerenciar():
             current_order=order
         )
     except Exception as e:
-        logger.error(f"Erro ao carregar OS: {e}")
-        return render_template('erro.html', 
-            mensagem=f"Erro ao processar dados: {e}"), 500
+        logger.error(f"Erro ao carregar OS: {e}", exc_info=True)
+        if os.getenv('APP_ENV', os.getenv('FLASK_ENV', 'production')).strip().lower() == 'production':
+            return render_template('erro.html', mensagem="Erro ao processar sua solicitação"), 500
+        return render_template('erro.html', mensagem=f"Erro ao processar dados: {e}"), 500
 
 
 @os_bp.route('/os-abertas')
@@ -309,7 +312,15 @@ def os_abertas():
             tempo_medio_conclusao=tempo_medio_conclusao,
         )
     except Exception as e:
-        logger.error(f"Erro ao carregar OS abertas: {e}")
+        logger.error(f"Erro ao carregar OS abertas: {e}", exc_info=True)
+        if os.getenv('APP_ENV', os.getenv('FLASK_ENV', 'production')).strip().lower() == 'production':
+            return render_template(
+                'os_abertas.html',
+                chamados=[],
+                total_chamados=0,
+                mensagem_erro="Erro ao processar sua solicitação",
+                **empty_metrics,
+            ), 500
         return render_template(
             'os_abertas.html',
             chamados=[],
@@ -511,8 +522,9 @@ def atualizar_chamado():
     
     except Exception as e:
         logger.error(f"Erro ao atualizar OS: {e}", exc_info=True)
-        return render_template('erro.html', 
-            mensagem=f"Erro ao atualizar: {e}"), 500
+        if os.getenv('APP_ENV', os.getenv('FLASK_ENV', 'production')).strip().lower() == 'production':
+            return render_template('erro.html', mensagem="Erro ao processar sua solicitação"), 500
+        return render_template('erro.html', mensagem=f"Erro ao atualizar: {e}"), 500
 
 
 @os_bp.route('/consultar', methods=['GET', 'POST'])
@@ -549,7 +561,6 @@ def consultar_pedido():
                 }
             else:
                 resultado = {'erro': f"Pedido número '{pedido_buscado}' não encontrado."}
-        
         except Exception as e:
             logger.error(f"Erro ao buscar pedido: {e}")
             resultado = {'erro': 'Ocorreu um erro ao consultar o pedido.'}

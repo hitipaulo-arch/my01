@@ -63,6 +63,12 @@ Garanta que o arquivo `.env` esteja em `.gitignore` e copie `.env.example` para 
 
 Não inclua chaves reais no repositório. Use `.env` local (gitignored) ou variáveis de ambiente do sistema.
 
+### Agente no VS Code
+
+O workspace inclui um prompt invocável do Continue em [.continue/prompts/nvidia-local-agent.md](.continue/prompts/nvidia-local-agent.md).
+
+Use `/nvidia` no Continue para abrir o fluxo do agente com suporte a streaming e leitura segura de `NVIDIA_API_KEY` pelo ambiente.
+
 
 ```
 

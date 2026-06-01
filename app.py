@@ -10,6 +10,8 @@ import secrets
 import json
 import pandas as pd
 import datetime
+import hmac
+import hashlib
 from pathlib import Path
 
 # Carrega variáveis do .env, se disponível
@@ -101,6 +103,16 @@ app.config.update(
 csrf = CSRFProtect(app)
 cache = Cache(app)
 
+# Inicializa rate limiter (opcional)
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    limiter = Limiter(app, key_func=get_remote_address)
+    logger.info("Flask-Limiter inicializado")
+except Exception:
+    limiter = None
+    logger.warning("Flask-Limiter não disponível. Instale 'Flask-Limiter' para habilitar rate limiting.")
+
 # Torna serviços disponíveis globalmente
 app.config['sheets_service'] = sheets_service
 app.config['user_service'] = user_service
@@ -150,55 +162,93 @@ def webhook_whatsapp():
     # Processar POST (mensagem recebida)
     if request.method == 'POST':
         try:
-            dados = request.get_json() or {}
-            
+            # Limita tamanho do payload para evitar DoS por body muito grande
+            max_bytes = int(os.getenv('WHATSAPP_MAX_PAYLOAD_BYTES', 1024 * 1024))  # 1MB por padrão
+            content_length = request.content_length or 0
+            if content_length and content_length > max_bytes:
+                logger.warning(f"Payload do webhook excede limite ({content_length} > {max_bytes})")
+                return jsonify({'erro': 'Payload muito grande'}), 413
+
+            # Validação HMAC/assinatura (opcional): preferível ao token na query
+            webhook_secret = os.getenv('WHATSAPP_WEBHOOK_SECRET', '').strip()
+            if webhook_secret:
+                sig_hdr = request.headers.get('X-Hub-Signature-256') or request.headers.get('X-Hub-Signature')
+                raw = request.get_data() or b''
+                if not sig_hdr:
+                    logger.warning('Assinatura de webhook ausente')
+                    return jsonify({'erro': 'Assinatura ausente'}), 403
+
+                # aceita formatos como 'sha256=<hex>' ou apenas o hex
+                if sig_hdr.startswith('sha256='):
+                    sig = sig_hdr.split('=', 1)[1]
+                else:
+                    sig = sig_hdr
+
+                computed = hmac.new(webhook_secret.encode(), raw, hashlib.sha256).hexdigest()
+                if not hmac.compare_digest(computed, sig):
+                    logger.warning('Assinatura de webhook inválida')
+                    return jsonify({'erro': 'Assinatura inválida'}), 403
+
+            # Parse JSON (após validação de assinatura)
+            dados = request.get_json(silent=True) or {}
+
             # Extrair dados da mensagem
             mensagens = dados.get('entry', [{}])[0].get('changes', [{}])[0].get('value', {}).get('messages', [])
-            
+
             if not mensagens:
                 logger.debug("Webhook recebido sem mensagens (pode ser status update)")
                 return jsonify({'OK': True}), 200
-            
+
             mensagem = mensagens[0]
             tipo = mensagem.get('type', 'unknown')
-            
+
             # Processar apenas mensagens de texto
             if tipo != 'text':
                 logger.info(f"Tipo de mensagem ignorado: {tipo}")
                 return jsonify({'OK': True}), 200
-            
+
             # Extrair dados
             remetente = mensagem.get('from', '')
             texto = mensagem.get('text', {}).get('body', '')
-            timestamp_unix = int(mensagem.get('timestamp', 0))
-            
+            timestamp_unix = int(mensagem.get('timestamp', 0) or 0)
+
             # Converter timestamp
             from datetime import datetime as dt
             timestamp = dt.fromtimestamp(timestamp_unix).isoformat() if timestamp_unix else dt.now().isoformat()
-            
+
             logger.info(f"Mensagem WhatsApp recebida de {remetente}: {texto[:50]}")
-            
+
             # Processar mensagem
             resultado = webhook_service.processar_mensagem({
                 'from': remetente,
                 'text': texto,
                 'timestamp': timestamp
             })
-            
+
             # Log do resultado
             if resultado.get('sucesso'):
                 logger.info(f"Comando processado: {resultado.get('tipo')} - {resultado.get('numero_os', 'N/A')}")
             else:
                 logger.warning(f"Erro ao processar: {resultado.get('erro')}")
-            
+
             # TODO: Aqui você pode enviar resposta automática via WhatsApp API
             # exemplo: NotificationService.enviar_resposta_whatsapp(remetente, resultado['resposta'])
-            
+
             return jsonify({'OK': True, 'resultado': resultado}), 200
-            
+
         except Exception as e:
             logger.error(f"Erro ao processar webhook: {e}", exc_info=True)
+            if app_env == 'production':
+                return jsonify({'erro': 'Erro interno no servidor'}), 500
             return jsonify({'erro': str(e)}), 500
+
+
+    # Registra limitador ao endpoint caso exista (usa view_functions para evitar warnings de lint)
+    try:
+        if limiter and 'webhook_whatsapp' in app.view_functions:
+            app.view_functions['webhook_whatsapp'] = limiter.limit("10/minute")(app.view_functions['webhook_whatsapp'])
+    except Exception:
+        pass
 
 
 # ════════════════════════════════════════════════════════════════════════════════
@@ -913,7 +963,6 @@ def deletar_central(row_id):
     except Exception as e:
         logger.error(f"Erro ao deletar central: {e}", exc_info=True)
         return jsonify({'success': False, 'message': str(e)}), 500
-        return jsonify({'success': False, 'message': str(e)}), 500
 
 
 def _parse_int_field(value, default=0):
@@ -1469,7 +1518,14 @@ def favicon():
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
-    
-    logger.info(f"Iniciando aplicação na porta {port} (debug={debug_mode})")
-    
-    app.run(host='0.0.0.0', port=port, debug=debug_mode)
+    host = os.getenv('HOST', None)
+    if not host:
+        # padrão seguro: bind local em produção, permitir 0.0.0.0 em debug
+        host = '0.0.0.0' if debug_mode else '127.0.0.1'
+
+    # Em ambientes não-dev, previne bind em todas interfaces a menos que explicitamente permitido
+    if host in ('0.0.0.0', '::') and app_env not in ('development', 'dev') and os.getenv('ALLOW_BIND_ALL', 'false').lower() not in ('1', 'true', 'yes'):
+        logger.warning('Binding para todas as interfaces detectado em ambiente não-dev. Defina ALLOW_BIND_ALL=1 para confirmar.')
+
+    logger.info(f"Iniciando aplicação em {host}:{port} (debug={debug_mode})")
+    app.run(host=host, port=port, debug=debug_mode)

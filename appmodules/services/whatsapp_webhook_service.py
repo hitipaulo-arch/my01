@@ -101,6 +101,18 @@ class WhatsAppWebhookService:
         
         return None
 
+    def _gerar_mensagem_ajuda(self) -> str:
+        """Gera a mensagem de ajuda com os comandos disponíveis."""
+        return (
+            '📋 Comandos disponíveis:\n'
+            '  • status OS-123 → Ver status da OS\n'
+            '  • cheguei OS-123 → Notificar chegada\n'
+            '  • concluir OS-123 → Finalizar OS\n'
+            '  • pausa OS-123 → Pausar OS\n'
+            '  • retomar OS-123 → Retomar OS\n'
+            '  • ajuda → Mostrar esta mensagem'
+        )
+
     def processar_mensagem(self, dados: Dict[str, Any]) -> Dict[str, Any]:
         """
         Processa uma mensagem WhatsApp recebida.
@@ -131,14 +143,10 @@ class WhatsAppWebhookService:
             comando = self.extrair_comando(texto)
             
             if not comando:
-                resultado['resposta'] = (
-                    '❓ Comando não reconhecido. Envie:\n'
-                    '  • status OS-123\n'
-                    '  • cheguei OS-123\n'
-                    '  • concluído OS-123\n'
-                    '  • pausa OS-123\n'
-                    '  • ajuda'
-                )
+                # Mensagem livre: responder com ajuda e marcar como processada
+                resultado['sucesso'] = True
+                resultado['tipo'] = 'mensagem_livre'
+                resultado['resposta'] = self._gerar_mensagem_ajuda()
                 return resultado
             
             resultado['tipo'] = comando['tipo']

@@ -50,6 +50,7 @@ class SheetsService:
         self.sheet_usuarios = None
         self.sheet_producao = None
         self.error = None
+
         self.usuarios_error = None
         self._os_cache: List[dict] = []
         self._os_cache_expires_at = 0.0
@@ -59,6 +60,26 @@ class SheetsService:
         self._producao_cache_ttl_seconds = max(5, int(os.getenv('PRODUCAO_CACHE_TTL_SECONDS', '30')))
         
         self._init_connection(creds_file)
+
+    def _retry(self, fn, *args, **kwargs):
+        """Executa chamada com retries exponenciais para operações contra Google Sheets."""
+        max_retries = max(1, int(os.getenv('SHEETS_MAX_RETRIES', '3')))
+        delay = float(os.getenv('SHEETS_RETRY_INITIAL_DELAY', '0.5'))
+        backoff = float(os.getenv('SHEETS_RETRY_BACKOFF', '2.0'))
+        last_exc = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                return fn(*args, **kwargs)
+            except Exception as e:
+                last_exc = e
+                if attempt == max_retries:
+                    logger.error(f"Sheets call failed after {attempt} attempts: {e}")
+                    raise
+                logger.warning(f"Sheets call failed (attempt {attempt}/{max_retries}): {e}; retrying in {delay}s")
+                time.sleep(delay)
+                delay *= backoff
+        # should never reach here
+        raise last_exc
     
     def _init_connection(self, creds_file: str) -> None:
         """Inicializa conexão com Google Sheets."""
@@ -76,7 +97,7 @@ class SheetsService:
                 logger.info(f"Conectado à aba '{self.sheet_tab}'")
             except Exception:
                 self.sheet = spreadsheet.add_worksheet(title=self.sheet_tab, rows=2000, cols=20)
-                self.sheet.append_row([
+                self._retry(self.sheet.append_row, [
                     'ID', 'Carimbo de data/hora', 'Nome do solicitante', 'Setor',
                     'Data da Solicitação', 'Descrição', 'Equipamento/Local', 'Prioridade',
                     'Status da OS', 'Informações adicionais', 'Serviço realizado',
@@ -93,7 +114,7 @@ class SheetsService:
                 logger.info(f"Conectado à aba '{self.horario_tab}'")
             except Exception:
                 self.sheet_horario = spreadsheet.add_worksheet(title=self.horario_tab, rows=1000, cols=10)
-                self.sheet_horario.append_row(['Data', 'Funcionário', 'Pedido/OS', 'Tipo', 'Horário', 'Observação'])
+                self._retry(self.sheet_horario.append_row, ['Data', 'Funcionário', 'Pedido/OS', 'Tipo', 'Horário', 'Observação'])
                 logger.info(f"Aba '{self.horario_tab}' criada")
             
             # Conecta à aba de usuários
@@ -103,7 +124,7 @@ class SheetsService:
             except Exception:
                 try:
                     self.sheet_usuarios = spreadsheet.add_worksheet(title=self.usuarios_tab, rows=1000, cols=10)
-                    self.sheet_usuarios.append_row(['Username', 'Senha', 'Role', 'Data de Cadastro'])
+                    self._retry(self.sheet_usuarios.append_row, ['Username', 'Senha', 'Role', 'Data de Cadastro'])
                     logger.info(f"Aba '{self.usuarios_tab}' criada")
                 except Exception as e:
                     self.sheet_usuarios = None
@@ -117,7 +138,7 @@ class SheetsService:
                 except Exception:
                     try:
                         self.sheet_producao = spreadsheet.add_worksheet(title=self.producao_tab, rows=2000, cols=20)
-                        self.sheet_producao.append_row(self.PRODUCAO_HEADERS)
+                        self._retry(self.sheet_producao.append_row, self.PRODUCAO_HEADERS)
                         logger.info(f"Aba '{self.producao_tab}' criada com cabeçalho")
                     except Exception as e:
                         self.sheet_producao = None
@@ -194,13 +215,13 @@ class SheetsService:
                 self.sheet_usuarios = spreadsheet.worksheet(self.usuarios_tab)
             except Exception:
                 self.sheet_usuarios = spreadsheet.add_worksheet(title=self.usuarios_tab, rows=1000, cols=10)
-                self.sheet_usuarios.append_row(['Username', 'Senha', 'Role', 'Data de Cadastro'])
+                self._retry(self.sheet_usuarios.append_row, ['Username', 'Senha', 'Role', 'Data de Cadastro'])
             self.usuarios_error = None
             # Garantir coluna extra 'Data de Cadastro' caso aba exista sem ela
             try:
-                headers = self.sheet_usuarios.row_values(1)
+                headers = self._retry(self.sheet_usuarios.row_values, 1)
                 if 'Data de Cadastro' not in headers:
-                    self.sheet_usuarios.update_cell(1, len(headers) + 1, 'Data de Cadastro')
+                    self._retry(self.sheet_usuarios.update_cell, 1, len(headers) + 1, 'Data de Cadastro')
             except Exception:
                 pass
             return True
@@ -255,28 +276,36 @@ class SheetsService:
 
         return os_list
     
-    def get_next_id(self) -> int:
-        """Obtém o próximo ID disponível."""
+    def get_next_id(self) -> Any:
+        """Obtém o próximo ID disponível.
+
+        Por padrão retorna um UUID4 string para evitar race conditions em escrita concorrente.
+        Mantém fallback para comportamento numérico legado caso UUID não esteja disponível.
+        """
         try:
             if not self.sheet:
-                return int(datetime.datetime.now().timestamp())
-            
-            ids_column = self.sheet.col_values(1)
+                return str(datetime.datetime.now().timestamp())
+
+            ids_column = self._retry(self.sheet.col_values, 1)
             if ids_column:
                 ids_column = ids_column[1:]  # Remove cabeçalho
-            
-            ids_numericos = []
-            for id_val in ids_column:
-                try:
-                    if id_val and str(id_val).strip():
-                        ids_numericos.append(int(id_val))
-                except ValueError:
-                    continue
-            
-            return max(ids_numericos) + 1 if ids_numericos else 1
+
+            # Preferir UUID para novos registros
+            try:
+                import uuid
+                return str(uuid.uuid4())
+            except Exception:
+                ids_numericos = []
+                for id_val in (ids_column or []):
+                    try:
+                        if id_val and str(id_val).strip():
+                            ids_numericos.append(int(id_val))
+                    except ValueError:
+                        continue
+                return max(ids_numericos) + 1 if ids_numericos else 1
         except Exception as e:
             logger.error(f"Erro ao obter próximo ID: {e}")
-            return int(datetime.datetime.now().timestamp())
+            return str(int(datetime.datetime.now().timestamp()))
 
     def _ensure_whatsapp_column(self) -> None:
         """Garante a existência da coluna de WhatsApp do solicitante no cabeçalho."""
@@ -284,12 +313,12 @@ class SheetsService:
             if not self.sheet:
                 return
 
-            headers = self.sheet.row_values(1)
+            headers = self._retry(self.sheet.row_values, 1)
             if self.WHATSAPP_HEADER in headers:
                 return
 
             next_col = len(headers) + 1
-            self.sheet.update_cell(1, next_col, self.WHATSAPP_HEADER)
+            self._retry(self.sheet.update_cell, 1, next_col, self.WHATSAPP_HEADER)
             logger.info("Coluna '%s' adicionada na aba '%s'", self.WHATSAPP_HEADER, self.sheet_tab)
         except Exception as e:
             logger.warning("Falha ao garantir coluna de WhatsApp na aba '%s': %s", self.sheet_tab, e)
@@ -300,8 +329,8 @@ class SheetsService:
             if not self.sheet:
                 return False
             
-            self.sheet.append_row(row_data, value_input_option='USER_ENTERED', 
-                                 insert_data_option='INSERT_ROWS')
+            self._retry(self.sheet.append_row, row_data, value_input_option='USER_ENTERED', 
+                        insert_data_option='INSERT_ROWS')
             self._invalidate_os_cache()
             logger.info(f"Nova OS adicionada (ID: {row_data[0]})")
             return True
@@ -325,7 +354,7 @@ class SheetsService:
                 self._ensure_producao_headers()
             except Exception:
                 self.sheet_producao = spreadsheet.add_worksheet(title=self.producao_tab, rows=2000, cols=20)
-                self.sheet_producao.append_row(self.PRODUCAO_HEADERS)
+                self._retry(self.sheet_producao.append_row, self.PRODUCAO_HEADERS)
             return True
         except Exception as e:
             logger.error(f"Erro ao garantir aba de produção '{self.producao_tab}': {e}")
@@ -337,9 +366,9 @@ class SheetsService:
             if not self.sheet_producao:
                 return
 
-            headers = self.sheet_producao.row_values(1)
+            headers = self._retry(self.sheet_producao.row_values, 1)
             if 'Origem' not in headers:
-                self.sheet_producao.update_cell(1, len(headers) + 1, 'Origem')
+                self._retry(self.sheet_producao.update_cell, 1, len(headers) + 1, 'Origem')
         except Exception as e:
             logger.warning(f"Não foi possível garantir cabeçalhos de produção: {e}")
 
@@ -379,11 +408,10 @@ class SheetsService:
             if not self._ensure_producao_sheet():
                 return False
 
-            self.sheet_producao.append_row(
-                row_data,
-                value_input_option='USER_ENTERED',
-                insert_data_option='INSERT_ROWS'
-            )
+            self._retry(self.sheet_producao.append_row,
+                        row_data,
+                        value_input_option='USER_ENTERED',
+                        insert_data_option='INSERT_ROWS')
             self._invalidate_producao_cache()
             logger.info(f"Novo item de produção adicionado (ID: {row_data[0]})")
             return True
@@ -401,7 +429,7 @@ class SheetsService:
             if use_cache and not force_refresh and self._producao_cache and now < self._producao_cache_expires_at:
                 return list(self._producao_cache)
 
-            data = self.sheet_producao.get_all_values()
+            data = self._retry(self.sheet_producao.get_all_values)
             producao_list = self._build_producao_list_from_values(data)
             self._producao_cache = producao_list
             self._producao_cache_expires_at = now + self._producao_cache_ttl_seconds
@@ -416,8 +444,8 @@ class SheetsService:
             if not self._ensure_producao_sheet() or row_id < 2:
                 return None
 
-            headers = self._normalize_producao_headers(self.sheet_producao.row_values(1))
-            row_data = self.sheet_producao.row_values(row_id)
+            headers = self._normalize_producao_headers(self._retry(self.sheet_producao.row_values, 1))
+            row_data = self._retry(self.sheet_producao.row_values, row_id)
             if not row_data or not any(str(v).strip() for v in row_data):
                 return None
 
@@ -436,7 +464,7 @@ class SheetsService:
                 return False
 
             ultima_coluna = chr(ord('A') + len(row_data) - 1)
-            self.sheet_producao.update(f'A{row_id}:{ultima_coluna}{row_id}', [row_data])
+            self._retry(self.sheet_producao.update, f'A{row_id}:{ultima_coluna}{row_id}', [row_data])
             self._invalidate_producao_cache()
             logger.info(f"Item de produção (linha {row_id}) atualizado")
             return True
@@ -453,13 +481,13 @@ class SheetsService:
             if not self._ensure_producao_sheet():
                 return 0
 
-            headers = self.sheet_producao.row_values(1)
+            headers = self._retry(self.sheet_producao.row_values, 1)
             if 'Origem' not in headers:
-                self.sheet_producao.update_cell(1, len(headers) + 1, 'Origem')
-                headers = self.sheet_producao.row_values(1)
+                self._retry(self.sheet_producao.update_cell, 1, len(headers) + 1, 'Origem')
+                headers = self._retry(self.sheet_producao.row_values, 1)
 
             origem_col = headers.index('Origem') + 1
-            rows = self.sheet_producao.get_all_values()
+            rows = self._retry(self.sheet_producao.get_all_values)
             total_atualizadas = 0
 
             for row_num, row in enumerate(rows[1:], start=2):
@@ -470,7 +498,7 @@ class SheetsService:
                 if origem_atual:
                     continue
 
-                self.sheet_producao.update_cell(row_num, origem_col, origem_padrao)
+                self._retry(self.sheet_producao.update_cell, row_num, origem_col, origem_padrao)
                 total_atualizadas += 1
 
             self._invalidate_producao_cache()
@@ -490,7 +518,7 @@ class SheetsService:
             if use_cache and not force_refresh and self._os_cache and now < self._os_cache_expires_at:
                 return list(self._os_cache)
             
-            data = self.sheet.get_all_values()
+            data = self._retry(self.sheet.get_all_values)
             os_list = self._build_os_list_from_values(data)
             self._os_cache = os_list
             self._os_cache_expires_at = now + self._os_cache_ttl_seconds
@@ -516,7 +544,7 @@ class SheetsService:
 
             # Define a faixa dinamicamente com base na quantidade de colunas.
             ultima_coluna = chr(ord('A') + len(row_data) - 1)
-            self.sheet.update(f'A{row_id}:{ultima_coluna}{row_id}', [row_data])
+            self._retry(self.sheet.update, f'A{row_id}:{ultima_coluna}{row_id}', [row_data])
             self._invalidate_os_cache()
             logger.info(f"OS (linha {row_id}) atualizada")
             return True
@@ -530,8 +558,8 @@ class SheetsService:
             if not self.sheet or row_id < 2:
                 return None
 
-            headers = self._normalize_headers(self.sheet.row_values(1))
-            row_data = self.sheet.row_values(row_id)
+            headers = self._normalize_headers(self._retry(self.sheet.row_values, 1))
+            row_data = self._retry(self.sheet.row_values, row_id)
             if not row_data or not any(str(v).strip() for v in row_data):
                 return None
 
@@ -558,9 +586,9 @@ class SheetsService:
                         'descricao': os_item.get('Descrição', '') or os_item.get('Descrição do Problema ou Serviço Solicitado', '')
                     }
             
-            cell = self.sheet.find(str(os_id), in_column=1)
+            cell = self._retry(self.sheet.find, str(os_id), in_column=1)
             if cell:
-                row_data = self.sheet.row_values(cell.row)
+                row_data = self._retry(self.sheet.row_values, cell.row)
                 return {
                     'id': row_data[0] if len(row_data) > 0 else '',
                     'timestamp': row_data[1] if len(row_data) > 1 else '',
@@ -579,7 +607,7 @@ class SheetsService:
             if not self.sheet_horario:
                 return False
             
-            self.sheet_horario.append_row([data, funcionario, pedido_os, tipo, horario, observacao])
+            self._retry(self.sheet_horario.append_row, [data, funcionario, pedido_os, tipo, horario, observacao])
             logger.info(f"Registro de {tipo} adicionado para {funcionario}")
             return True
         except Exception as e:
@@ -592,7 +620,7 @@ class SheetsService:
             if not self.sheet_horario:
                 return []
             
-            data = self.sheet_horario.get_all_values()
+            data = self._retry(self.sheet_horario.get_all_values)
             if len(data) < 2:
                 return []
             
@@ -617,7 +645,7 @@ class SheetsService:
             if not self._ensure_usuarios_sheet():
                 return []
             
-            records = self.sheet_usuarios.get_all_records()
+            records = self._retry(self.sheet_usuarios.get_all_records)
             return records
         except Exception as e:
             logger.error(f"Erro ao obter usuários: {e}")
@@ -629,7 +657,7 @@ class SheetsService:
             if not self._ensure_usuarios_sheet():
                 return False
             # Atualiza Username, Senha, Role e preserva/insere Data de Cadastro como vazia
-            self.sheet_usuarios.update(f'A{row_id}:D{row_id}', [[username, senha, role, '']])
+            self._retry(self.sheet_usuarios.update, f'A{row_id}:D{row_id}', [[username, senha, role, '']])
             logger.info(f"Usuário {username} atualizado")
             return True
         except Exception as e:
@@ -642,7 +670,7 @@ class SheetsService:
             if not self._ensure_usuarios_sheet():
                 return False
             ts = datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-            self.sheet_usuarios.append_row([username, senha, role, ts])
+            self._retry(self.sheet_usuarios.append_row, [username, senha, role, ts])
             logger.info(f"Novo usuário {username} adicionado")
             return True
         except Exception as e:
@@ -659,7 +687,7 @@ class SheetsService:
             records = self.sheet_usuarios.get_all_records()
             for i, rec in enumerate(records, start=2):
                 if str(rec.get('Username', '')).strip() == username:
-                    self.sheet_usuarios.delete_rows(i)
+                    self._retry(self.sheet_usuarios.delete_rows, i)
                     logger.info(f"Usuário {username} deletado")
                     return True
             
