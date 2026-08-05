@@ -177,9 +177,53 @@ body {
     font-size: 18px;
 }
 
-.stats-grid,
-.charts-grid,
-.grid {
+.stats-card {
+    background: linear-gradient(135deg, rgba(255,255,255,0.98), rgba(248,250,252,0.95));
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stats-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 16px 35px rgba(15, 23, 42, 0.12);
+}
+
+.stats-label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ui-muted);
+    margin-bottom: 8px;
+}
+
+.stats-value {
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.stats-hint {
+    color: var(--ui-muted);
+    display: inline-block;
+    margin-top: 6px;
+}
+
+.stats-card-primary {
+    background: linear-gradient(135deg, #eef2ff 0%, #f8fafc 100%);
+}
+
+.stats-card-danger {
+    background: linear-gradient(135deg, #fef2f2 0%, #fdf2f8 100%);
+}
+
+.stats-card-success {
+    background: linear-gradient(135deg, #ecfdf5 0%, #f8fafc 100%);
+}
+
+.stats-card-info {
+    background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+}
     display: grid;
     gap: 20px;
 }

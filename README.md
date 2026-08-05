@@ -115,7 +115,10 @@ projeto_flask/
 4. Configure Environment Variables:
    - `GOOGLE_SHEET_ID`
    - `SECRET_KEY`
-5. Deploy automático!
+5. **Recomendado para produção:** provisione um **Redis** no Render (Add-ons → Redis) e defina:
+   - `REDIS_URL` → use a *Internal Redis URL* (começa com `redis://red-...`)
+   - `CACHE_TYPE=RedisCache` (opcional — auto-detectado quando `REDIS_URL` está setado)
+6. Deploy automático!
 
 ## 🔑 Variáveis de Ambiente
 
@@ -124,8 +127,16 @@ projeto_flask/
 | `GOOGLE_SHEET_ID` | ID da planilha Google | - |
 | `GOOGLE_SHEET_TAB` | Nome da aba | "Respostas ao formulário 3" |
 | `SECRET_KEY` | Chave secreta Flask | "dev-secret-key..." |
-| `CACHE_TTL_SECONDS` | Tempo de cache (segundos) | 300 |
+| `CACHE_TTL_SECONDS` | Tempo de cache padrão (segundos) | 300 |
+| `CACHE_TYPE` | Backend do cache (`RedisCache` ou `SimpleCache`) | Auto-detectado via `REDIS_URL` |
 | `OS_CACHE_TTL_SECONDS` | TTL do cache de OS no SheetsService (segundos) | 120 |
+| `PRODUCAO_CACHE_TTL_SECONDS` | TTL do cache de produção (segundos) | 30 |
+| `USUARIOS_CACHE_TTL_SECONDS` | TTL do cache de usuários (segundos) | 300 |
+| `REDIS_URL` | URL completa do Redis (ex.: `redis://:senha@host:6379/0`) | - |
+| `REDIS_HOST` | Host do Redis (se `REDIS_URL` não definido) | localhost |
+| `REDIS_PORT` | Porta do Redis | 6379 |
+| `REDIS_DB` | Número do database Redis | 0 |
+| `REDIS_PASSWORD` | Senha do Redis (vazio se sem senha) | - |
 | `FLASK_DEBUG` | Modo debug | false |
 | `PORT` | Porta do servidor | 5000 |
 
@@ -256,11 +267,108 @@ TWILIO_CONTENT_MAP="1=numero_pedido,2=prioridade,3=solicitante,4=setor,5=equipam
 
 ## 📊 Cache
 
-O sistema implementa cache inteligente:
-- **TTL**: 5 minutos configurável
+O sistema implementa cache inteligente com **Flask-Caching**, suportando dois backends:
+
+### Backends suportados
+
+| Backend | Quando usar | Como ativar |
+|---------|-------------|-------------|
+| `SimpleCache` (padrão em dev) | Single-worker / desenvolvimento | Não definir `REDIS_URL` |
+| `RedisCache` (recomendado em produção) | Multi-worker com gunicorn | Definir `REDIS_URL` ou `CACHE_TYPE=RedisCache` |
+
+> 💡 **Auto-detecção**: se `REDIS_URL` estiver definido, o sistema usa `RedisCache` automaticamente, mesmo sem `CACHE_TYPE`.
+
+### Por que Redis em produção?
+
+O `SimpleCache` armazena dados **na memória de cada processo**. Com `gunicorn -w 4`, cada worker tem seu próprio cache isolado, causando:
+
+- ❌ **Race conditions**: dois workers podem ler dados desatualizados simultaneamente
+- ❌ **Inconsistência**: usuário criado no worker 1 não aparece no worker 2 até o TTL expirar
+- ❌ **Cache miss duplicado**: cada worker faz sua própria consulta ao Google Sheets
+
+O **Redis** resolve isso compartilhando o cache entre todos os workers via rede.
+
+### Instalação do Redis
+
+**🐧 Linux (Ubuntu/Debian):**
+```bash
+sudo apt-get update
+sudo apt-get install redis-server
+sudo systemctl enable redis-server
+sudo systemctl start redis-server
+```
+
+**🍎 macOS (Homebrew):**
+```bash
+brew install redis
+brew services start redis
+```
+
+**🪟 Windows:**
+- Baixe o instalador em [github.com/microsoftarchive/redis/releases](https://github.com/microsoftarchive/redis/releases)
+- Ou use WSL2 com Ubuntu (recomendado)
+- Ou use Docker: `docker run -d -p 6379:6379 --name redis redis:alpine`
+
+**🐳 Docker (qualquer SO):**
+```bash
+docker run -d -p 6379:6379 --name redis redis:alpine
+```
+
+### Configuração no `.env`
+
+```bash
+# Tipo de cache (auto-detectado se REDIS_URL estiver definido)
+CACHE_TYPE=RedisCache
+
+# URL completa do Redis (tem prioridade sobre as variáveis individuais)
+REDIS_URL=redis://localhost:6379/0
+
+# OU configuração individual (usada se REDIS_URL não estiver definido)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_DB=0
+REDIS_PASSWORD=
+
+# TTLs específicos por tipo de dado (em segundos)
+CACHE_TTL_SECONDS=300          # TTL padrão
+OS_CACHE_TTL_SECONDS=120       # Cache de ordens de serviço
+PRODUCAO_CACHE_TTL_SECONDS=30  # Cache de produção
+USUARIOS_CACHE_TTL_SECONDS=300 # Cache de usuários
+```
+
+### Funcionalidades do cache
+
+- **TTL**: configurável por tipo de dado (padrão 5 minutos)
 - **Rotas cacheadas**: Gerenciar
-- **Invalidação**: Automática após criar/atualizar OS
+- **Invalidação**: automática após criar/atualizar/deletar OS ou usuários
 - **Limpeza manual**: `/admin/limpar-cache`
+- **Fallback automático**: se Redis cair, o sistema usa cache local em memória (degradação graceful)
+
+### Deploy no Render com Redis
+
+1. Crie um **Redis instance** no Render (plano free disponível)
+2. Copie a **Internal Redis URL** fornecida pelo Render
+3. Defina `REDIS_URL=<internal_url>` nas variáveis de ambiente do Web Service
+4. Pronto! O sistema detecta e usa Redis automaticamente
+
+### Verificando o cache
+
+```bash
+# Conectar ao Redis CLI
+redis-cli
+
+# Listar todas as chaves do app
+KEYS my01_*
+
+# Ver TTL de uma chave
+TTL my01_sheets:os:all
+
+# Ver valor (cuidado: pode ser grande)
+GET my01_sheets:os:all
+
+# Limpar todo o cache do app
+FLUSHDB
+```
 
 ## 🛡️ Segurança
 
@@ -278,7 +386,7 @@ O sistema implementa cache inteligente:
 
 ## ⚡ Performance & Código
 
-- ✅ **Flask-Caching** com SimpleCache (Redis ready)
+- ✅ **Flask-Caching** com RedisCache (produção multi-worker) ou SimpleCache (dev) — auto-detectado via `REDIS_URL`
 - ✅ **Error Handlers Globais** (404, 500, Exception)
 - ✅ **Validações Centralizadas** com dataclasses
 - ✅ **Type Hints** em funções principais

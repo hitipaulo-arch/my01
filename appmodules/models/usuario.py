@@ -9,50 +9,52 @@ from typing import Optional
 
 class Role(str, Enum):
     """Enum para roles de usuário."""
-    ADMIN = 'admin'
-    OPERADOR = 'operador'
-    VISUALIZADOR = 'visualizador'
+
+    ADMIN = "admin"
+    OPERADOR = "operador"
+    VISUALIZADOR = "visualizador"
 
 
 @dataclass
 class Usuario:
     """Representa um usuário do sistema."""
-    
+
     username: str
     senha_hash: str
     role: str = Role.ADMIN.value
-    data_cadastro: Optional[str] = ''
-    
+    data_cadastro: Optional[str] = ""
+
     @classmethod
-    def criar(cls, username: str, senha: str, role: str = Role.ADMIN.value) -> 'Usuario':
+    def criar(
+        cls, username: str, senha: str, role: str = Role.ADMIN.value
+    ) -> "Usuario":
         """Cria novo usuário com senha hasheada."""
-        senha_hash = generate_password_hash(senha, method='pbkdf2:sha256')
-        ts = datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-        return cls(username=username, senha_hash=senha_hash, role=role, data_cadastro=ts)
+        senha_hash = generate_password_hash(senha, method="pbkdf2:sha256")
+        ts = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        return cls(
+            username=username, senha_hash=senha_hash, role=role, data_cadastro=ts
+        )
 
     @staticmethod
     def is_hash_valido(valor: str) -> bool:
         """Verifica se o valor parece um hash suportado pelo Werkzeug."""
-        return str(valor or '').startswith(('pbkdf2:', 'scrypt:'))
-    
+        return str(valor or "").startswith(("pbkdf2:", "scrypt:"))
+
     def verificar_senha(self, senha: str) -> bool:
         """Verifica se a senha está correta."""
         if not self.is_hash_valido(self.senha_hash):
             return False
         return check_password_hash(self.senha_hash, senha)
-    
+
     def atualizar_senha(self, nova_senha: str) -> None:
         """Atualiza senha do usuário."""
-        self.senha_hash = generate_password_hash(nova_senha, method='pbkdf2:sha256')
-    
+        self.senha_hash = generate_password_hash(nova_senha, method="pbkdf2:sha256")
+
     def to_dict(self) -> dict:
         """Converte para dicionário."""
         # Nunca expor hashes de senha em dicionários serializáveis.
-        return {
-            'role': self.role,
-            'data_cadastro': self.data_cadastro
-        }
-    
+        return {"role": self.role, "data_cadastro": self.data_cadastro}
+
     def to_sheet_row(self) -> list:
         """Converte para linha do Google Sheets."""
-        return [self.username, self.senha_hash, self.role, self.data_cadastro or '']
+        return [self.username, self.senha_hash, self.role, self.data_cadastro or ""]

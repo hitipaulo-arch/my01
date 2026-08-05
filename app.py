@@ -6,10 +6,8 @@ Ponto de entrada principal da aplicação.
 
 import os
 import logging
-import secrets
 import json
 import pandas as pd
-import datetime
 import hmac
 import hashlib
 from pathlib import Path
@@ -17,20 +15,29 @@ from pathlib import Path
 # Carrega variáveis do .env, se disponível
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass  # python-dotenv não instalado, usando variáveis de ambiente do sistema
 
-from flask import Flask, render_template, jsonify, request, redirect, url_for, flash, session
+from flask import (
+    Flask,
+    render_template,
+    jsonify,
+    request,
+    redirect,
+    url_for,
+    flash,
+    session,
+    current_app,
+)
 from flask_wtf.csrf import CSRFProtect
 from flask_caching import Cache
 
 
-
 # Configuração de logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -39,66 +46,40 @@ from appmodules.services import SheetsService, NotificationService, UserService
 from appmodules.services.whatsapp_webhook_service import WhatsAppWebhookService
 from appmodules.routes.auth_routes import auth_bp
 from appmodules.routes.os_routes import os_bp
-from appmodules.utils import login_required, admin_required
+from appmodules.routes.centrais_routes import centrais_bp
+from centrais_repository import CentraisRepository
+from report_logic import gerar_dados_relatorio
+from appmodules.utils import login_required, admin_required, render_route_error
+from config import Config
 from appmodules.models.usuario import Role
 
 # Inicializa serviços globais
-CREDS_FILE = Path(__file__).parent / 'credentials.json'
-SHEET_ID = os.getenv('GOOGLE_SHEET_ID', '1qs3cxlklTnzCp4RpQGhxIrEF4CbeUvid1S0Cp2tC3Xg')
-SHEET_TAB = os.getenv('GOOGLE_SHEET_TAB', 'Respostas ao formulário 3')
-HORARIO_TAB = os.getenv('GOOGLE_SHEET_HORARIO_TAB', 'Controle de Horário')
-USUARIOS_TAB = os.getenv('GOOGLE_SHEET_USUARIOS_TAB', 'Usuários')
-CENTRAIS_TAB = os.getenv('GOOGLE_SHEET_CENTRAIS_TAB', 'Controle de Centrais')
-FERRAMENTAS_TAB = os.getenv('GOOGLE_SHEET_FERRAMENTAS_TAB', 'Controle de Ferramentas')
-HISTORICO_FERRAMENTAS_TAB = os.getenv('GOOGLE_SHEET_HISTORICO_FERRAMENTAS_TAB', 'Histórico de Ferramentas')
-PRODUCAO_TAB = os.getenv('GOOGLE_SHEET_PRODUCAO_TAB', 'Controle de Produção')
+CREDS_FILE = Path(__file__).parent / "credentials.json"
 
 try:
-    sheets_service = SheetsService(str(CREDS_FILE), SHEET_ID, SHEET_TAB, HORARIO_TAB, USUARIOS_TAB, PRODUCAO_TAB)
+    sheets_service = SheetsService(
+        str(CREDS_FILE),
+        Config.SHEETS.SHEET_ID,
+        Config.SHEETS.SHEET_TAB,
+        Config.SHEETS.SHEET_HORARIO_TAB,
+        Config.SHEETS.SHEET_USUARIOS_TAB,
+        Config.SHEETS.SHEET_PRODUCAO_TAB,
+    )
     user_service = UserService(sheets_service)
+    centrais_repository = CentraisRepository(sheets_service)
     logger.info("Serviços inicializados com sucesso")
 except Exception as e:
     logger.error(f"Erro ao inicializar serviços: {e}")
     sheets_service = None
     user_service = None
+    centrais_repository = None
 
 # Flask App
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY')
-if not app.secret_key:
-    raise ValueError(
-        "\n" + "="*70 + "\n"
-        "ERRO CRÍTICO: SECRET_KEY não configurada!\n"
-        "="*70 + "\n"
-        "A aplicação requer uma SECRET_KEY fixa para manter sessões após restart.\n"
-        "\n"
-        "GERE UMA CHAVE SEGURA:\n"
-        "  python -c 'import secrets; print(secrets.token_hex(32))'\n"
-        "\n"
-        "CONFIGURE em variáveis de ambiente:\n"
-        "  export SECRET_KEY=<chave_gerada>\n"
-        "  OU adicione ao arquivo .env\n"
-        "\n"
-        "Sem esta configuração, todos os usuários serão desconectados\n"
-        "quando o servidor for reiniciado.\n"
-        "="*70
-    )
-app_env = os.getenv('APP_ENV', os.getenv('FLASK_ENV', 'production')).strip().lower()
-session_cookie_secure = os.getenv('SESSION_COOKIE_SECURE')
-if session_cookie_secure is None:
-    session_cookie_secure = app_env == 'production'
-else:
-    session_cookie_secure = session_cookie_secure.strip().lower() in ('1', 'true', 'yes', 'on')
+app.config.from_object(Config.FLASK)
+app.config.from_object(Config.CACHE)
 
-app.config.update(
-    SESSION_COOKIE_SECURE=session_cookie_secure,
-    SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE='Strict',
-    WTF_CSRF_ENABLED=True,
-    WTF_CSRF_TIME_LIMIT=3600,
-    CACHE_TYPE=os.getenv('CACHE_TYPE', 'SimpleCache'),
-    CACHE_DEFAULT_TIMEOUT=int(os.getenv('CACHE_TTL_SECONDS', 300))
-)
+app_env = os.getenv("APP_ENV", os.getenv("FLASK_ENV", "production"))
 
 csrf = CSRFProtect(app)
 cache = Cache(app)
@@ -107,146 +88,213 @@ cache = Cache(app)
 try:
     from flask_limiter import Limiter
     from flask_limiter.util import get_remote_address
-    limiter = Limiter(app, key_func=get_remote_address)
+
+    limiter = Limiter(key_func=get_remote_address, app=app)
+    app.config["limiter"] = limiter
     logger.info("Flask-Limiter inicializado")
 except Exception:
     limiter = None
-    logger.warning("Flask-Limiter não disponível. Instale 'Flask-Limiter' para habilitar rate limiting.")
+    logger.warning(
+        "Flask-Limiter não disponível. Instale 'Flask-Limiter' para habilitar rate limiting."
+    )
 
 # Torna serviços disponíveis globalmente
-app.config['sheets_service'] = sheets_service
-app.config['user_service'] = user_service
-app.config['notification_service'] = NotificationService
+app.config["sheets_service"] = sheets_service
+app.config["user_service"] = user_service
+app.config["centrais_repository"] = centrais_repository
+app.config["notification_service"] = NotificationService
 
 # Inicializa serviço de webhook WhatsApp
 webhook_service = WhatsAppWebhookService(sheets_service=sheets_service)
-app.config['webhook_service'] = webhook_service
+app.config["webhook_service"] = webhook_service
+
+# Validação estrita de segurança para webhook em produção
+# Verifica se webhook está habilitado (token configurado + enabled=true)
+webhook_enabled = os.getenv("WHATSAPP_WEBHOOK_ENABLED", "false").lower() == "true"
+webhook_token = os.getenv("WHATSAPP_WEBHOOK_TOKEN", "").strip()
+webhook_secret = os.getenv("WHATSAPP_WEBHOOK_SECRET", "").strip()
+
+if webhook_enabled and webhook_token:
+    if not webhook_secret:
+        if app_env == "production":
+            logger.critical(
+                "FALHA CRÍTICA DE SEGURANÇA: WHATSAPP_WEBHOOK_SECRET não configurado em PRODUÇÃO. "
+                "A aplicação não iniciará para evitar exposição do endpoint."
+            )
+            raise RuntimeError(
+                "WHATSAPP_WEBHOOK_SECRET é obrigatório em produção quando webhook está habilitado. "
+                "Configure a variável de ambiente antes de iniciar."
+            )
+        else:
+            logger.warning(
+                "AVISO DE SEGURANÇA: WHATSAPP_WEBHOOK_SECRET não configurado (ambiente não-produção). "
+                "O webhook funcionará mas NÃO deve ser usado em produção sem esta configuração."
+            )
+    else:
+        logger.info("Webhook WhatsApp configurado com secret válido")
+elif webhook_enabled and not webhook_token:
+    logger.warning(
+        "Webhook WhatsApp habilitado mas WHATSAPP_WEBHOOK_TOKEN não configurado. "
+        "Webhook será desabilitado por segurança."
+    )
 
 # Registra blueprints
 app.register_blueprint(auth_bp)
 app.register_blueprint(os_bp)
+app.register_blueprint(centrais_bp)
+
+# Aplica rate limiting em rotas críticas de blueprints (DEPOIS do registro)
+limiter = app.config.get("limiter")
+if limiter:
+    try:
+        # Protege a rota de login contra força bruta
+        app.view_functions["auth.login"] = limiter.limit("5/minute")(
+            app.view_functions["auth.login"]
+        )
+        # Protege a rota de cadastro contra brute-force de criação de contas
+        app.view_functions["auth.cadastro"] = limiter.limit("3/minute")(
+            app.view_functions["auth.cadastro"]
+        )
+    except KeyError:
+        logger.warning("Não foi possível aplicar rate limit em rotas de auth.")
 
 # ════════════════════════════════════════════════════════════════════════════════
 # ROTAS DE WEBHOOK (WhatsApp)
 # ════════════════════════════════════════════════════════════════════════════════
 
-@app.route('/webhook/whatsapp', methods=['GET', 'POST'])
+
+@app.route("/webhook/whatsapp", methods=["GET", "POST"])
 def webhook_whatsapp():
     """
     Webhook para receber mensagens do WhatsApp.
     GET: Validação do webhook pelo provedor
     POST: Receber mensagens
     """
-    webhook_service = app.config.get('webhook_service')
-    
+    webhook_service = current_app.config.get("webhook_service")
+
     if not webhook_service:
         logger.error("Webhook service não inicializado")
-        return jsonify({'erro': 'Serviço indisponível'}), 503
-    
+        return jsonify({"erro": "Serviço indisponível"}), 503
+
     if not webhook_service.enabled:
         logger.warning("Webhook WhatsApp desabilitado")
-        return jsonify({'erro': 'Webhook desabilitado'}), 403
-    
+        return jsonify({"erro": "Webhook desabilitado"}), 403
+
     # Validação GET (handshake do provedor)
-    if request.method == 'GET':
-        token = request.args.get('hub.verify_token', '')
-        desafio = request.args.get('hub.challenge', '')
-        
+    if request.method == "GET":
+        token = request.args.get("hub.verify_token", "")
+        desafio = request.args.get("hub.challenge", "")
+
         if webhook_service.validar_token(token):
             logger.info("Webhook validado com sucesso")
             return desafio, 200
         else:
             logger.warning(f"Token de webhook inválido: {token[:20]}...")
-            return jsonify({'erro': 'Token inválido'}), 403
-    
+            return jsonify({"erro": "Token inválido"}), 403
+
     # Processar POST (mensagem recebida)
-    if request.method == 'POST':
+    if request.method == "POST":
         try:
             # Limita tamanho do payload para evitar DoS por body muito grande
-            max_bytes = int(os.getenv('WHATSAPP_MAX_PAYLOAD_BYTES', 1024 * 1024))  # 1MB por padrão
+            max_bytes = int(
+                os.getenv("WHATSAPP_MAX_PAYLOAD_BYTES", 1024 * 1024)
+            )  # 1MB por padrão
             content_length = request.content_length or 0
             if content_length and content_length > max_bytes:
-                logger.warning(f"Payload do webhook excede limite ({content_length} > {max_bytes})")
-                return jsonify({'erro': 'Payload muito grande'}), 413
+                logger.warning(
+                    f"Payload do webhook excede limite ({content_length} > {max_bytes})"
+                )
+                return jsonify({"erro": "Payload muito grande"}), 413
 
-            # Validação HMAC/assinatura (opcional): preferível ao token na query
-            webhook_secret = os.getenv('WHATSAPP_WEBHOOK_SECRET', '').strip()
-            if webhook_secret:
-                sig_hdr = request.headers.get('X-Hub-Signature-256') or request.headers.get('X-Hub-Signature')
-                raw = request.get_data() or b''
-                if not sig_hdr:
-                    logger.warning('Assinatura de webhook ausente')
-                    return jsonify({'erro': 'Assinatura ausente'}), 403
+            # Validação HMAC/assinatura (obrigatória para segurança)
+            webhook_secret = os.getenv("WHATSAPP_WEBHOOK_SECRET", "").strip()
+            sig_hdr = request.headers.get(
+                "X-Hub-Signature-256"
+            ) or request.headers.get("X-Hub-Signature")
+            raw = request.get_data() or b""
+            if not sig_hdr:
+                logger.warning("Assinatura de webhook ausente (X-Hub-Signature-256)")
+                return jsonify({"erro": "Assinatura ausente"}), 403
 
-                # aceita formatos como 'sha256=<hex>' ou apenas o hex
-                if sig_hdr.startswith('sha256='):
-                    sig = sig_hdr.split('=', 1)[1]
-                else:
-                    sig = sig_hdr
+            # aceita formatos como 'sha256=<hex>' ou apenas o hex
+            sig = sig_hdr.split("=", 1)[1] if sig_hdr.startswith("sha256=") else sig_hdr
 
-                computed = hmac.new(webhook_secret.encode(), raw, hashlib.sha256).hexdigest()
-                if not hmac.compare_digest(computed, sig):
-                    logger.warning('Assinatura de webhook inválida')
-                    return jsonify({'erro': 'Assinatura inválida'}), 403
+            computed = hmac.new(
+                webhook_secret.encode(), raw, hashlib.sha256
+            ).hexdigest()
+            if not hmac.compare_digest(computed, sig):
+                logger.warning("Assinatura de webhook inválida")
+                return jsonify({"erro": "Assinatura inválida"}), 403
 
             # Parse JSON (após validação de assinatura)
             dados = request.get_json(silent=True) or {}
 
             # Extrair dados da mensagem
-            mensagens = dados.get('entry', [{}])[0].get('changes', [{}])[0].get('value', {}).get('messages', [])
+            mensagens = (
+                dados.get("entry", [{}])[0]
+                .get("changes", [{}])[0]
+                .get("value", {})
+                .get("messages", [])
+            )
 
             if not mensagens:
                 logger.debug("Webhook recebido sem mensagens (pode ser status update)")
-                return jsonify({'OK': True}), 200
+                return jsonify({"OK": True}), 200
 
             mensagem = mensagens[0]
-            tipo = mensagem.get('type', 'unknown')
+            tipo = mensagem.get("type", "unknown")
 
             # Processar apenas mensagens de texto
-            if tipo != 'text':
+            if tipo != "text":
                 logger.info(f"Tipo de mensagem ignorado: {tipo}")
-                return jsonify({'OK': True}), 200
+                return jsonify({"OK": True}), 200
 
             # Extrair dados
-            remetente = mensagem.get('from', '')
-            texto = mensagem.get('text', {}).get('body', '')
-            timestamp_unix = int(mensagem.get('timestamp', 0) or 0)
+            remetente = mensagem.get("from", "")
+            texto = mensagem.get("text", {}).get("body", "")
+            timestamp_unix = int(mensagem.get("timestamp", 0) or 0)
 
             # Converter timestamp
             from datetime import datetime as dt
-            timestamp = dt.fromtimestamp(timestamp_unix).isoformat() if timestamp_unix else dt.now().isoformat()
+
+            timestamp = (
+                dt.fromtimestamp(timestamp_unix).isoformat()
+                if timestamp_unix
+                else dt.now().isoformat()
+            )
 
             logger.info(f"Mensagem WhatsApp recebida de {remetente}: {texto[:50]}")
 
             # Processar mensagem
-            resultado = webhook_service.processar_mensagem({
-                'from': remetente,
-                'text': texto,
-                'timestamp': timestamp
-            })
+            resultado = webhook_service.processar_mensagem(
+                {"from": remetente, "text": texto, "timestamp": timestamp}
+            )
 
             # Log do resultado
-            if resultado.get('sucesso'):
-                logger.info(f"Comando processado: {resultado.get('tipo')} - {resultado.get('numero_os', 'N/A')}")
+            if resultado.get("sucesso"):
+                logger.info(
+                    f"Comando processado: {resultado.get('tipo')} - {resultado.get('numero_os', 'N/A')}"
+                )
             else:
                 logger.warning(f"Erro ao processar: {resultado.get('erro')}")
 
             # TODO: Aqui você pode enviar resposta automática via WhatsApp API
             # exemplo: NotificationService.enviar_resposta_whatsapp(remetente, resultado['resposta'])
 
-            return jsonify({'OK': True, 'resultado': resultado}), 200
+            return jsonify({"OK": True, "resultado": resultado}), 200
 
         except Exception as e:
             logger.error(f"Erro ao processar webhook: {e}", exc_info=True)
-            if app_env == 'production':
-                return jsonify({'erro': 'Erro interno no servidor'}), 500
-            return jsonify({'erro': str(e)}), 500
-
+            if app_env == "production":
+                return jsonify({"erro": "Erro interno no servidor"}), 500
+            return jsonify({"erro": str(e)}), 500
 
     # Registra limitador ao endpoint caso exista (usa view_functions para evitar warnings de lint)
     try:
-        if limiter and 'webhook_whatsapp' in app.view_functions:
-            app.view_functions['webhook_whatsapp'] = limiter.limit("10/minute")(app.view_functions['webhook_whatsapp'])
+        if limiter and "webhook_whatsapp" in app.view_functions:
+            app.view_functions["webhook_whatsapp"] = limiter.limit("10/minute")(
+                app.view_functions["webhook_whatsapp"]
+            )
     except Exception:
         pass
 
@@ -255,720 +303,137 @@ def webhook_whatsapp():
 # ROTAS DE ADMINISTRAÇÃO
 # ════════════════════════════════════════════════════════════════════════════════
 
-@app.route('/usuarios', methods=['GET', 'POST'])
+
+@app.route("/usuarios", methods=["GET", "POST"])
 @admin_required
 def usuarios_admin():
     """Admin UI para gerenciar usuários."""
-    from flask import flash
-    
-    user_service = app.config.get('user_service')
+
+    user_service = current_app.config.get("user_service")
     mensagem = None
-    tipo_mensagem = 'success'
-    
-    if request.method == 'POST':
+    tipo_mensagem = "success"
+
+    if request.method == "POST":
         if not user_service:
-            mensagem = 'Serviço de usuários não disponível.'
-            tipo_mensagem = 'danger'
+            mensagem = "Serviço de usuários não disponível."
+            tipo_mensagem = "danger"
         else:
-            acao = request.form.get('acao')
-            username = request.form.get('username', '').strip()
-            
+            acao = request.form.get("acao")
+            username = request.form.get("username", "").strip()
+
             if not username:
-                mensagem = 'Username é obrigatório.'
-                tipo_mensagem = 'danger'
+                mensagem = "Username é obrigatório."
+                tipo_mensagem = "danger"
             else:
-                if acao == 'delete':
+                if acao == "delete":
                     if user_service.deletar_usuario(username):
-                        mensagem = f'Usuário {username} removido com sucesso.'
+                        mensagem = f"Usuário {username} removido com sucesso."
                     else:
-                        mensagem = f'Erro ao remover usuário {username}.'
-                        tipo_mensagem = 'danger'
+                        mensagem = f"Erro ao remover usuário {username}."
+                        tipo_mensagem = "danger"
                 else:
-                    senha = request.form.get('senha', '').strip()
-                    role = request.form.get('role', Role.ADMIN.value).strip().lower()
-                    roles_validos = {r.value for r in Role}
-                    
-                    if not senha:
-                        mensagem = 'Senha é obrigatória.'
-                        tipo_mensagem = 'danger'
-                    elif role not in roles_validos:
-                        mensagem = 'Role inválida.'
-                        tipo_mensagem = 'danger'
+                    senha = request.form.get("senha", "").strip()
+                    role = request.form.get("role", Role.ADMIN.value).strip().lower()
+                    valido, mensagem_validacao = _validate_user_payload(
+                        username=username,
+                        senha=senha,
+                        role=role,
+                    )
+
+                    if not valido:
+                        mensagem = mensagem_validacao
+                        tipo_mensagem = "danger"
                     else:
                         if user_service.criar_usuario(username, senha, role):
-                            mensagem = f'Usuário {username} criado com sucesso.'
+                            mensagem = f"Usuário {username} criado com sucesso."
                         else:
-                            erro_detalhe = getattr(user_service, 'last_error', None)
-                            if erro_detalhe and 'protected' in erro_detalhe.lower():
+                            erro_detalhe = getattr(user_service, "last_error", None)
+                            if erro_detalhe and "protected" in erro_detalhe.lower():
                                 mensagem = (
-                                    f'Erro ao criar usuário {username}: a aba de usuários está protegida no Google Sheets. '
-                                    'Remova a proteção ou conceda permissão de edição à service account.'
+                                    f"Erro ao criar usuário {username}: a aba de usuários está protegida no Google Sheets. "
+                                    "Remova a proteção ou conceda permissão de edição à service account."
                                 )
                             elif erro_detalhe:
-                                mensagem = f'Erro ao criar usuário {username}: {erro_detalhe}'
+                                mensagem = (
+                                    f"Erro ao criar usuário {username}: {erro_detalhe}"
+                                )
                             else:
-                                mensagem = f'Erro ao criar usuário {username}.'
-                            tipo_mensagem = 'danger'
-    
+                                mensagem = f"Erro ao criar usuário {username}."
+                            tipo_mensagem = "danger"
+
     usuarios = user_service.get_todos_usuarios() if user_service else []
     usuarios_dict = {u.username: u.to_dict() for u in usuarios}
-    
-    return render_template('usuarios.html', 
-        usuarios=usuarios_dict, mensagem=mensagem, tipo_mensagem=tipo_mensagem)
+
+    return render_template(
+        "usuarios.html",
+        usuarios=usuarios_dict,
+        mensagem=mensagem,
+        tipo_mensagem=tipo_mensagem,
+    )
 
 
-@app.route('/relatorios')
-@app.route('/auditoria')
+@app.route("/relatorios")
+@app.route("/auditoria")
 @admin_required
+@cache.cached(timeout=300) # Cache por 5 minutos
 def relatorios():
-    """Página de relatórios."""
-    import datetime as dt
-
-    def _first_col(df, *candidatos):
-        for col in candidatos:
-            if col in df.columns:
-                return col
-        return None
-
-    def _parse_datetime_maybe_time(valor, base_dt):
-        if valor is None:
-            return pd.NaT
-        texto = str(valor).strip()
-        if not texto:
-            return pd.NaT
-
-        # Se vier só horário (HH:MM ou HH:MM:SS), combina com a data base.
-        if ':' in texto and '/' not in texto:
-            if pd.isna(base_dt):
-                return pd.NaT
-            for fmt in ('%H:%M:%S', '%H:%M'):
-                try:
-                    t = dt.datetime.strptime(texto, fmt).time()
-                    return dt.datetime.combine(base_dt.date(), t)
-                except ValueError:
-                    continue
-
-        try:
-            return pd.to_datetime(texto, format='%d/%m/%Y %H:%M:%S', errors='coerce')
-        except Exception:
-            return pd.to_datetime(texto, errors='coerce')
-
-    def _parse_datetime_series_maybe_time(serie_valor, serie_base):
-        """Versão vetorizada para evitar apply linha a linha em datasets grandes."""
-        texto = serie_valor.fillna('').astype(str).str.strip()
-        base = pd.to_datetime(serie_base, errors='coerce')
-        resultado = pd.Series(pd.NaT, index=serie_valor.index, dtype='datetime64[ns]')
-
-        mask_vazio = texto.eq('')
-        mask_data_completa = (~mask_vazio) & texto.str.contains('/', regex=False)
-        mask_somente_hora = (~mask_vazio) & (~mask_data_completa) & texto.str.contains(':', regex=False)
-
-        if mask_data_completa.any():
-            resultado.loc[mask_data_completa] = pd.to_datetime(
-                texto.loc[mask_data_completa], format='%d/%m/%Y %H:%M:%S', errors='coerce'
-            )
-
-        if mask_somente_hora.any():
-            base_text = base.dt.strftime('%Y-%m-%d')
-
-            candidatos_hms = base_text.loc[mask_somente_hora] + ' ' + texto.loc[mask_somente_hora]
-            parsed_hms = pd.to_datetime(candidatos_hms, format='%Y-%m-%d %H:%M:%S', errors='coerce')
-
-            faltantes = parsed_hms.isna()
-            if faltantes.any():
-                candidatos_hm = base_text.loc[mask_somente_hora].loc[faltantes] + ' ' + texto.loc[mask_somente_hora].loc[faltantes]
-                parsed_hms.loc[faltantes] = pd.to_datetime(
-                    candidatos_hm, format='%Y-%m-%d %H:%M', errors='coerce'
-                )
-
-            resultado.loc[mask_somente_hora] = parsed_hms
-
-        return resultado
-
-    _empty = dict(
-        labels_prioridade=[], dados_prioridade=[],
-        labels_setor=[], dados_setor=[],
-        labels_tempo_resolucao=[], dados_tempo_resolucao=[],
-        labels_dia_semana=[], dados_dia_semana=[],
-        total_os=0, taxa_conclusao='0%',
-        total_finalizadas=0, total_andamento=0,
-        tempo_medio='N/A', tabela_resumo=[])
-
-    sheets_service = app.config.get('sheets_service')
-    if not sheets_service:
-        return render_template('relatorios.html', **_empty,
-            mensagem_erro="Serviço de planilhas indisponível"), 503
-
-    disponivel, erro_msg = sheets_service.is_available()
-    if not disponivel:
-        return render_template('relatorios.html', **_empty,
-            mensagem_erro=erro_msg)
-
+    """
+    Página de relatórios.
+    A lógica de processamento de dados foi movida para 'appmodules/logic/report_logic.py'.
+    """
     try:
-        os_list = sheets_service.get_all_os()
-        if not os_list:
-            return render_template('relatorios.html', **_empty)
-
-        df = pd.DataFrame(os_list).fillna('')
-
-        col_timestamp = _first_col(df, 'Carimbo de data/hora')
-        col_status = _first_col(df, 'Status da OS')
-        col_prioridade = _first_col(df, 'Prioridade', 'Nível de prioridade')
-        col_setor = _first_col(df, 'Setor', 'Setor em que será realizado o serviço')
-        col_solicitante = _first_col(df, 'Nome do solicitante')
-        col_descricao = _first_col(df, 'Descrição', 'Descrição do Problema ou Serviço Solicitado')
-        col_andamento = _first_col(df, 'Horario de Andamento')
-        col_termino = _first_col(df, 'Horario de Término')
-
-        # Parse timestamp
-        if col_timestamp:
-            df['_ts'] = pd.to_datetime(
-                df[col_timestamp], format='%d/%m/%Y %H:%M:%S', errors='coerce')
-        else:
-            df['_ts'] = pd.NaT
-
-        # Filtra canceladas
-        if col_status:
-            status_lower = df[col_status].astype(str).str.strip().str.lower()
-            df = df[~status_lower.isin(['cancelada', 'cancelado'])]
-
-        # --- Gráfico por prioridade ---
-        if col_prioridade:
-            pri = df[col_prioridade].astype(str).str.strip()
-            pri_count = pri[pri != ''].value_counts()
-            labels_prioridade = [str(x) for x in pri_count.index.tolist()]
-            dados_prioridade = [int(x) for x in pri_count.values.tolist()]
-        else:
-            labels_prioridade, dados_prioridade = [], []
-
-        # --- Gráfico por setor ---
-        if col_setor:
-            setor = df[col_setor].astype(str).str.strip()
-            setor_count = setor[setor != ''].value_counts().head(10)
-            labels_setor = [str(x) for x in setor_count.index.tolist()]
-            dados_setor = [int(x) for x in setor_count.values.tolist()]
-        else:
-            labels_setor, dados_setor = [], []
-
-        # --- Métricas ---
-        total_os = len(df)
-        status_lower = df[col_status].astype(str).str.strip().str.lower() if col_status else pd.Series(dtype=str)
-
-        finalizadas = int(status_lower.isin(['finalizada', 'concluido', 'concluído']).sum())
-        total_andamento = int(status_lower.isin(['em andamento']).sum())
-        taxa_conclusao = f"{(finalizadas/total_os*100):.1f}%" if total_os > 0 else "0%"
-
-        # --- Tempo médio de resolução (andamento -> término) ---
-        tempo_medio = 'N/A'
-        if col_andamento and col_termino:
-            df_fin = df[status_lower.isin(['finalizada', 'concluido', 'concluído'])].copy()
-            df_fin['_inicio'] = _parse_datetime_series_maybe_time(df_fin[col_andamento], df_fin['_ts'])
-            df_fin['_termino'] = _parse_datetime_series_maybe_time(df_fin[col_termino], df_fin['_ts'])
-            delta = (df_fin['_termino'] - df_fin['_inicio']).dropna()
-            delta = delta[delta.dt.total_seconds() > 0]
-            if not delta.empty:
-                media_h = delta.mean().total_seconds() / 3600
-                if media_h < 1:
-                    tempo_medio = f"{int(media_h * 60)}min"
-                else:
-                    tempo_medio = f"{media_h:.1f}h"
-
-        # --- Gráfico dia da semana ---
-        labels_dia_semana, dados_dia_semana = [], []
-        ts_valid = df['_ts'].dropna()
-        if not ts_valid.empty:
-            dias_map = {0: 'Seg', 1: 'Ter', 2: 'Qua', 3: 'Qui', 4: 'Sex', 5: 'Sáb', 6: 'Dom'}
-            dia_counts = ts_valid.dt.dayofweek.value_counts().sort_index()
-            labels_dia_semana = [dias_map.get(d, str(d)) for d in dia_counts.index]
-            dados_dia_semana = [int(v) for v in dia_counts.values]
-
-        # --- Gráfico tempo de resolução por mês (andamento -> término) ---
-        labels_tempo_resolucao, dados_tempo_resolucao = [], []
-        if col_andamento and col_termino:
-            df_res = df.copy()
-            df_res['_inicio'] = _parse_datetime_series_maybe_time(df_res[col_andamento], df_res['_ts'])
-            df_res['_termino'] = _parse_datetime_series_maybe_time(df_res[col_termino], df_res['_ts'])
-            df_res['_delta_h'] = (df_res['_termino'] - df_res['_inicio']).dt.total_seconds() / 3600
-            df_res = df_res.dropna(subset=['_ts', '_delta_h'])
-            df_res = df_res[df_res['_delta_h'] > 0]
-            if not df_res.empty:
-                df_res['_mes'] = df_res['_ts'].dt.to_period('M').astype(str)
-                media_mes = df_res.groupby('_mes')['_delta_h'].mean().sort_index()
-                labels_tempo_resolucao = media_mes.index.tolist()
-                dados_tempo_resolucao = [round(v, 1) for v in media_mes.values]
-
-        # --- Tabela resumo (últimas 50) ---
-        tabela_resumo = []
-        df_sorted = df.dropna(subset=['_ts']).sort_values('_ts', ascending=False).head(50)
-        for _, row in df_sorted.iterrows():
-            tabela_resumo.append({
-                'data': row.get(col_timestamp, '') if col_timestamp else '',
-                'solicitante': row.get(col_solicitante, '') if col_solicitante else '',
-                'setor': row.get(col_setor, '') if col_setor else '',
-                'status': row.get(col_status, '') if col_status else '',
-                'descricao': row.get(col_descricao, '') if col_descricao else ''
-            })
-
-        return render_template('relatorios.html',
-            labels_prioridade=labels_prioridade,
-            dados_prioridade=dados_prioridade,
-            labels_setor=labels_setor,
-            dados_setor=dados_setor,
-            labels_tempo_resolucao=labels_tempo_resolucao,
-            dados_tempo_resolucao=dados_tempo_resolucao,
-            labels_dia_semana=labels_dia_semana,
-            dados_dia_semana=dados_dia_semana,
-            total_os=total_os,
-            taxa_conclusao=taxa_conclusao,
-            total_finalizadas=finalizadas,
-            total_andamento=total_andamento,
-            tempo_medio=tempo_medio,
-            tabela_resumo=tabela_resumo)
-
+        sheets_service = current_app.config.get("sheets_service")
+        dados_relatorio = gerar_dados_relatorio(sheets_service)
+        return render_template("relatorios.html", **dados_relatorio)
     except Exception as e:
         logger.error(f"Erro ao carregar relatórios: {e}")
-        return render_template('erro.html',
-            mensagem=f"Erro ao carregar relatórios: {e}"), 500
+        return render_template(
+            "erro.html", mensagem=f"Erro ao carregar relatórios: {e}"
+        ), 500
 
 
-@app.route('/tempo-por-funcionario')
+@app.route("/tempo-por-funcionario")
 @admin_required
 def tempo_por_funcionario():
     """Página com tempo de trabalho por funcionário."""
-    return render_template('tempo_por_funcionario.html',
-        dados=[], chart_data={}, total_registros=0)
+    return render_template(
+        "tempo_por_funcionario.html", dados=[], chart_data={}, total_registros=0
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════════════
 # ERROR HANDLERS
 # ════════════════════════════════════════════════════════════════════════════════
 
+
 @app.errorhandler(404)
 def page_not_found(e):
     """Handler para páginas não encontradas."""
     logger.warning(f"Página não encontrada: {request.url}")
-    return render_template('erro.html',
-        mensagem="Página não encontrada."), 404
+    return render_template("erro.html", mensagem="Página não encontrada."), 404
 
 
 @app.errorhandler(500)
 def internal_server_error(e):
     """Handler para erros internos."""
     logger.error(f"Erro interno: {e}", exc_info=True)
-    return render_template('erro.html',
-        mensagem="Erro interno do servidor."), 500
+    return render_template("erro.html", mensagem="Erro interno do servidor."), 500
 
 
 @app.errorhandler(Exception)
 def handle_exception(e):
     """Handler genérico para exceções."""
-    if hasattr(e, 'code'):
+    if hasattr(e, "code"):
         return e
-    
+
     logger.error(f"Erro não tratado: {e}", exc_info=True)
-    return render_template('erro.html',
-        mensagem="Ocorreu um erro inesperado."), 500
-
-
-@app.route('/centrais', methods=['GET', 'POST'])
-@admin_required
-def centrais():
-    """Página de controle de centrais."""
-    sheets_service = app.config.get('sheets_service')
-    if not sheets_service:
-        return render_template('centrais.html',
-            centrais=[], mensagem="Serviço de planilhas indisponível",
-            tipo_mensagem='danger'), 503
-    
-    if request.method == 'POST':
-        try:
-            # Adiciona nova central
-            dados = {
-                'Número de Portas': request.form.get('num_portas', ''),
-                'Código de Série': request.form.get('codigo_serie', ''),
-                'Status': request.form.get('status', ''),
-                'Obra Utilizada': request.form.get('obra', ''),
-                'Data Cadastro': pd.Timestamp.now().strftime('%d/%m/%Y %H:%M:%S'),
-                'Programação': ''
-            }
-            
-            # Garante que a aba existe
-            worksheet = get_or_create_centrais_worksheet(sheets_service)
-            
-            # Adiciona nova linha
-            worksheet.append_row(list(dados.values()))
-            
-            # Redireciona para evitar resubmissão (padrão PRG - Post-Redirect-Get)
-            flash("Central cadastrada com sucesso!", "success")
-            return redirect(url_for('centrais'))
-        except Exception as e:
-            logger.error(f"Erro ao adicionar central: {e}", exc_info=True)
-            flash(f"Erro ao adicionar central: {e}", "danger")
-            return redirect(url_for('centrais'))
-    
-    # GET - lista centrais e mostra mensagens flash
-    mensagem = None
-    tipo_mensagem = None
-    if '_flashes' in session:
-        flashes = session.get('_flashes', [])
-        if flashes:
-            tipo_mensagem, mensagem = flashes[0]
-    
-    return render_template('centrais.html',
-        centrais=get_centrais_list(sheets_service),
-        mensagem=mensagem,
-        tipo_mensagem=tipo_mensagem)
-
-
-def get_or_create_centrais_worksheet(sheets_service):
-    """Obtém ou cria a worksheet de centrais."""
-    try:
-        spreadsheet = sheets_service.client.open_by_key(sheets_service.sheet_id)
-        headers_padrao = ['Número de Portas', 'Código de Série', 'Status', 'Obra Utilizada', 'Data Cadastro', 'Programação', 'Programação Resumo']
-        try:
-            worksheet = spreadsheet.worksheet(CENTRAIS_TAB)
-        except Exception:
-            # Aba não existe, cria
-            worksheet = spreadsheet.add_worksheet(title=CENTRAIS_TAB, rows=100, cols=10)
-            worksheet.append_row(headers_padrao)
-            logger.info(f"Aba '{CENTRAIS_TAB}' criada")
-        else:
-            current_headers = [str(valor or '').strip() for valor in worksheet.row_values(1)]
-            # Detecta cabeçalhos duplicados (após normalização) e loga avisos
-            normalized_counts = {}
-            for h in current_headers:
-                key = _normalizar_texto_basico(h)
-                if not key:
-                    continue
-                normalized_counts[key] = normalized_counts.get(key, 0) + 1
-            duplicates = [k for k, v in normalized_counts.items() if v > 1]
-            if duplicates:
-                logger.warning(f"Cabeçalhos duplicados detectados na aba '{CENTRAIS_TAB}': {duplicates}")
-            # Garante que as colunas de programação existam
-            need_prog = not any(_normalizar_texto_basico(campo) == 'programacao' for campo in current_headers)
-            need_prog_resumo = not any(_normalizar_texto_basico(campo) == 'programacao resumo' for campo in current_headers)
-            # Garante que a coluna Data Cadastro exista (compatibilidade com versões antigas)
-            need_data_cadastro = not any(_normalizar_texto_basico(campo) in ('data cadastro', 'data', 'cadastro') for campo in current_headers)
-            if need_prog or need_prog_resumo:
-                novos = list(current_headers)
-                if need_prog:
-                    novos.append('Programação')
-                if need_prog_resumo:
-                    novos.append('Programação Resumo')
-                if need_data_cadastro:
-                    # Inserir Data Cadastro antes da Programação, se possível
-                    # Se não houver espaço claro, acrescenta ao final
-                    insert_at = None
-                    try:
-                        idx_obra = next(i for i, h in enumerate(novos) if _normalizar_texto_basico(h) == 'obra utilizada' or _normalizar_texto_basico(h) == 'obra')
-                        insert_at = idx_obra + 1
-                    except StopIteration:
-                        insert_at = None
-                    if insert_at is not None and insert_at <= len(novos):
-                        novos.insert(insert_at, 'Data Cadastro')
-                    else:
-                        novos.append('Data Cadastro')
-                worksheet.update('A1', [novos])
-        return worksheet
-    except Exception as e:
-        logger.error(f"Erro ao obter/criar worksheet: {e}")
-        raise
-
-
-def _normalizar_texto_basico(texto):
-    """Normaliza texto para comparação simples de cabeçalhos."""
-    return (
-        str(texto or '')
-        .strip()
-        .lower()
-        .replace('á', 'a')
-        .replace('à', 'a')
-        .replace('â', 'a')
-        .replace('ã', 'a')
-        .replace('é', 'e')
-        .replace('ê', 'e')
-        .replace('í', 'i')
-        .replace('ó', 'o')
-        .replace('ô', 'o')
-        .replace('õ', 'o')
-        .replace('ú', 'u')
-        .replace('ç', 'c')
-    )
-
-
-def _programacao_json_to_summary(programacao_raw: str, total_portas: int) -> str:
-    """Converte JSON de programação em resumo legível: '1→2,3; 2→1'."""
-    try:
-        if not programacao_raw:
-            return ''
-
-        parsed = json.loads(programacao_raw)
-    except Exception:
-        return ''
-
-    linhas = [[] for _ in range(max(0, int(total_portas or 0)))]
-
-    def process_row_item(row_index, item):
-        if row_index < 0 or row_index >= len(linhas):
-            return
-
-        # item can be list, number, or other
-        if isinstance(item, list):
-            # if elements numeric-like -> treat as numbers
-            numeric_elements = True
-            for x in item:
-                if not (isinstance(x, (int, float)) or (isinstance(x, str) and str(x).strip().lstrip('-').isdigit())):
-                    numeric_elements = False
-                    break
-
-            if numeric_elements:
-                for x in item:
-                    try:
-                        n = int(float(x)) - 1
-                        if 0 <= n < len(linhas) and n not in linhas[row_index]:
-                            linhas[row_index].append(n)
-                    except Exception:
-                        continue
-                return
-
-            # Otherwise, look for 'X' markers
-            for idx, val in enumerate(item):
-                if str(val or '').strip().upper() == 'X':
-                    if idx not in linhas[row_index]:
-                        linhas[row_index].append(idx)
-            return
-
-        # single numeric value
-        if isinstance(item, (int, float)) or (isinstance(item, str) and str(item).strip().lstrip('-').isdigit()):
-            try:
-                n = int(float(item)) - 1
-                if 0 <= n < len(linhas) and n not in linhas[row_index]:
-                    linhas[row_index].append(n)
-            except Exception:
-                pass
-
-    # parsed formats: dict with 'selecoes', array of arrays, array of numbers
-    if isinstance(parsed, dict) and 'selecoes' in parsed and isinstance(parsed['selecoes'], list):
-        for i, itm in enumerate(parsed['selecoes']):
-            process_row_item(i, itm)
-    elif isinstance(parsed, list):
-        for i, itm in enumerate(parsed):
-            process_row_item(i, itm)
-
-    parts = []
-    for i, cols in enumerate(linhas):
-        if not cols:
-            continue
-        cols_sorted = sorted(set(cols))
-        cols_text = ','.join(str(c + 1) for c in cols_sorted)
-        parts.append(f"{i + 1}→{cols_text}")
-
-    return '; '.join(parts)
-
-
-def get_centrais_list(sheets_service):
-    """Obtém lista de centrais."""
-    try:
-        worksheet = get_or_create_centrais_worksheet(sheets_service)
-        data = worksheet.get_all_values()
-        if len(data) < 2:
-            return []
-
-        headers = [str(h or '').strip() for h in data[0]]
-
-        # Constroi um mapa de cabeçalhos preservando a PRIMEIRA ocorrência normalizada
-        header_map = {}
-        for i, h in enumerate(headers):
-            if not h:
-                continue
-            key = _normalizar_texto_basico(h)
-            if key and key not in header_map:
-                header_map[key] = i
-
-        def _get_val(row, *aliases):
-            for alias in aliases:
-                idx = header_map.get(_normalizar_texto_basico(alias))
-                if idx is not None and idx < len(row):
-                    return str(row[idx] or '').strip()
-            return ''
-
-        centrais_normalizadas = []
-        for linha in data[1:]:
-            if not any(str(c or '').strip() for c in linha):
-                continue
-
-            centrais_normalizadas.append({
-                'Número de Portas': _get_val(linha, 'Número de Portas', 'Numero de Portas', 'Portas'),
-                'Código de Série': _get_val(linha, 'Código de Série', 'Codigo de Serie', 'Codigo', 'Série'),
-                'Status': _get_val(linha, 'Status'),
-                'Obra Utilizada': _get_val(linha, 'Obra Utilizada', 'Obra'),
-                'Data Cadastro': _get_val(linha, 'Data Cadastro', 'Data de Cadastro', 'Cadastro', 'Data'),
-                'Programação': _get_val(linha, 'Programação', 'Programacao'),
-                'Programação Resumo': _get_val(linha, 'Programação Resumo', 'Programacao Resumo', 'ProgramacaoResumo', 'Programacao_Resumo'),
-            })
-
-        return centrais_normalizadas
-    except Exception as e:
-        logger.warning(f"Erro ao obter centrais: {e}")
-        return []
-
-
-@app.route('/centrais/atualizar/<int:row_id>', methods=['POST'])
-@admin_required
-def atualizar_central(row_id):
-    """Atualiza status de uma central."""
-    sheets_service = app.config.get('sheets_service')
-    if not sheets_service:
-        return jsonify({'success': False, 'message': 'Serviço indisponível'}), 503
-    
-    try:
-        worksheet = get_or_create_centrais_worksheet(sheets_service)
-
-        # row_id é baseado em 1, mas começa do header, então +2
-        row_num = row_id + 2
-
-        status = request.form.get('status', '')
-        obra = request.form.get('obra', '')
-
-        # Localiza dinamicamente as colunas por nome para evitar sobrescritas
-        headers = [str(h or '').strip() for h in worksheet.row_values(1)]
-        header_map = {}
-        for i, h in enumerate(headers):
-            key = _normalizar_texto_basico(h)
-            if key and key not in header_map:
-                header_map[key] = i
-
-        def col_letter(idx: int) -> str:
-            # Converte índice 0-based para letra de coluna A..Z, AA, AB...
-            result = ''
-            i = idx + 1
-            while i > 0:
-                i, rem = divmod(i - 1, 26)
-                result = chr(65 + rem) + result
-            return result
-
-        # Possíveis chaves para 'Status' e 'Obra Utilizada'
-        status_keys = ('status',)
-        obra_keys = ('obra utilizada', 'obra')
-
-        status_idx = next((header_map[k] for k in status_keys if k in header_map), None)
-        obra_idx = next((header_map[k] for k in obra_keys if k in header_map), None)
-
-        if status_idx is not None and obra_idx is not None:
-            start = col_letter(min(status_idx, obra_idx))
-            end = col_letter(max(status_idx, obra_idx))
-            worksheet.update(f'{start}{row_num}:{end}{row_num}', [[status if status_idx<=obra_idx else obra, obra if status_idx<=obra_idx else status]])
-        elif status_idx is not None:
-            col = col_letter(status_idx)
-            worksheet.update(f'{col}{row_num}:{col}{row_num}', [[status]])
-        elif obra_idx is not None:
-            col = col_letter(obra_idx)
-            worksheet.update(f'{col}{row_num}:{col}{row_num}', [[obra]])
-        else:
-            # fallback legacy: colunas C:D
-            worksheet.update(f'C{row_num}:D{row_num}', [[status, obra]])
-        
-        return jsonify({'success': True, 'message': 'Central atualizada!'})
-    except Exception as e:
-        logger.error(f"Erro ao atualizar central: {e}", exc_info=True)
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@app.route('/centrais/programacao/<int:row_id>', methods=['POST'])
-@admin_required
-def atualizar_programacao_central(row_id):
-    """Atualiza a programação de uma central."""
-    sheets_service = app.config.get('sheets_service')
-    if not sheets_service:
-        return jsonify({'success': False, 'message': 'Serviço indisponível'}), 503
-
-    try:
-
-        worksheet = get_or_create_centrais_worksheet(sheets_service)
-        row_num = row_id + 2
-        programacao = request.form.get('programacao', '')
-
-        # Normaliza/compacta JSON para armazenamento
-        if programacao:
-            try:
-                parsed = json.loads(programacao)
-                programacao_compact = json.dumps(parsed, ensure_ascii=False, separators=(',', ':'))
-            except Exception:
-                programacao_compact = str(programacao)
-        else:
-            programacao_compact = ''
-
-        # Identifica índices das colunas dinamicamente, criando colunas se necessário
-        headers = [str(h or '').strip() for h in worksheet.row_values(1)]
-        header_map = {_normalizar_texto_basico(h): i for i, h in enumerate(headers) if h}
-
-        prog_idx = header_map.get(_normalizar_texto_basico('Programação'))
-        resumo_idx = header_map.get(_normalizar_texto_basico('Programação Resumo'))
-
-        # Se as colunas não existirem, adiciona-as ao final
-        if prog_idx is None or resumo_idx is None:
-            new_headers = list(headers)
-            if prog_idx is None:
-                new_headers.append('Programação')
-                prog_idx = len(new_headers) - 1
-            if resumo_idx is None:
-                new_headers.append('Programação Resumo')
-                resumo_idx = len(new_headers) - 1
-            worksheet.update('A1', [new_headers])
-
-        # Recarrega a linha para obter o número de portas
-        row_values = worksheet.row_values(row_num)
-        num_portas = 0
-        portas_idx = header_map.get(_normalizar_texto_basico('Número de Portas'))
-        if portas_idx is not None and portas_idx < len(row_values):
-            try:
-                num_portas = int(float(str(row_values[portas_idx]).strip().replace(',', '.')))
-            except Exception:
-                num_portas = 0
-
-        resumo = _programacao_json_to_summary(programacao_compact, num_portas)
-
-        # Grava programação e resumo nas colunas correspondentes (1-based col)
-        try:
-            # gspread usa índices 1-based para update_cell
-            worksheet.update_cell(row_num, prog_idx + 1, programacao_compact)
-            worksheet.update_cell(row_num, resumo_idx + 1, resumo)
-        except Exception:
-            # fallback: tenta atualizar por range usando letras (menos provável de falhar)
-            try:
-                worksheet.update(range_name=f'F{row_num}:G{row_num}', values=[[programacao_compact, resumo]])
-            except Exception as e:
-                raise
-
-        return jsonify({'success': True, 'message': 'Programação atualizada!', 'resumo': resumo})
-    except Exception as e:
-        logger.error(f"Erro ao atualizar programação da central: {e}", exc_info=True)
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-
-@app.route('/centrais/deletar/<int:row_id>', methods=['POST'])
-@admin_required
-def deletar_central(row_id):
-    """Deleta uma central."""
-    sheets_service = app.config.get('sheets_service')
-    if not sheets_service:
-        return jsonify({'success': False, 'message': 'Serviço indisponível'}), 503
-    
-    try:
-        worksheet = get_or_create_centrais_worksheet(sheets_service)
-        row_num = row_id + 2  # +2 por causa do header
-        worksheet.delete_rows(row_num)
-        
-        return jsonify({'success': True, 'message': 'Central deletada!'})
-    except Exception as e:
-        logger.error(f"Erro ao deletar central: {e}", exc_info=True)
-        return jsonify({'success': False, 'message': str(e)}), 500
+    return render_template("erro.html", mensagem="Ocorreu um erro inesperado."), 500
 
 
 def _parse_int_field(value, default=0):
     """Converte valores numéricos vindos de formulário em inteiro seguro."""
     try:
-        texto = str(value or '').strip().replace('.', '').replace(',', '.')
+        texto = str(value or "").strip().replace(".", "").replace(",", ".")
         if not texto:
             return default
         return int(float(texto))
@@ -986,16 +451,16 @@ def _format_codigo_code(value):
     apenas dígitos ou símbolos. A função é idempotente para formatos já
     compatíveis.
     """
-    raw = str(value or '').strip()
+    raw = str(value or "").strip()
     if not raw:
-        return ''
+        return ""
 
     # Se tiver letras, não alteramos para evitar perda de informação
     if any(ch.isalpha() for ch in raw):
         return raw
 
     # Extrai apenas dígitos e formata
-    digits = ''.join(ch for ch in raw if ch.isdigit())
+    digits = "".join(ch for ch in raw if ch.isdigit())
     if not digits:
         return raw
     if len(digits) <= 2:
@@ -1007,358 +472,800 @@ def _format_codigo_code(value):
 
 def _format_mtc_code(value):
     """Normaliza o número MTC para o formato #### (4 dígitos)."""
-    digits = ''.join(ch for ch in str(value or '') if ch.isdigit())
-    return digits[:4] if digits else ''
+    digits = "".join(ch for ch in str(value or "") if ch.isdigit())
+    return digits[:4] if digits else ""
 
 
 def _append_producao_info(existing_info: str, nova_info: str) -> str:
     """Concatena informações adicionais com histórico simples."""
-    existing_info = str(existing_info or '').strip()
-    nova_info = str(nova_info or '').strip()
+    existing_info = str(existing_info or "").strip()
+    nova_info = str(nova_info or "").strip()
     if not nova_info:
         return existing_info
 
-    timestamp = pd.Timestamp.now().strftime('%d/%m/%Y %H:%M:%S')
+    timestamp = pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S")
     extra = f"[{timestamp}] {nova_info}"
     if existing_info:
         return existing_info + "\n" + extra
     return extra
 
 
+def _validate_item_form_data(
+    nome_item: str,
+    codigo_item: str,
+    quantidade_raw: int,
+    observacao: str,
+    *,
+    allow_empty_codigo: bool = False,
+) -> tuple[bool, str]:
+    """Valida os dados de um item de produção/cadastro de compra."""
+    val_cfg = Config.VALIDATION
+    errors = []
+
+    nome_limpo = str(nome_item or "").strip()
+    codigo_limpo = str(codigo_item or "").strip()
+    observacao_limpa = str(observacao or "").strip()
+
+    if len(nome_limpo) < val_cfg.MIN_NOME_ITEM_LENGTH:
+        errors.append(
+            f"Nome do item deve ter pelo menos {val_cfg.MIN_NOME_ITEM_LENGTH} caracteres."
+        )
+    if len(nome_limpo) > val_cfg.MAX_NOME_ITEM_LENGTH:
+        errors.append(
+            f"Nome do item deve ter no máximo {val_cfg.MAX_NOME_ITEM_LENGTH} caracteres."
+        )
+    if not allow_empty_codigo and not codigo_limpo:
+        errors.append("Código do item é obrigatório.")
+    if len(observacao_limpa) > val_cfg.MAX_OBSERVACAO_LENGTH:
+        errors.append(
+            f"Observação deve ter no máximo {val_cfg.MAX_OBSERVACAO_LENGTH} caracteres."
+        )
+    if quantidade_raw < 0:
+        errors.append("Quantidade não pode ser negativa.")
+    if quantidade_raw > val_cfg.MAX_QUANTIDADE:
+        errors.append(
+            f"Quantidade deve ser menor ou igual a {val_cfg.MAX_QUANTIDADE}."
+        )
+
+    if errors:
+        return False, " ".join(errors)
+    return True, ""
+
+
+def _validate_user_payload(username: str, senha: str, role: str) -> tuple[bool, str]:
+    """Valida os dados de criação de usuário."""
+    val_cfg = Config.VALIDATION
+    errors = []
+
+    username_limpo = str(username or "").strip()
+    senha_limpa = str(senha or "").strip()
+    role_limpo = str(role or "").strip().lower()
+
+    if len(username_limpo) < val_cfg.MIN_USERNAME_LENGTH:
+        errors.append(
+            f"Username deve ter pelo menos {val_cfg.MIN_USERNAME_LENGTH} caracteres."
+        )
+    if len(senha_limpa) < val_cfg.MIN_PASSWORD_LENGTH:
+        errors.append(
+            f"Senha deve ter pelo menos {val_cfg.MIN_PASSWORD_LENGTH} caracteres."
+        )
+
+    roles_validos = {r.value for r in Role}
+    if role_limpo not in roles_validos:
+        errors.append("Role inválida.")
+
+    if errors:
+        return False, " ".join(errors)
+    return True, ""
+
+
 def _get_current_user_role():
     """Retorna a role do usuário logado, se disponível."""
-    username = session.get('usuario')
+    username = session.get("usuario")
     if not username:
         return None
 
-    user_service = app.config.get('user_service')
+    user_service = current_app.config.get("user_service")
     if not user_service:
-        return session.get('role')
+        return session.get("role")
 
     user_data = user_service.get_usuario(username)
     if user_data:
         return user_data.role
+    else:
+        # Se o usuário da sessão não existe mais no serviço, invalida a sessão.
+        logger.warning(f"Usuário '{username}' da sessão não encontrado. Invalidando sessão.")
+        session.clear()
+        return None
 
-    return session.get('role')
+    return session.get("role")
 
 
-@app.route('/producao', methods=['GET', 'POST'])
+@app.route("/producao", methods=["GET", "POST"])
 @login_required
 def producao():
     """Página de cadastro e acompanhamento de produção."""
-    sheets_service = app.config.get('sheets_service')
+    sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return render_template('producao.html',
-            itens=[], mensagem="Serviço de planilhas indisponível",
+        return render_template(
+            "producao.html",
+            itens=[],
+            mensagem="Serviço de planilhas indisponível",
             read_only=True,
-            tipo_mensagem='danger'), 503
+            tipo_mensagem="danger",
+        ), 503
 
     user_role = _get_current_user_role()
     read_only = user_role != Role.ADMIN.value
 
-    if request.method == 'POST':
+    if request.method == "POST":
         if read_only:
-            flash('Operadores têm acesso somente visualização nesta página.', 'warning')
-            return redirect(url_for('producao'))
+            flash("Operadores têm acesso somente visualização nesta página.", "warning")
+            return redirect(url_for("producao"))
 
         try:
+            nome_item = request.form.get("nome_item", "").strip()
+            codigo_item = _format_codigo_code(request.form.get("codigo_item", "").strip())
+            quantidade_produzida = _parse_int_field(
+                request.form.get("quantidade_produzida", 0), 0
+            )
+            observacao = request.form.get("observacao", "").strip()
+            valido, mensagem = _validate_item_form_data(
+                nome_item=nome_item,
+                codigo_item=codigo_item,
+                quantidade_raw=quantidade_produzida,
+                observacao=observacao,
+            )
+            if not valido:
+                flash(mensagem, "danger")
+                return redirect(url_for("producao"))
+
             dados = [
-                pd.Timestamp.now().strftime('%d/%m/%Y %H:%M:%S'),
-                request.form.get('nome_item', '').strip(),
-                _format_codigo_code(request.form.get('codigo_item', '').strip()),
-                _format_mtc_code(request.form.get('mtc_projeto', '')),
-                str(_parse_int_field(request.form.get('quantidade_produzida', 0), 0)),
-                str(_parse_int_field(request.form.get('meta_producao', 0), 0)),
-                request.form.get('status', 'Em andamento').strip() or 'Em andamento',
-                request.form.get('observacao', '').strip(),
-                request.form.get('responsavel', '').strip(),
-                request.form.get('informacoes_adicionais', '').strip(),
-                'produção',
+                pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S"),
+                nome_item,
+                codigo_item,
+                _format_mtc_code(request.form.get("mtc_projeto", "")),
+                str(quantidade_produzida),
+                str(_parse_int_field(request.form.get("meta_producao", 0), 0)),
+                request.form.get("status", "Em andamento").strip() or "Em andamento",
+                observacao,
+                request.form.get("responsavel", "").strip(),
+                request.form.get("informacoes_adicionais", "").strip(),
+                "produção",
             ]
 
             if not dados[1] or not dados[2]:
-                flash('Nome do item e código são obrigatórios.', 'danger')
-                return redirect(url_for('producao'))
+                flash("Nome do item e código são obrigatórios.", "danger")
+                return redirect(url_for("producao"))
 
-            item_id = int(pd.Timestamp.now().timestamp())
+            item_id = str(int(pd.Timestamp.now().timestamp() * 1000))
             row_data = [str(item_id)] + dados
 
             if not sheets_service.add_producao(row_data):
-                flash('Erro ao salvar item de produção.', 'danger')
-                return redirect(url_for('producao'))
+                flash("Erro ao salvar item de produção.", "danger")
+                return redirect(url_for("producao"))
 
-            flash('Item de produção cadastrado com sucesso!', 'success')
-            return redirect(url_for('producao'))
+            flash("Item de produção cadastrado com sucesso!", "success")
+            return redirect(url_for("producao"))
         except Exception as e:
             logger.error(f"Erro ao cadastrar produção: {e}", exc_info=True)
-            flash(f'Erro ao cadastrar item: {e}', 'danger')
-            return redirect(url_for('producao'))
+            if app_env == "production":
+                flash("Erro ao cadastrar item.", "danger")
+            else:
+                flash(f"Erro ao cadastrar item: {e}", "danger")
+            return redirect(url_for("producao"))
 
     try:
         itens = sheets_service.get_all_producao(use_cache=True)
-        itens_ordenados = sorted(itens, key=lambda item: item.get('row_id', 0), reverse=True)
-        return render_template('producao.html', itens=itens_ordenados, read_only=read_only)
+        itens_ordenados = sorted(
+            itens, key=lambda item: item.get("row_id", 0), reverse=True
+        )
+        return render_template(
+            "producao.html", itens=itens_ordenados, read_only=read_only
+        )
     except Exception as e:
         logger.error(f"Erro ao carregar produção: {e}", exc_info=True)
-        return render_template('erro.html', mensagem=f"Erro ao processar dados: {e}"), 500
+        return render_template(
+            "erro.html", mensagem=f"Erro ao processar dados: {e}"
+        ), 500
 
 
-@app.route('/producao/atualizar/<int:row_id>', methods=['POST'])
+@app.route("/producao/atualizar/<int:row_id>", methods=["POST"])
 @admin_required
 def atualizar_producao(row_id):
     """Atualiza um item de produção existente."""
-    sheets_service = app.config.get('sheets_service')
+    sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return jsonify({'success': False, 'message': 'Serviço indisponível'}), 503
+        return jsonify({"success": False, "message": "Serviço indisponível"}), 503
 
     try:
         original = sheets_service.get_producao_by_row_id(row_id) or {}
         if not original:
-            return jsonify({'success': False, 'message': 'Item não encontrado.'}), 404
+            return jsonify({"success": False, "message": "Item não encontrado."}), 404
+
+        nome_item = request.form.get("nome_item", original.get("Nome do item", "")).strip()
+        codigo_item = _format_codigo_code(
+            request.form.get("codigo_item", original.get("Código", "")).strip()
+        )
+        quantidade_produzida = _parse_int_field(
+            request.form.get(
+                "quantidade_produzida", original.get("Quantidade produzida", 0)
+            ),
+            0,
+        )
+        observacao = request.form.get("observacao", original.get("Observação", "")).strip()
+        valido, mensagem = _validate_item_form_data(
+            nome_item=nome_item,
+            codigo_item=codigo_item,
+            quantidade_raw=quantidade_produzida,
+            observacao=observacao,
+        )
+        if not valido:
+            return jsonify({"success": False, "message": mensagem}), 400
 
         row_data = [
-            str(original.get('ID', '') or original.get('id', '') or row_id),
-            str(original.get('Carimbo de data/hora', '')).strip(),
-            request.form.get('nome_item', original.get('Nome do item', '')).strip(),
-            _format_codigo_code(request.form.get('codigo_item', original.get('Código', '')).strip()),
-            _format_mtc_code(request.form.get('mtc_projeto', original.get('Número do projeto MTC', ''))),
-            str(_parse_int_field(request.form.get('quantidade_produzida', original.get('Quantidade produzida', 0)), 0)),
-            str(_parse_int_field(request.form.get('meta_producao', original.get('Meta de produção', 0)), 0)),
-            request.form.get('status', original.get('Status', 'Em andamento')).strip() or 'Em andamento',
-            request.form.get('observacao', original.get('Observação', '')).strip(),
-            request.form.get('responsavel', original.get('Responsável', '')).strip(),
-            _append_producao_info(
-                original.get('Informações adicionais', ''),
-                request.form.get('nova_informacao', '')
+            str(original.get("ID", "") or original.get("id", "") or row_id),
+            str(original.get("Carimbo de data/hora", "")).strip(),
+            nome_item,
+            codigo_item,
+            _format_mtc_code(
+                request.form.get(
+                    "mtc_projeto", original.get("Número do projeto MTC", "")
+                )
             ),
-                str(original.get('Origem', 'produção')).strip() or 'produção',
+            str(quantidade_produzida),
+            str(
+                _parse_int_field(
+                    request.form.get(
+                        "meta_producao", original.get("Meta de produção", 0)
+                    ),
+                    0,
+                )
+            ),
+            request.form.get("status", original.get("Status", "Em andamento")).strip()
+            or "Em andamento",
+            observacao,
+            request.form.get("responsavel", original.get("Responsável", "")).strip(),
+            _append_producao_info(
+                original.get("Informações adicionais", ""),
+                request.form.get("nova_informacao", ""),
+            ),
+            str(original.get("Origem", "produção")).strip() or "produção",
         ]
 
         if not row_data[2] or not row_data[3]:
-            return jsonify({'success': False, 'message': 'Nome do item e código são obrigatórios.'}), 400
+            return jsonify(
+                {"success": False, "message": "Nome do item e código são obrigatórios."}
+            ), 400
 
         if not sheets_service.update_producao(row_id, row_data):
-            return jsonify({'success': False, 'message': 'Não foi possível atualizar o item.'}), 500
+            return jsonify(
+                {"success": False, "message": "Não foi possível atualizar o item."}
+            ), 500
 
-        return jsonify({'success': True, 'message': 'Item atualizado com sucesso!'}), 200
+        return jsonify(
+            {"success": True, "message": "Item atualizado com sucesso!"}
+        ), 200
     except Exception as e:
         logger.error(f"Erro ao atualizar produção: {e}", exc_info=True)
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return jsonify({"success": False, "message": str(e)}), 500
 
 
-@app.route('/producao/dados')
+@app.route("/producao/dados")
 @admin_required
+@cache.cached(timeout=30) # Cache por 30 segundos para dados "quase" em tempo real
 def producao_dados():
     """Retorna os dados agregados da produção para atualização em tempo real."""
-    sheets_service = app.config.get('sheets_service')
+    sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return jsonify({'success': False, 'message': 'Serviço indisponível'}), 503
+        return jsonify({"success": False, "message": "Serviço indisponível"}), 503
 
     try:
-        itens = sheets_service.get_all_producao(use_cache=False, force_refresh=True)
+        itens_brutos = sheets_service.get_all_producao(use_cache=False, force_refresh=True)
+
+        # Filtra para não incluir itens cancelados no dashboard
+        status_cancelado = {"cancelado", "cancelada"}
+        itens = [
+            item for item in itens_brutos
+            if str(item.get("Status", "")).strip().lower() not in status_cancelado
+        ]
 
         summary = {
-            'total_itens': len(itens),
-            'total_produzido': 0,
-            'total_meta': 0,
-            'total_faltante': 0,
-            'percentual_global': 0,
+            "total_itens": len(itens),
+            "total_produzido": 0,
+            "total_meta": 0,
+            "total_faltante": 0,
+            "percentual_global": 0,
         }
 
         barras = []
-        status_counts = {'Concluído': 0, 'Em andamento': 0, 'Pendente': 0}
+        status_counts = {"Concluído": 0, "Em andamento": 0, "Pendente": 0}
+        responsavel_counts = {}
 
         def _status_bucket(valor):
-            texto = str(valor or '').strip().lower()
-            if texto in ('concluído', 'concluido', 'finalizado', 'finalizada'):
-                return 'Concluído'
-            if texto in ('em andamento', 'andamento'):
-                return 'Em andamento'
-            return 'Pendente'
+            texto = str(valor or "").strip().lower()
+            if texto in ("concluído", "concluido", "finalizado", "finalizada"):
+                return "Concluído"
+            if texto in ("em andamento", "andamento"):
+                return "Em andamento"
+            return "Pendente"
 
         for item in itens:
-            produzido = _parse_int_field(item.get('Quantidade produzida', 0), 0)
-            meta = _parse_int_field(item.get('Meta de produção', 0), 0)
+            produzido = _parse_int_field(item.get("Quantidade produzida", 0), 0)
+            meta = _parse_int_field(item.get("Meta de produção", 0), 0)
             restante = max(meta - produzido, 0)
 
-            summary['total_produzido'] += produzido
-            summary['total_meta'] += meta
-            barras.append({
-                'nome': item.get('Nome do item', ''),
-                'produzido': produzido,
-                'restante': restante,
-                'meta': meta,
-                'status': item.get('Status', ''),
-                'percentual': round((produzido / meta) * 100, 1) if meta else 0,
-            })
-            status_counts[_status_bucket(item.get('Status', ''))] += 1
+            summary["total_produzido"] += produzido
+            summary["total_meta"] += meta
+            barras.append(
+                {
+                    "nome": item.get("Nome do item", ""),
+                    "produzido": produzido,
+                    "restante": restante,
+                    "meta": meta,
+                    "status": item.get("Status", ""),
+                    "percentual": round((produzido / meta) * 100, 1) if meta else 0,
+                }
+            )
+            status_counts[_status_bucket(item.get("Status", ""))] += 1
+            responsavel = str(item.get("Responsável", "")).strip() or "Não atribuído"
+            responsavel_counts[responsavel] = (
+                responsavel_counts.get(responsavel, 0) + 1
+            )
 
-        summary['total_faltante'] = max(summary['total_meta'] - summary['total_produzido'], 0)
-        summary['percentual_global'] = round((summary['total_produzido'] / summary['total_meta']) * 100, 1) if summary['total_meta'] else 0
+        summary["total_faltante"] = max(
+            summary["total_meta"] - summary["total_produzido"], 0
+        )
+        summary["percentual_global"] = (
+            round((summary["total_produzido"] / summary["total_meta"]) * 100, 1)
+            if summary["total_meta"]
+            else 0
+        )
 
         # Ordena os itens por status mais comum (segundo status_counts), depois por nome
-        status_order = [k for k, v in sorted(status_counts.items(), key=lambda kv: -kv[1])]
+        status_order = [
+            k for k, v in sorted(status_counts.items(), key=lambda kv: -kv[1])
+        ]
         status_rank = {s: i for i, s in enumerate(status_order)}
-        barras = sorted(barras, key=lambda item: (status_rank.get(item.get('status', ''), len(status_rank)), item.get('nome', '') or ''))
+        barras = sorted(
+            barras,
+            key=lambda item: (
+                status_rank.get(item.get("status", ""), len(status_rank)),
+                item.get("nome", "") or "",
+            ),
+        )
 
-        return jsonify({
-            'success': True,
-            'summary': summary,
-            'items': barras,
-            'status_counts': status_counts,
-        }), 200
+        return jsonify(
+            {
+                "success": True,
+                "summary": summary,
+                "items": barras,
+                "status_counts": status_counts,
+                "responsavel_counts": responsavel_counts,
+            }
+        ), 200
     except Exception as e:
         logger.error(f"Erro ao gerar dados de produção: {e}", exc_info=True)
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return jsonify({"success": False, "message": str(e)}), 500
 
 
-@app.route('/dashboard-producao')
+@app.route("/producao-abertas")
+@login_required
+def producao_abertas():
+    """Página que mostra as OPs de produção que não estão concluídas ou bloqueadas."""
+    sheets_service = current_app.config.get("sheets_service")
+    if not sheets_service:
+        return render_template(
+            "producao_abertas.html",
+            itens=[],
+            mensagem="Serviço de planilhas indisponível",
+            tipo_mensagem="danger",
+        ), 503
+
+    try:
+        itens = sheets_service.get_all_producao(use_cache=True)
+
+        # Filtra itens que não estão concluídos ou bloqueados
+        status_excluidos = {"concluído", "concluido", "bloqueado", "bloqueada", "cancelado", "cancelada"}
+        itens_abertos = [
+            item
+            for item in itens
+            if str(item.get("Status", "")).strip().lower() not in status_excluidos
+        ]
+
+        # Calcula estatísticas
+        total_itens = len(itens)
+        total_ops_abertas = len(itens_abertos)
+        itens_bloqueados = sum(
+            1
+            for item in itens
+            if str(item.get("Status", "")).strip().lower() in {"bloqueado", "bloqueada"}
+        )
+        itens_concluidos = sum(
+            1
+            for item in itens
+            if str(item.get("Status", "")).strip().lower() in {"concluído", "concluido"}
+        )
+        taxa_conclusao = round((itens_concluidos / total_itens * 100), 1) if total_itens > 0 else 0
+
+        # Ordena os itens restantes
+        itens_ordenados = sorted(
+            itens_abertos, key=lambda item: item.get("row_id", 0), reverse=True
+        )
+
+        return render_template(
+            "producao_abertas.html",
+            itens=itens_ordenados,
+            total_ops_abertas=total_ops_abertas,
+            itens_bloqueados=itens_bloqueados,
+            taxa_conclusao=taxa_conclusao,
+        )
+    except Exception as e:
+        return render_route_error(
+            e,
+            user_message="Erro ao carregar dados de produção em aberto.",
+        )
+
+
+@app.route("/dashboard-producao")
 @login_required
 def dashboard_producao():
     """Exibe o painel visual de produção."""
-    sheets_service = app.config.get('sheets_service')
+    sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return render_template('dashboard_producao.html', mensagem_erro='Serviço indisponível'), 503
+        return render_template(
+            "dashboard_producao.html", mensagem_erro="Serviço indisponível"
+        ), 503
 
-    return render_template('dashboard_producao.html')
+    return render_template("dashboard_producao.html")
 
 
-@app.route('/itens', methods=['GET', 'POST'])
-@app.route('/compras', methods=['GET', 'POST'])
+@app.route("/itens", methods=["GET", "POST"])
+@app.route("/compras", methods=["GET", "POST"])
 @login_required
 def itens():
     """Exibe e cadastra itens com alerta automático de compra."""
-    sheets_service = app.config.get('sheets_service')
+    sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return render_template('compras.html', itens=[], read_only=True), 503
+        return render_template("compras.html", itens=[], read_only=True), 503
 
     user_role = _get_current_user_role()
     read_only = user_role != Role.ADMIN.value
 
-    try:
-        if request.method == 'POST':
-            if read_only:
-                flash('Operadores têm acesso somente visualização nesta página.', 'warning')
-                return redirect(url_for('itens'))
+    # Constantes de validação (centralizadas em config.py)
+    val_cfg = Config.VALIDATION
+    min_nome = val_cfg.MIN_NOME_ITEM_LENGTH
+    max_nome = val_cfg.MAX_NOME_ITEM_LENGTH
+    max_obs = val_cfg.MAX_OBSERVACAO_LENGTH
+    max_qtd = val_cfg.MAX_QUANTIDADE
+    threshold_default = val_cfg.ITEM_ALERT_THRESHOLD_DEFAULT
+    thresholds_especificos = val_cfg.ITEM_ALERT_THRESHOLDS or {}
 
-            nome_item = request.form.get('nome_item', '').strip()
-            codigo_item = _format_codigo_code(request.form.get('codigo_item', '').strip())
-            mtc_projeto = _format_mtc_code(request.form.get('mtc_projeto', ''))
-            quantidade = str(_parse_int_field(request.form.get('quantidade', 0), 0))
-            observacao = request.form.get('observacao', '').strip()
+    def _threshold_para_item(nome_item: str) -> int:
+        """Retorna o limite de alerta para um item (case-insensitive)."""
+        if not thresholds_especificos:
+            return threshold_default
+        chave = (nome_item or "").strip().lower()
+        return int(thresholds_especificos.get(chave, threshold_default))
+
+    try:
+        if request.method == "POST":
+            if read_only:
+                flash(
+                    "Operadores têm acesso somente visualização nesta página.",
+                    "warning",
+                )
+                return redirect(url_for("itens"))
+
+            nome_item = request.form.get("nome_item", "").strip()
+            codigo_item = _format_codigo_code(
+                request.form.get("codigo_item", "").strip()
+            )
+            mtc_projeto = _format_mtc_code(request.form.get("mtc_projeto", ""))
+            quantidade_raw = _parse_int_field(request.form.get("quantidade", 0), 0)
+            observacao = request.form.get("observacao", "").strip()
+
+            # --- Validações de comprimento ---
+            if len(nome_item) < min_nome:
+                flash(
+                    f"O nome do item deve ter pelo menos {min_nome} caracteres.",
+                    "danger",
+                )
+                return redirect(url_for("itens"))
+            if len(nome_item) > max_nome:
+                flash(
+                    f"O nome do item deve ter no máximo {max_nome} caracteres.",
+                    "danger",
+                )
+                return redirect(url_for("itens"))
+            if len(observacao) > max_obs:
+                flash(
+                    f"A observação deve ter no máximo {max_obs} caracteres.",
+                    "danger",
+                )
+                return redirect(url_for("itens"))
+
+            # --- Validação de quantidade ---
+            if quantidade_raw < 0:
+                flash("A quantidade não pode ser negativa.", "danger")
+                return redirect(url_for("itens"))
+            if quantidade_raw > max_qtd:
+                flash(
+                    f"A quantidade não pode ser maior que {max_qtd:,}.".replace(
+                        ",", "."
+                    ),
+                    "danger",
+                )
+                return redirect(url_for("itens"))
 
             if not nome_item or not codigo_item:
-                flash('Nome do item e código são obrigatórios.', 'danger')
-                return redirect(url_for('itens'))
+                flash("Nome do item e código são obrigatórios.", "danger")
+                return redirect(url_for("itens"))
+
+            # --- Detecção de duplicidade por código ---
+            try:
+                existentes = sheets_service.get_all_producao(use_cache=True)
+                for existente in existentes:
+                    if (
+                        str(existente.get("Origem", "")).strip().lower() != "item"
+                    ):
+                        continue
+                    codigo_existente = _format_codigo_code(
+                        str(existente.get("Código", "")).strip()
+                    )
+                    if codigo_existente and codigo_existente == codigo_item:
+                        flash(
+                            f"Já existe um item cadastrado com o código {codigo_item}.",
+                            "warning",
+                        )
+                        return redirect(url_for("itens"))
+            except Exception as dup_err:
+                logger.warning(
+                    f"Não foi possível verificar duplicidade de itens: {dup_err}"
+                )
 
             row_data = [
-                str(int(pd.Timestamp.now().timestamp())),
-                pd.Timestamp.now().strftime('%d/%m/%Y %H:%M:%S'),
+                str(int(pd.Timestamp.now().timestamp() * 1000)),
+                pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S"),
                 nome_item,
                 codigo_item,
                 mtc_projeto,
-                quantidade,
-                '0',
-                'Em andamento',
+                str(quantidade_raw),
+                "0",
+                "Em andamento",
                 observacao,
-                '',
-                '',
-                'item',
+                "",
+                "",
+                "item",
             ]
 
             if not sheets_service.add_producao(row_data):
-                flash('Não foi possível adicionar o item.', 'danger')
-                return redirect(url_for('itens'))
+                flash("Não foi possível adicionar o item.", "danger")
+                return redirect(url_for("itens"))
 
-            flash('Item adicionado com sucesso!', 'success')
-            return redirect(url_for('itens'))
+            flash("Item adicionado com sucesso!", "success")
+            return redirect(url_for("itens"))
 
-        sheets_service.marcar_origem_padrao_producao('produção')
+        sheets_service.marcar_origem_padrao_producao("produção")
         itens = sheets_service.get_all_producao(use_cache=True)
         itens_alerta = []
         itens_normais = []
 
+        # Evita processar listas maiores do que o necessário para a página de compras.
         for item in itens:
-            origem = str(item.get('Origem', '')).strip().lower()
-            if origem != 'item':
+            origem = str(item.get("Origem", "")).strip().lower()
+            if origem != "item":
                 continue
             # Recupera a quantidade tentando várias possíveis colunas para
             # manter compatibilidade com planilhas antigas/variações.
             quantidade = _parse_int_field(
-                item.get('Quantidade produzida',
-                          item.get('Quantidade',
-                                   item.get('Quantidade Item',
-                                            item.get('Quantidade produzida ', 0)
-                                   )
-                          )
-                ), 0)
-            status_compra = 'precisa solicitar comprar' if quantidade <= 10 else 'não precisa solicitar comprar'
+                item.get(
+                    "Quantidade produzida",
+                    item.get(
+                        "Quantidade",
+                        item.get(
+                            "Quantidade Item", item.get("Quantidade produzida ", 0)
+                        ),
+                    ),
+                ),
+                0,
+            )
+            nome_item_atual = str(item.get("Nome do item", "")).strip()
+            threshold_item = _threshold_para_item(nome_item_atual)
+            status_compra = (
+                "precisa solicitar comprar"
+                if quantidade <= threshold_item
+                else "não precisa solicitar comprar"
+            )
             item_compra = {
-                'nome_item': item.get('Nome do item', ''),
-                'codigo_item': item.get('Código', ''),
-                'mtc_projeto': _format_mtc_code(item.get('Número do projeto MTC', '')),
-                'quantidade': quantidade,
-                'status_compra': status_compra,
-                'row_id': item.get('row_id'),
+                "nome_item": nome_item_atual,
+                "codigo_item": item.get("Código", ""),
+                "mtc_projeto": _format_mtc_code(item.get("Número do projeto MTC", "")),
+                "quantidade": quantidade,
+                "status_compra": status_compra,
+                "row_id": item.get("row_id"),
+                "threshold": threshold_item,
             }
 
-            if quantidade <= 10:
+            if quantidade <= threshold_item:
                 itens_alerta.append(item_compra)
             else:
                 itens_normais.append(item_compra)
 
-        itens_alerta = sorted(itens_alerta, key=lambda item: item.get('quantidade', 0))
-        itens_normais = sorted(itens_normais, key=lambda item: item.get('quantidade', 0), reverse=True)
-        return render_template('compras.html', itens_alerta=itens_alerta, itens_normais=itens_normais, read_only=read_only)
+        itens_alerta = sorted(itens_alerta, key=lambda item: item.get("quantidade", 0))
+        itens_normais = sorted(
+            itens_normais, key=lambda item: item.get("quantidade", 0), reverse=True
+        )
+
+        # Estatísticas para os cards
+        total_itens = len(itens_alerta) + len(itens_normais)
+        total_alerta = len(itens_alerta)
+        total_normais = len(itens_normais)
+        total_estoque = sum(i.get("quantidade", 0) for i in (itens_alerta + itens_normais))
+
+        return render_template(
+            "compras.html",
+            itens_alerta=itens_alerta,
+            itens_normais=itens_normais,
+            read_only=read_only,
+            stats={
+                "total_itens": total_itens,
+                "total_alerta": total_alerta,
+                "total_normais": total_normais,
+                "total_estoque": total_estoque,
+                "threshold_default": threshold_default,
+            },
+        )
     except Exception as e:
         logger.error(f"Erro ao carregar compras: {e}", exc_info=True)
-        return render_template('erro.html', mensagem=f"Erro ao processar dados: {e}"), 500
+        return render_template(
+            "erro.html", mensagem=f"Erro ao processar dados: {e}"
+        ), 500
 
 
-@app.route('/ferramentas', methods=['GET', 'POST'])
+@app.route("/itens/<int:row_id>/editar", methods=["GET", "POST"])
+@login_required
+def editar_item(row_id: int):
+    """Edita um item de produção."""
+    sheets_service = current_app.config.get("sheets_service")
+    if not sheets_service:
+        flash("Serviço de planilhas indisponível.", "danger")
+        return redirect(url_for("itens"))
+
+    item = sheets_service.get_producao_by_row_id(row_id)
+    if not item:
+        flash("Item não encontrado.", "danger")
+        return redirect(url_for("itens"))
+
+    if request.method == "POST":
+        try:
+            nome_item = str(request.form.get("nome_item", "")).strip()
+            codigo_item = _format_codigo_code(
+                str(request.form.get("codigo_item", "")).strip()
+            )
+            mtc_projeto = _format_mtc_code(
+                str(request.form.get("mtc_projeto", "")).strip()
+            )
+            quantidade_raw = _parse_int_field(
+                request.form.get("quantidade", "0"), 0
+            )
+            observacao = str(request.form.get("observacao", "")).strip()
+
+            valido, mensagem = _validate_item_form_data(
+                nome_item=nome_item,
+                codigo_item=codigo_item,
+                quantidade_raw=quantidade_raw,
+                observacao=observacao,
+            )
+            if not valido:
+                flash(mensagem, "danger")
+                return redirect(url_for("editar_item", row_id=row_id))
+
+            quantidade = quantidade_raw
+
+            row_data = [
+                item.get("ID", ""),
+                item.get("Carimbo de data/hora", ""),
+                nome_item,
+                codigo_item,
+                mtc_projeto,
+                str(quantidade),
+                item.get("Meta de produção", "0"),
+                item.get("Status", "Em andamento"),
+                observacao,
+                item.get("Responsável", ""),
+                item.get("Informações adicionais", ""),
+                item.get("Origem", "item"),
+            ]
+
+            if not sheets_service.update_producao(row_id, row_data):
+                flash("Não foi possível atualizar o item.", "danger")
+                return redirect(url_for("editar_item", row_id=row_id))
+
+            flash("Item atualizado com sucesso!", "success")
+            return redirect(url_for("itens"))
+        except Exception as e:
+            logger.error(f"Erro ao editar item: {e}", exc_info=True)
+            flash(f"Erro ao editar item: {e}", "danger")
+            return redirect(url_for("editar_item", row_id=row_id))
+
+    return render_template("editar_item.html", item=item, row_id=row_id)
+
+
+@app.route("/itens/<int:row_id>/excluir", methods=["POST"])
+@app.route("/itens/<int:row_id>/deletar", methods=["POST"])
+@login_required
+def excluir_item(row_id: int):
+    """Exclui um item de produção."""
+    sheets_service = current_app.config.get("sheets_service")
+    if not sheets_service:
+        flash("Serviço de planilhas indisponível.", "danger")
+        return redirect(url_for("itens"))
+
+    try:
+        if not sheets_service.delete_producao(row_id):
+            flash("Não foi possível excluir o item.", "danger")
+            return redirect(url_for("itens"))
+
+        flash("Item excluído com sucesso!", "success")
+    except Exception as e:
+        logger.error(f"Erro ao excluir item: {e}", exc_info=True)
+        flash(f"Erro ao excluir item: {e}", "danger")
+
+    return redirect(url_for("itens"))
+
+
+@app.route("/ferramentas", methods=["GET", "POST"])
 @admin_required
 def ferramentas():
     """Página de controle de ferramentas."""
-    sheets_service = app.config.get('sheets_service')
+    sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return render_template('ferramentas.html',
-            ferramentas=[], mensagem="Serviço de planilhas indisponível",
-            tipo_mensagem='danger'), 503
+        return render_template(
+            "ferramentas.html",
+            ferramentas=[],
+            mensagem="Serviço de planilhas indisponível",
+            tipo_mensagem="danger",
+        ), 503
 
-    if request.method == 'POST':
+    if request.method == "POST":
         try:
             dados = [
-                request.form.get('nome', ''),
-                request.form.get('patrocinio', ''),
-                pd.Timestamp.now().strftime('%d/%m/%Y'),
-                request.form.get('ultima_manutencao', ''),
-                request.form.get('status', 'Disponível'),
-                request.form.get('observacao', ''),
-                request.form.get('responsavel', '')
+                request.form.get("nome", ""),
+                request.form.get("patrocinio", ""),
+                pd.Timestamp.now().strftime("%d/%m/%Y"),
+                request.form.get("ultima_manutencao", ""),
+                request.form.get("status", "Disponível"),
+                request.form.get("observacao", ""),
+                request.form.get("responsavel", ""),
             ]
             worksheet = get_or_create_ferramentas_worksheet(sheets_service)
             worksheet.append_row(dados)
-            usuario_atual = session.get('usuario', 'desconhecido')
+            usuario_atual = session.get("usuario", "desconhecido")
             detalhes_hist = f"Patrocínio: {dados[1]}, Responsável: {dados[6]}, Status: {dados[4]}, Obs: {dados[5]}"
-            add_historico_entry(sheets_service, dados[0], 'Cadastro', usuario_atual, detalhes_hist)
+            add_historico_entry(
+                sheets_service, dados[0], "Cadastro", usuario_atual, detalhes_hist
+            )
             flash("Ferramenta cadastrada com sucesso!", "success")
-            return redirect(url_for('ferramentas'))
+            return redirect(url_for("ferramentas"))
         except Exception as e:
             logger.error(f"Erro ao adicionar ferramenta: {e}", exc_info=True)
             flash(f"Erro ao adicionar ferramenta: {e}", "danger")
-            return redirect(url_for('ferramentas'))
+            return redirect(url_for("ferramentas"))
 
     mensagem = None
     tipo_mensagem = None
-    if '_flashes' in session:
-        flashes = session.get('_flashes', [])
+    if "_flashes" in session:
+        flashes = session.get("_flashes", [])
         if flashes:
             tipo_mensagem, mensagem = flashes[0]
 
-    return render_template('ferramentas.html',
+    return render_template(
+        "ferramentas.html",
         ferramentas=get_ferramentas_list(sheets_service),
         mensagem=mensagem,
-        tipo_mensagem=tipo_mensagem)
+        tipo_mensagem=tipo_mensagem,
+    )
 
 
 def get_or_create_ferramentas_worksheet(sheets_service):
@@ -1366,15 +1273,26 @@ def get_or_create_ferramentas_worksheet(sheets_service):
     try:
         spreadsheet = sheets_service.client.open_by_key(sheets_service.sheet_id)
         try:
-            worksheet = spreadsheet.worksheet(FERRAMENTAS_TAB)
+            worksheet = spreadsheet.worksheet(Config.SHEETS.SHEET_FERRAMENTAS_TAB)
             headers = worksheet.row_values(1)
-            if 'Responsável' not in headers:
-                worksheet.update('G1', [['Responsável']])
+            if "Responsável" not in headers:
+                worksheet.update("G1", [["Responsável"]])
         except Exception:
-            worksheet = spreadsheet.add_worksheet(title=FERRAMENTAS_TAB, rows=500, cols=10)
-            worksheet.append_row(['Nome', 'Patrocínio', 'Data de Cadastro',
-                                   'Última Manutenção', 'Status', 'Observação', 'Responsável'])
-            logger.info(f"Aba '{FERRAMENTAS_TAB}' criada")
+            worksheet = spreadsheet.add_worksheet(
+                title=Config.SHEETS.SHEET_FERRAMENTAS_TAB, rows=500, cols=10
+            )
+            worksheet.append_row(
+                [
+                    "Nome",
+                    "Patrocínio",
+                    "Data de Cadastro",
+                    "Última Manutenção",
+                    "Status",
+                    "Observação",
+                    "Responsável",
+                ]
+            )
+            logger.info(f"Aba '{Config.SHEETS.SHEET_FERRAMENTAS_TAB}' criada")
         return worksheet
     except Exception as e:
         logger.error(f"Erro ao obter/criar worksheet de ferramentas: {e}")
@@ -1397,135 +1315,158 @@ def get_or_create_historico_worksheet(sheets_service):
     try:
         spreadsheet = sheets_service.client.open_by_key(sheets_service.sheet_id)
         try:
-            worksheet = spreadsheet.worksheet(HISTORICO_FERRAMENTAS_TAB)
+            worksheet = spreadsheet.worksheet(Config.SHEETS.SHEET_HISTORICO_FERRAMENTAS_TAB)
         except Exception:
-            worksheet = spreadsheet.add_worksheet(title=HISTORICO_FERRAMENTAS_TAB, rows=1000, cols=5)
-            worksheet.append_row(['Ferramenta', 'Evento', 'Data/Hora', 'Usuário', 'Detalhes'])
-            logger.info(f"Aba '{HISTORICO_FERRAMENTAS_TAB}' criada")
+            worksheet = spreadsheet.add_worksheet(
+                title=Config.SHEETS.SHEET_HISTORICO_FERRAMENTAS_TAB, rows=1000, cols=5
+            )
+            worksheet.append_row(
+                ["Ferramenta", "Evento", "Data/Hora", "Usuário", "Detalhes"]
+            )
+            logger.info(f"Aba '{Config.SHEETS.SHEET_HISTORICO_FERRAMENTAS_TAB}' criada")
         return worksheet
     except Exception as e:
         logger.error(f"Erro ao obter/criar worksheet de histórico: {e}")
         raise
 
 
-def add_historico_entry(sheets_service, nome_ferramenta, evento, usuario, detalhes=''):
+def add_historico_entry(sheets_service, nome_ferramenta, evento, usuario, detalhes=""):
     """Adiciona uma entrada no histórico de ferramentas."""
     try:
         worksheet = get_or_create_historico_worksheet(sheets_service)
-        data_hora = pd.Timestamp.now().strftime('%d/%m/%Y %H:%M:%S')
+        data_hora = pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S")
         worksheet.append_row([nome_ferramenta, evento, data_hora, usuario, detalhes])
     except Exception as e:
         logger.warning(f"Erro ao adicionar histórico: {e}")
 
 
-@app.route('/ferramentas/atualizar/<int:row_id>', methods=['POST'])
+@app.route("/ferramentas/atualizar/<int:row_id>", methods=["POST"])
 @admin_required
 def atualizar_ferramenta(row_id):
     """Atualiza uma ferramenta."""
-    sheets_service = app.config.get('sheets_service')
+    sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return jsonify({'success': False, 'message': 'Serviço indisponível'}), 503
+        return jsonify({"success": False, "message": "Serviço indisponível"}), 503
 
     try:
         worksheet = get_or_create_ferramentas_worksheet(sheets_service)
         row_num = row_id + 2  # +2 pelo cabeçalho
         dados_atuais = worksheet.row_values(row_num)
-        nome_ferramenta = dados_atuais[0] if dados_atuais else 'Desconhecida'
-        novo_responsavel = request.form.get('responsavel', '')
-        nova_manutencao = request.form.get('ultima_manutencao', '')
-        novo_status = request.form.get('status', '')
-        nova_observacao = request.form.get('observacao', '')
-        old_manutencao = dados_atuais[3] if len(dados_atuais) > 3 else ''
-        old_status = dados_atuais[4] if len(dados_atuais) > 4 else ''
-        old_observacao = dados_atuais[5] if len(dados_atuais) > 5 else ''
-        old_responsavel = dados_atuais[6] if len(dados_atuais) > 6 else ''
+        nome_ferramenta = dados_atuais[0] if dados_atuais else "Desconhecida"
+        novo_responsavel = request.form.get("responsavel", "")
+        nova_manutencao = request.form.get("ultima_manutencao", "")
+        novo_status = request.form.get("status", "")
+        nova_observacao = request.form.get("observacao", "")
+        old_manutencao = dados_atuais[3] if len(dados_atuais) > 3 else ""
+        old_status = dados_atuais[4] if len(dados_atuais) > 4 else ""
+        old_observacao = dados_atuais[5] if len(dados_atuais) > 5 else ""
+        old_responsavel = dados_atuais[6] if len(dados_atuais) > 6 else ""
         worksheet.update(
-            f'D{row_num}:G{row_num}',
-            [[nova_manutencao, novo_status, nova_observacao, novo_responsavel]]
+            f"D{row_num}:G{row_num}",
+            [[nova_manutencao, novo_status, nova_observacao, novo_responsavel]],
         )
         changes = []
         if novo_responsavel != old_responsavel:
-            changes.append(f"Responsável: {old_responsavel or '-'} → {novo_responsavel or '-'}")
+            changes.append(
+                f"Responsável: {old_responsavel or '-'} → {novo_responsavel or '-'}"
+            )
         if nova_manutencao != old_manutencao:
-            changes.append(f"Manutenção: {old_manutencao or '-'} → {nova_manutencao or '-'}")
+            changes.append(
+                f"Manutenção: {old_manutencao or '-'} → {nova_manutencao or '-'}"
+            )
         if novo_status != old_status:
             changes.append(f"Status: {old_status or '-'} → {novo_status or '-'}")
         if nova_observacao != old_observacao:
             changes.append(f"Obs: {old_observacao or '-'} → {nova_observacao or '-'}")
-        detalhes_hist = ', '.join(changes) if changes else 'Sem alterações'
-        usuario_atual = session.get('usuario', 'desconhecido')
-        add_historico_entry(sheets_service, nome_ferramenta, 'Edição', usuario_atual, detalhes_hist)
-        return jsonify({'success': True, 'message': 'Ferramenta atualizada!'})
+        detalhes_hist = ", ".join(changes) if changes else "Sem alterações"
+        usuario_atual = session.get("usuario", "desconhecido")
+        add_historico_entry(
+            sheets_service, nome_ferramenta, "Edição", usuario_atual, detalhes_hist
+        )
+        return jsonify({"success": True, "message": "Ferramenta atualizada!"})
     except Exception as e:
         logger.error(f"Erro ao atualizar ferramenta: {e}", exc_info=True)
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return jsonify({"success": False, "message": str(e)}), 500
 
 
-@app.route('/ferramentas/deletar/<int:row_id>', methods=['POST'])
+@app.route("/ferramentas/deletar/<int:row_id>", methods=["POST"])
 @admin_required
 def deletar_ferramenta(row_id):
     """Deleta uma ferramenta."""
-    sheets_service = app.config.get('sheets_service')
+    sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return jsonify({'success': False, 'message': 'Serviço indisponível'}), 503
+        return jsonify({"success": False, "message": "Serviço indisponível"}), 503
 
     try:
         worksheet = get_or_create_ferramentas_worksheet(sheets_service)
         row_num = row_id + 2
         dados_atuais = worksheet.row_values(row_num)
-        nome_ferramenta = dados_atuais[0] if dados_atuais else 'Desconhecida'
-        usuario_atual = session.get('usuario', 'desconhecido')
+        nome_ferramenta = dados_atuais[0] if dados_atuais else "Desconhecida"
+        usuario_atual = session.get("usuario", "desconhecido")
         worksheet.delete_rows(row_num)
-        add_historico_entry(sheets_service, nome_ferramenta, 'Exclusão', usuario_atual, 'Ferramenta excluída')
-        return jsonify({'success': True, 'message': 'Ferramenta deletada!'})
+        add_historico_entry(
+            sheets_service,
+            nome_ferramenta,
+            "Exclusão",
+            usuario_atual,
+            "Ferramenta excluída",
+        )
+        return jsonify({"success": True, "message": "Ferramenta deletada!"})
     except Exception as e:
         logger.error(f"Erro ao deletar ferramenta: {e}", exc_info=True)
-        return jsonify({'success': False, 'message': str(e)}), 500
+        return jsonify({"success": False, "message": str(e)}), 500
 
 
-@app.route('/ferramentas/historico')
+@app.route("/ferramentas/historico")
 @admin_required
 def historico_ferramentas():
     """Retorna histórico de uma ferramenta em JSON."""
-    sheets_service = app.config.get('sheets_service')
+    sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return jsonify({'success': False, 'historico': []})
-    nome = request.args.get('nome', '')
+        return jsonify({"success": False, "historico": []})
+    nome = request.args.get("nome", "")
     try:
         worksheet = get_or_create_historico_worksheet(sheets_service)
         todos = worksheet.get_all_records()
         if nome:
-            filtrado = [r for r in todos if r.get('Ferramenta', '').lower() == nome.lower()]
+            filtrado = [
+                r for r in todos if r.get("Ferramenta", "").lower() == nome.lower()
+            ]
         else:
             filtrado = todos
         filtrado = list(reversed(filtrado))
-        return jsonify({'success': True, 'historico': filtrado})
+        return jsonify({"success": True, "historico": filtrado})
     except Exception as e:
         logger.error(f"Erro ao obter histórico: {e}")
-        return jsonify({'success': False, 'historico': [], 'error': str(e)})
+        return jsonify({"success": False, "historico": [], "error": str(e)})
 
 
-@app.route('/favicon.ico')
+@app.route("/favicon.ico")
 def favicon():
     """Favicon vazio para evitar erro 404."""
-    return '', 204
+    return "", 204
 
 
 # ════════════════════════════════════════════════════════════════════════════════
 # PONTO DE ENTRADA
 # ════════════════════════════════════════════════════════════════════════════════
 
-if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5000))
-    debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
-    host = os.getenv('HOST', None)
-    if not host:
-        # padrão seguro: bind local em produção, permitir 0.0.0.0 em debug
-        host = '0.0.0.0' if debug_mode else '127.0.0.1'
+if __name__ == "__main__":
+    # Configurações para o servidor de desenvolvimento Flask.
+    # Prioriza variáveis de ambiente, mas com padrões seguros.
+    port = int(os.getenv("PORT", Config.FLASK.PORT))
+    debug_mode = os.getenv("FLASK_DEBUG", str(Config.FLASK.DEBUG)).lower() in ("true", "1")
+    
+    # Padrão para '127.0.0.1' (localhost) que é mais seguro para desenvolvimento.
+    # Use a variável de ambiente HOST=0.0.0.0 para permitir acesso de outras máquinas na rede.
+    host = os.getenv("HOST", "127.0.0.1")
+    
+    # Adiciona um aviso de segurança se o modo debug estiver ativo em um ambiente de "produção"
+    if debug_mode and app_env == "production":
+        logger.warning(
+            "ALERTA DE SEGURANÇA: O modo DEBUG está ativo em um ambiente de produção. "
+            "Desative o modo debug em produção definindo FLASK_DEBUG=false."
+        )
 
-    # Em ambientes não-dev, previne bind em todas interfaces a menos que explicitamente permitido
-    if host in ('0.0.0.0', '::') and app_env not in ('development', 'dev') and os.getenv('ALLOW_BIND_ALL', 'false').lower() not in ('1', 'true', 'yes'):
-        logger.warning('Binding para todas as interfaces detectado em ambiente não-dev. Defina ALLOW_BIND_ALL=1 para confirmar.')
-
-    logger.info(f"Iniciando aplicação em {host}:{port} (debug={debug_mode})")
+    logger.info(f"Iniciando servidor em http://{host}:{port}/ (Debug: {debug_mode}, Env: {app_env})")
     app.run(host=host, port=port, debug=debug_mode)

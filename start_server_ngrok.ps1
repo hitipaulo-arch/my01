@@ -18,6 +18,24 @@ function Test-PortListening {
     return $false
 }
 
+function Wait-ForPortListening {
+    param(
+        [int]$TestPort,
+        [int]$TimeoutSeconds = 20
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-PortListening -TestPort $TestPort) {
+            return $true
+        }
+
+        Start-Sleep -Milliseconds 500
+    }
+
+    return $false
+}
+
 function Get-NgrokPublicUrl {
     try {
         $response = Invoke-WebRequest -Uri 'http://127.0.0.1:4040/api/tunnels' -UseBasicParsing -TimeoutSec 5
@@ -34,6 +52,24 @@ function Get-NgrokPublicUrl {
     }
     catch {
         return $null
+    }
+
+    return $null
+}
+
+function Wait-ForNgrokPublicUrl {
+    param(
+        [int]$TimeoutSeconds = 15
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        $publicUrl = Get-NgrokPublicUrl
+        if ($publicUrl) {
+            return $publicUrl
+        }
+
+        Start-Sleep -Milliseconds 500
     }
 
     return $null
@@ -77,10 +113,21 @@ Write-Host ''
 $workspace = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $workspace
 
+$pythonExe = Join-Path $workspace '.venv\Scripts\python.exe'
+if (-not (Test-Path $pythonExe)) {
+    $pythonExe = (Get-Command py -ErrorAction Stop).Source
+}
+
 # 1) Flask server
 if (-not (Test-PortListening -TestPort $Port)) {
     Write-Host "[1/2] Subindo servidor Flask na porta $Port..." -ForegroundColor Yellow
-    Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$workspace'; py app.py"
+    Start-Process -FilePath $pythonExe -ArgumentList 'app.py' -WorkingDirectory $workspace
+
+    if (-not (Wait-ForPortListening -TestPort $Port -TimeoutSeconds 20)) {
+        Write-Host "[ERRO] O Flask nao respondeu na porta $Port dentro do tempo esperado." -ForegroundColor Red
+        Write-Host "[ERRO] Verifique o terminal do Flask para identificar a falha de inicializacao." -ForegroundColor Red
+        exit 1
+    }
 }
 else {
     Write-Host "[1/2] Servidor Flask ja ativo na porta $Port." -ForegroundColor Green
@@ -99,7 +146,7 @@ if (-not $ngrokExecutable) {
 $ngrokRunning = Get-Process ngrok -ErrorAction SilentlyContinue
 if (-not $ngrokRunning) {
     Write-Host "[2/2] Subindo ngrok para http://localhost:$Port ..." -ForegroundColor Yellow
-    Start-Process powershell -ArgumentList "-NoExit", "-Command", "& '$ngrokExecutable' http $Port"
+    Start-Process -FilePath $ngrokExecutable -ArgumentList @('http', $Port)
     Start-Sleep -Seconds 3
 }
 else {
@@ -108,7 +155,7 @@ else {
 
 # 3) Summary
 $localUrl = "http://localhost:$Port"
-$publicUrl = Get-NgrokPublicUrl
+$publicUrl = Wait-ForNgrokPublicUrl -TimeoutSeconds 15
 
 Write-Host ''
 Write-Host '=== STATUS ===' -ForegroundColor Cyan
@@ -116,6 +163,12 @@ Write-Host "Local:  $localUrl" -ForegroundColor White
 
 if ($publicUrl) {
     Write-Host "Publico: $publicUrl" -ForegroundColor White
+    try {
+        Start-Process $publicUrl
+    }
+    catch {
+        Write-Host '[AVISO] Nao foi possivel abrir o navegador automaticamente.' -ForegroundColor DarkYellow
+    }
 }
 else {
     Write-Host 'Publico: (ainda indisponivel, aguarde alguns segundos e rode novamente)' -ForegroundColor DarkYellow

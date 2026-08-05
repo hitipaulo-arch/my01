@@ -34,6 +34,45 @@
         </div>
         {% endif %}
 
+        {% if stats %}
+        <div class="row g-3 mb-4">
+            <div class="col-md-3 col-sm-6">
+                <div class="card border-0 h-100 stats-card stats-card-primary">
+                    <div class="card-body text-center">
+                        <div class="stats-label">Total de itens</div>
+                        <div class="stats-value text-primary">{{ stats.total_itens }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="card border-0 h-100 stats-card stats-card-danger">
+                    <div class="card-body text-center">
+                        <div class="stats-label">Em alerta</div>
+                        <div class="stats-value text-danger">{{ stats.total_alerta }}</div>
+                        <small class="stats-hint">≤ {{ stats.threshold_default }} unidades</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="card border-0 h-100 stats-card stats-card-success">
+                    <div class="card-body text-center">
+                        <div class="stats-label">Sem alerta</div>
+                        <div class="stats-value text-success">{{ stats.total_normais }}</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 col-sm-6">
+                <div class="card border-0 h-100 stats-card stats-card-info">
+                    <div class="card-body text-center">
+                        <div class="stats-label">Estoque total</div>
+                        <div class="stats-value text-info">{{ stats.total_estoque }}</div>
+                        <small class="stats-hint">unidades</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         {% if not read_only %}
         <div class="form-card">
             <h3 class="mb-4">➕ Acrescentar item</h3>
@@ -73,7 +112,10 @@
 
         <div class="table-card">
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-                <h3 class="mb-0">📋 Itens cadastrados</h3>
+                <div>
+                    <h3 class="mb-0">📋 Itens cadastrados</h3>
+                    <p class="text-muted mb-0 small">Visualização rápida e filtros por status.</p>
+                </div>
                 <div class="w-100 w-md-auto" style="max-width: 420px;">
                     <input type="text" id="filtroCompras" class="form-control" placeholder="Filtrar por item, código, MTC ou status...">
                 </div>
@@ -100,6 +142,7 @@
                                     <th>MTC</th>
                                     <th>Quantidade</th>
                                     <th>Alerta de compra</th>
+                                    {% if not read_only %}<th>Ações</th>{% endif %}
                                 </tr>
                             </thead>
                             <tbody id="corpoComprasAlerta">
@@ -114,6 +157,21 @@
                                         <td>
                                             <span class="badge bg-danger">{{ item.status_compra }}</span>
                                         </td>
+                                        {% if not read_only %}
+                                        <td>
+                                            <div class="btn-group btn-group-sm" role="group">
+                                                <a href="{{ url_for('editar_item', row_id=item.row_id) }}" class="btn btn-outline-primary" title="Editar">
+                                                    <i class="bi bi-pencil-square"></i>
+                                                </a>
+                                                <form method="POST" action="{{ url_for('excluir_item', row_id=item.row_id) }}" class="d-inline" onsubmit="return confirm('Tem certeza que deseja excluir o item {{ item.nome_item|e }}?');">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                    <button type="submit" class="btn btn-outline-danger" title="Excluir">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                        {% endif %}
                                     </tr>
                                     {% endfor %}
                                 {% else %}
@@ -137,6 +195,7 @@
                                     <th>MTC</th>
                                     <th>Quantidade</th>
                                     <th>Status</th>
+                                    {% if not read_only %}<th>Ações</th>{% endif %}
                                 </tr>
                             </thead>
                             <tbody id="corpoComprasNormais">
@@ -151,6 +210,21 @@
                                         <td>
                                             <span class="badge bg-success">{{ item.status_compra }}</span>
                                         </td>
+                                        {% if not read_only %}
+                                        <td>
+                                            <div class="btn-group btn-group-sm" role="group">
+                                                <a href="{{ url_for('editar_item', row_id=item.row_id) }}" class="btn btn-outline-primary" title="Editar">
+                                                    <i class="bi bi-pencil-square"></i>
+                                                </a>
+                                                <form method="POST" action="{{ url_for('excluir_item', row_id=item.row_id) }}" class="d-inline" onsubmit="return confirm('Tem certeza que deseja excluir o item {{ item.nome_item|e }}?');">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                                    <button type="submit" class="btn btn-outline-danger" title="Excluir">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                        {% endif %}
                                     </tr>
                                     {% endfor %}
                                 {% else %}

@@ -234,9 +234,15 @@
                         </div>
                     </div>
                     <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-danger me-auto" id="btnExcluirProducao">
+                            <i class="bi bi-trash"></i> Excluir
+                        </button>
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                         <button type="submit" class="btn btn-primary">Salvar alterações</button>
                     </div>
+                </form>
+                <form id="formExcluirProducao" method="POST" class="d-none">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 </form>
             </div>
         </div>
@@ -308,6 +314,23 @@
                 alert('Erro ao atualizar item: ' + error);
             });
         });
+
+        const btnExcluirProducao = document.getElementById('btnExcluirProducao');
+        if (btnExcluirProducao) {
+            btnExcluirProducao.addEventListener('click', function() {
+                const rowId = document.getElementById('edit-row-id').value;
+                if (!rowId) {
+                    alert('Não foi possível identificar o item a ser excluído.');
+                    return;
+                }
+                if (!confirm('Tem certeza que deseja excluir este item de produção? Esta ação não pode ser desfeita.')) {
+                    return;
+                }
+                const formExcluir = document.getElementById('formExcluirProducao');
+                formExcluir.action = `/itens/${rowId}/excluir`;
+                formExcluir.submit();
+            });
+        }
         {% endif %}
 
         function formatarCodigoCode(valor) {
