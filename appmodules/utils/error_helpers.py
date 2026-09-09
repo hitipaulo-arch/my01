@@ -2,14 +2,15 @@
 
 import logging
 import os
-from flask import render_template, current_app
+from flask import render_template
 
 logger = logging.getLogger(__name__)
 
 
 def _is_production() -> bool:
     """Detecta se o ambiente atual é de produção."""
-    app_env = os.environ.get("APP_ENV", os.environ.get("FLASK_ENV", "development")).lower()
+    # Default 'production' alinhado com o app.py (app_env)
+    app_env = os.environ.get("APP_ENV", os.environ.get("FLASK_ENV", "production")).lower()
     return app_env in ("production", "prod")
 
 

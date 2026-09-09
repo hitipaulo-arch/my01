@@ -30,6 +30,7 @@ instance/
 # Environment variables
 .env
 .env.local
+.env.bak
 # Local env file (contains secrets) - IGNORE
 .env
 

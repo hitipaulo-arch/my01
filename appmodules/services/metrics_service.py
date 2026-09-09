@@ -206,3 +206,244 @@ class MetricsService:
                 return datetime.datetime.min
 
         return sorted(os_list, key=sort_key, reverse=True)
+    # ------------------------------------------------------------------
+    # Tempo por funcionário (controle de horário)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _first_col(record: dict, *substrings: str, default: str = "") -> str:
+        """Retorna o primeiro valor cuja chave contenha um dos substrings
+        (comparação sem acentos/caixa). Útil para planilhas com cabeçalhos
+        que variam entre 'Pedido/OS', 'Nº do Pedido', 'Número Pedido', etc."""
+        key_map = {}
+        for key, value in (record or {}).items():
+            k = str(key or "").strip().lower()
+            k = (
+                k.replace("á", "a").replace("ã", "a").replace("à", "a")
+                .replace("é", "e").replace("ê", "e")
+                .replace("í", "i").replace("ó", "o").replace("ô", "o")
+                .replace("ú", "u").replace("ç", "c").replace("º", "").replace("ª", "")
+            )
+            key_map.setdefault(k, key)
+        for sub in substrings:
+            s = (
+                str(sub).strip().lower().replace("á", "a").replace("ã", "a")
+                .replace("à", "a").replace("é", "e").replace("ê", "e")
+                .replace("í", "i").replace("ó", "o").replace("ô", "o")
+                .replace("ú", "u").replace("ç", "c").replace("º", "").replace("ª", "")
+            )
+            for k in key_map:
+                if s in k:
+                    val = record.get(key_map[k], "")
+                    if str(val or "").strip():
+                        return str(val).strip()
+        return default
+
+    @staticmethod
+    def _parse_data_hora(data_txt: str, hora_txt: str) -> datetime.datetime | None:
+        """Combina data e hora em datetime, tolerando formatos comuns."""
+        data = str(data_txt or "").strip()
+        hora = str(hora_txt or "").strip()
+        if not data:
+            return None
+        base = None
+        for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%Y/%m/%d", "%d/%m/%y"):
+            try:
+                base = datetime.datetime.strptime(data, fmt)
+                break
+            except ValueError:
+                continue
+        if base is None:
+            # Pode vir data+hora juntas
+            for fmt in ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%Y-%m-%d %H:%M:%S"):
+                try:
+                    return datetime.datetime.strptime(data, fmt)
+                except ValueError:
+                    continue
+            return None
+        if hora:
+            for fmt in ("%H:%M:%S", "%H:%M"):
+                try:
+                    t = datetime.datetime.strptime(hora, fmt).time()
+                    return datetime.datetime.combine(base.date(), t)
+                except ValueError:
+                    continue
+        return base
+
+    def calcular_tempo_por_funcionario(
+        self,
+        registros: list[dict],
+        os_list: list[dict] | None = None,
+        filtros: dict | None = None,
+    ) -> dict:
+        """
+        Calcula horas trabalhadas por funcionário/OS a partir dos registros de
+        controle de horário (pares entrada/saída por dia).
+
+        Args:
+            registros: listas de dicts vindas de sheets_service.get_time_records()
+            os_list: opcional, lista de OS (para enriquecer com urgência)
+            filtros: opcional dict com 'funcionario', 'pedido_os',
+                'data_inicio' (YYYY-MM-DD ou DD/MM/YYYY), 'data_fim'
+
+        Returns:
+            dict com 'dados', 'total_registros', 'chart_data' e 'aviso_periodo'.
+        """
+        filtros = filtros or {}
+        dados = []
+        if not registros:
+            return self._empty_tempo_resultado()
+
+        # (funcionario|pedido|data) -> eventos ordenados
+        eventos_por_dia: dict[tuple, list[datetime.datetime]] = {}
+        metadados: dict[tuple, dict] = {}
+
+        def _chave(f, p, d):
+            return (str(f or "").strip().lower(), str(p or "").strip().lower(), d)
+
+        for reg in registros:
+            if not isinstance(reg, dict):
+                continue
+            funcionario = MetricsService._first_col(
+                reg, "funcionario", "nome", default=""
+            ) or str(reg.get("funcionario", "") or "")
+            pedido_os = MetricsService._first_col(
+                reg, "pedido", "os", "numero", "nº", default=""
+            )
+            data_txt = MetricsService._first_col(reg, "data", "dia", default="")
+            hora_txt = MetricsService._first_col(
+                reg, "horario", "hora", "horário", default=""
+            )
+            dt = self._parse_data_hora(data_txt, hora_txt)
+            if dt is None:
+                continue
+            chave = _chave(funcionario, pedido_os, dt.date().isoformat())
+            eventos_por_dia.setdefault(chave, []).append(dt)
+            metadados.setdefault(chave, {"funcionario": funcionario, "pedido_os": pedido_os})
+
+        # Filtros de período (em cima das datas dos eventos)
+        try:
+            di = MetricsService._parse_data_hora(
+                (filtros.get("data_inicio") or "").replace("-", "/"), ""
+            )
+            df = MetricsService._parse_data_hora(
+                (filtros.get("data_fim") or "").replace("-", "/"), ""
+            )
+        except Exception:
+            di = df = None
+
+        urgencias_por_pedido = {}
+        if os_list:
+            for os_row in os_list:
+                if not isinstance(os_row, dict):
+                    continue
+                numero = MetricsService._first_col(
+                    os_row, "numero", "pedido", "nº", "os", default=""
+                )
+                if numero:
+                    urgencias_por_pedido.setdefault(
+                        str(numero).strip().lower(),
+                        MetricsService._first_col(os_row, "prioridade", "urgencia", default=""),
+                    )
+
+        # Soma de horas por (funcionario, pedido) agregando dias
+        totais: dict[tuple, float] = {}
+        info: dict[tuple, dict] = {}
+        avisos = []
+
+        for chave, eventos in eventos_por_dia.items():
+            meta = metadados[chave]
+            eventos.sort()
+            total_dia = 0.0
+            inicio = None
+            for ev in eventos:
+                if inicio is None:
+                    inicio = ev
+                else:
+                    delta = (ev - inicio).total_seconds() / 3600
+                    if delta >= 0:
+                        total_dia += delta
+                    inicio = None
+            if total_dia <= 0:
+                continue
+
+            if di and df and (di.date() > df.date()):
+                avisos.append("Período inválido: data inicial maior que a final.")
+                return self._empty_tempo_resultado(aviso=" ".join(avisos))
+
+            data_ev = datetime.datetime.strptime(chave[2], "%Y-%m-%d").date()
+            if di and data_ev < di.date():
+                continue
+            if df and data_ev > df.date():
+                continue
+
+            f_ped = meta["pedido_os"]
+            f_nome = meta["funcionario"]
+            f_filtro = str(filtros.get("funcionario") or "").strip().lower()
+            if f_filtro and f_filtro not in str(f_nome or "").lower():
+                continue
+            p_filtro = str(filtros.get("pedido_os") or "").strip().lower()
+            if p_filtro and p_filtro not in str(f_ped or "").lower():
+                continue
+
+            chave_agg = (str(f_nome or "").strip().lower(), str(f_ped or "").strip().lower())
+            totais[chave_agg] = totais.get(chave_agg, 0.0) + total_dia
+            info.setdefault(chave_agg, {"funcionario": f_nome, "pedido_os": f_ped})
+
+        for chave_agg, horas in totais.items():
+            meta = info[chave_agg]
+            pedido = meta["pedido_os"]
+            urgencia = urgencias_por_pedido.get(str(pedido or "").strip().lower(), "")
+            dados.append(
+                {
+                    "funcionario": meta["funcionario"] or "—",
+                    "pedido_os": pedido or "—",
+                    "tempo": MetricsService._formatar_duracao(horas),
+                    "horas": round(horas, 2),
+                    "urgencia": urgencia,
+                }
+            )
+
+        dados.sort(key=lambda d: d["horas"], reverse=True)
+        chart_data = self._build_tempo_charts(dados)
+        return {
+            "dados": dados,
+            "total_registros": len(dados),
+            "chart_data": chart_data,
+            "aviso_periodo": " ".join(avisos),
+        }
+
+    @staticmethod
+    def _formatar_duracao(horas: float) -> str:
+        if horas < 1:
+            return f"{int(round(horas * 60))}min"
+        return f"{horas:.1f}h"
+
+    def _build_tempo_charts(self, dados: list[dict]) -> dict:
+        """Monta dados p/ gráficos: barras (top 15) e rosca de urgência."""
+        top = dados[:15]
+        bar_labels = [
+            f"{d['funcionario']} (#{d['pedido_os']})" if d["pedido_os"] != "—" else d["funcionario"]
+            for d in top
+        ]
+        bar_values = [d["horas"] for d in top]
+
+        urg_count: dict[str, int] = {}
+        for d in dados:
+            u = str(d.get("urgencia") or "Sem urgência").strip() or "Sem urgência"
+            urg_count[u] = urg_count.get(u, 0) + 1
+        urg_ordenada = sorted(urg_count.items(), key=lambda kv: kv[1], reverse=True)
+        return {
+            "bar_labels": bar_labels,
+            "bar_values": bar_values,
+            "urg_labels": [k for k, _ in urg_ordenada],
+            "urg_values": [v for _, v in urg_ordenada],
+        }
+
+    def _empty_tempo_resultado(self, aviso: str = "") -> dict:
+        return {
+            "dados": [],
+            "total_registros": 0,
+            "chart_data": {"bar_labels": [], "bar_values": [], "urg_labels": [], "urg_values": []},
+            "aviso_periodo": aviso,
+        }

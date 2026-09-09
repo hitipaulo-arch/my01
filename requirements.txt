@@ -1,6 +1,7 @@
 Flask>=3.0.0,<4.0.0
 Flask-WTF>=1.2.0,<2.0.0
 Flask-Caching>=2.1.0,<3.0.0
+Flask-Limiter>=3.5,<4.0.0
 redis>=5.0.0,<6.0.0
 cachelib>=0.13.0,<1.0.0
 gspread>=6.0.0,<7.0.0
@@ -13,8 +14,3 @@ requests>=2.31.0,<3.0.0
 qrcode[pil]>=7.4.0,<8.0.0
 pywhatkit>=5.4
 openai>=1.0.0,<2.0.0
-python-dateutil>=2.8.0
-Werkzeug>=3.0.0,<4.0.0
-requests>=2.31.0,<3.0.0
-qrcode[pil]>=7.4.0,<8.0.0
-pywhatkit>=5.4

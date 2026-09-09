@@ -7,6 +7,7 @@ from flask import current_app
 from appmodules.models import Usuario
 from appmodules.models.usuario import Role
 from appmodules.services.sheets_service import SheetsService
+from config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -23,10 +24,8 @@ class UserService:
         self.sheets_service = sheets_service
         self._usuarios_cache: Dict[str, Usuario] = {}
         self.last_error: Optional[str] = None
-        # TTL configurável por env (padrão 300s = 5min)
-        self._usuarios_cache_ttl_seconds = max(
-            5, int(os.getenv("USUARIOS_CACHE_TTL_SECONDS", "300"))
-        )
+        # TTL configurável — fonte única em Config.CACHE (padrão 300s = 5min)
+        self._usuarios_cache_ttl_seconds = Config.CACHE.USUARIOS_CACHE_TTL_SECONDS
         self._load_usuarios()
 
     def _get_cache(self):

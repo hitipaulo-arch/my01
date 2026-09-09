@@ -11,11 +11,12 @@ from decimal import Decimal, InvalidOperation
 from typing import Optional, List, Any, Tuple
 from flask import current_app
 from google.oauth2.service_account import Credentials
+from config import Config
 
 logger = logging.getLogger(__name__)
 
 # Chaves de cache (compartilháveis entre workers via Redis)
-_CACHE_PREFIX = os.getenv("CACHE_KEY_PREFIX", "my01").strip() or "my01"
+_CACHE_PREFIX = Config.CACHE.CACHE_KEY_PREFIX.strip() or "my01"
 CACHE_KEY_OS = f"{_CACHE_PREFIX}:sheets:os:all"
 CACHE_KEY_PRODUCAO = f"{_CACHE_PREFIX}:sheets:producao:all"
 
@@ -67,13 +68,9 @@ class SheetsService:
         self.error = None
 
         self.usuarios_error = None
-        # TTLs configuráveis via env (compatibilidade mantida)
-        self._os_cache_ttl_seconds = max(
-            5, int(os.getenv("OS_CACHE_TTL_SECONDS", "120"))
-        )
-        self._producao_cache_ttl_seconds = max(
-            5, int(os.getenv("PRODUCAO_CACHE_TTL_SECONDS", "30"))
-        )
+        # TTLs configuráveis — fonte única em Config.CACHE
+        self._os_cache_ttl_seconds = Config.CACHE.OS_CACHE_TTL_SECONDS
+        self._producao_cache_ttl_seconds = Config.CACHE.PRODUCAO_CACHE_TTL_SECONDS
 
         self._init_connection(creds_file)
 
