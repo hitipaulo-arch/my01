@@ -11,6 +11,7 @@ from flask import (
     current_app,
 )
 from appmodules.models import ValidadorUsuario
+from appmodules.models.usuario import Role
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -84,7 +85,7 @@ def cadastro():
         if user_service.get_usuario(username):
             return render_template("cadastro.html", erro="Usuário já existe.")
 
-        if user_service.criar_usuario(username, password, "admin"):
+        if user_service.criar_usuario(username, password, Role.VISUALIZADOR.value):
             flash(
                 "Cadastro realizado com sucesso! Você pode fazer login agora.",
                 "success",

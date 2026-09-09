@@ -7,10 +7,10 @@ Ponto de entrada principal da aplicação.
 import os
 import logging
 import json
-import pandas as pd
 import hmac
 import hashlib
 from pathlib import Path
+from datetime import datetime
 
 # Carrega variáveis do .env, se disponível
 try:
@@ -33,7 +33,13 @@ from flask import (
 )
 from flask_wtf.csrf import CSRFProtect
 from flask_caching import Cache
+# Removed Flask-Limiter for now (will implement async processing instead)
+from config import limiter_config
 
+try:
+    from openai import OpenAI
+except ImportError:  # pragma: no cover
+    OpenAI = None
 
 # Configuração de logging
 logging.basicConfig(
@@ -47,9 +53,24 @@ from appmodules.services.whatsapp_webhook_service import WhatsAppWebhookService
 from appmodules.routes.auth_routes import auth_bp
 from appmodules.routes.os_routes import os_bp
 from appmodules.routes.centrais_routes import centrais_bp
-from centrais_repository import CentraisRepository
-from report_logic import gerar_dados_relatorio
-from appmodules.utils import login_required, admin_required, render_route_error
+from appmodules.repositories import CentraisRepository
+from appmodules.logic import gerar_dados_relatorio
+from appmodules.utils import (
+    login_required,
+    admin_required,
+    render_route_error,
+    render_service_unavailable,
+)
+from appmodules.utils.validators import (
+    _parse_int_field,
+    _validate_item_form_data,
+    _validate_user_payload,
+)
+from appmodules.utils.formatters import (
+    _format_codigo_code,
+    _format_mtc_code,
+    _append_producao_info,
+)
 from config import Config
 from appmodules.models.usuario import Role
 
@@ -86,10 +107,7 @@ cache = Cache(app)
 
 # Inicializa rate limiter (opcional)
 try:
-    from flask_limiter import Limiter
-    from flask_limiter.util import get_remote_address
-
-    limiter = Limiter(key_func=get_remote_address, app=app)
+    limiter = Limiter(app, **limiter_config)
     app.config["limiter"] = limiter
     logger.info("Flask-Limiter inicializado")
 except Exception:
@@ -107,6 +125,32 @@ app.config["notification_service"] = NotificationService
 # Inicializa serviço de webhook WhatsApp
 webhook_service = WhatsAppWebhookService(sheets_service=sheets_service)
 app.config["webhook_service"] = webhook_service
+
+
+@app.before_request
+def check_services_availability():
+    """Verifica se os serviços essenciais estão disponíveis e retorna 503 caso contrário."""
+    if request.endpoint and (
+        request.endpoint.startswith("static") or request.endpoint == "favicon"
+    ):
+        return None
+
+    if app.config.get("sheets_service") is None:
+        logger.warning(
+            f"Serviço indisponível ao acessar endpoint: {request.endpoint or request.path}"
+        )
+        if (
+            request.path.startswith("/api/")
+            or request.is_json
+            or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        ):
+            return (
+                jsonify(
+                    {"erro": "Serviço temporariamente indisponível", "status": 503}
+                ),
+                503,
+            )
+        return render_service_unavailable()
 
 # Validação estrita de segurança para webhook em produção
 # Verifica se webhook está habilitado (token configurado + enabled=true)
@@ -157,6 +201,12 @@ if limiter:
         )
     except KeyError:
         logger.warning("Não foi possível aplicar rate limit em rotas de auth.")
+
+# Add API fallback logic
+def select_fastest_api(provider_list):
+    # Implement logic to evaluate provider speed (e.g., latency metrics)
+    # Return fastest provider
+    return 'provider_a'  # Placeholder
 
 # ════════════════════════════════════════════════════════════════════════════════
 # ROTAS DE WEBHOOK (WhatsApp)
@@ -333,7 +383,9 @@ def usuarios_admin():
                         tipo_mensagem = "danger"
                 else:
                     senha = request.form.get("senha", "").strip()
-                    role = request.form.get("role", Role.ADMIN.value).strip().lower()
+                    role = request.form.get(
+                        "role", Role.VISUALIZADOR.value
+                    ).strip().lower()
                     valido, mensagem_validacao = _validate_user_payload(
                         username=username,
                         senha=senha,
@@ -441,6 +493,167 @@ def _parse_int_field(value, default=0):
         return default
 
 
+def get_nvidia_ai_client():
+    """Cria o cliente da NVIDIA com a chave definida em ambiente."""
+    if OpenAI is None:
+        raise RuntimeError("A biblioteca 'openai' não está instalada.")
+
+    api_key = os.getenv("NVIDIA_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError(
+            "A variável de ambiente NVIDIA_API_KEY não foi configurada. "
+            "Defina a chave antes de usar a IA do painel administrativo."
+        )
+
+    return OpenAI(
+        base_url="https://integrate.api.nvidia.com/v1",
+        api_key=api_key,
+    )
+
+
+def build_admin_ai_context():
+    """Gera um contexto resumido do sistema para o chat do admin."""
+    context_lines = [
+        "Você é um assistente do painel administrativo da empresa. "
+        "Responda com base no contexto do sistema e em fatos reais do projeto.",
+        "Contexto do sistema:",
+    ]
+
+    sheets_service = current_app.config.get("sheets_service")
+    try:
+        if sheets_service:
+            itens = sheets_service.get_all_producao(use_cache=True) or []
+            total_itens = len(itens)
+            status_counts = {}
+            responsavel_counts = {}
+            total_produzido = 0
+            total_meta = 0
+
+            for item in itens:
+                status = str(item.get("Status", "")).strip() or "Sem status"
+                status_counts[status] = status_counts.get(status, 0) + 1
+
+                responsavel = str(item.get("Responsável", "")).strip() or "Não atribuído"
+                responsavel_counts[responsavel] = responsavel_counts.get(responsavel, 0) + 1
+
+                total_produzido += _parse_int_field(item.get("Quantidade produzida", 0), 0)
+                total_meta += _parse_int_field(item.get("Meta de produção", 0), 0)
+
+            context_lines.append(f"- Total de itens de produção: {total_itens}")
+            context_lines.append(
+                f"- Produção acumulada: {total_produzido} / meta total {total_meta}"
+            )
+            if status_counts:
+                context_lines.append(
+                    "- Status dos itens: " + ", ".join(
+                        f"{k}={v}" for k, v in sorted(status_counts.items())
+                    )
+                )
+            if responsavel_counts:
+                context_lines.append(
+                    "- Responsáveis: " + ", ".join(
+                        f"{k}={v}" for k, v in sorted(responsavel_counts.items())
+                    )
+                )
+
+            itens_abertos = [
+                item for item in itens
+                if str(item.get("Status", "")).strip().lower()
+                not in {"concluído", "concluido", "bloqueado", "bloqueada", "cancelado", "cancelada"}
+            ]
+            if itens_abertos:
+                context_lines.append(
+                    "- Itens em aberto: "
+                    + ", ".join(
+                        str(item.get("Nome do item", "Sem nome"))
+                        for item in itens_abertos[:5]
+                    )
+                )
+        else:
+            context_lines.append("- Dados da produção indisponíveis no momento.")
+    except Exception as exc:
+        logger.warning(f"Não foi possível montar o contexto do sistema para o chat admin: {exc}")
+        context_lines.append("- Não foi possível recuperar contexto adicional do sistema.")
+
+    return "\n".join(context_lines)
+
+
+@app.route("/admin/ia", methods=["GET", "POST"])
+@admin_required
+def admin_ia():
+    """Chat de IA do painel administrativo com histórico em sessão."""
+    pergunta = ""
+    resposta = ""
+    erro = None
+    history = session.get("admin_ai_history", [])
+
+    if request.method == "POST":
+        action = request.form.get("action", "send")
+
+        if action == "clear_history":
+            session["admin_ai_history"] = []
+            history = []
+            return render_template(
+                "admin_ai.html",
+                pergunta="",
+                resposta="",
+                erro=None,
+                history=[],
+            )
+
+        if action == "summary":
+            pergunta = (
+                "Resumo executivo do dia. Analise a produção, itens em aberto, "
+                "atrasos, responsáveis e status geral. Destaque os principais pontos de atenção, "
+                "suas possíveis causas e uma recomendação objetiva para o administrador."
+            )
+        else:
+            pergunta = (request.form.get("q") or request.form.get("pesquisa") or "").strip()
+
+        if not pergunta:
+            erro = "Digite uma busca ou pergunta para consultar a IA."
+        else:
+            try:
+                history = history.copy()
+                context_msg = {"role": "user", "content": build_admin_ai_context()}
+                history.append(context_msg)
+                history.append({"role": "user", "content": pergunta})
+                client = get_nvidia_ai_client()
+                completion = client.chat.completions.create(
+                    model="z-ai/glm-5.2",
+                    messages=history,
+                    temperature=0.7,
+                    top_p=1,
+                    max_tokens=1024,
+                    stream=False,
+                )
+                resposta = completion.choices[0].message.content or ""
+                history.append({"role": "assistant", "content": resposta})
+                session["admin_ai_history"] = history
+            except Exception as exc:
+                logger.exception("Erro ao consultar a API da NVIDIA")
+                if "NVIDIA_API_KEY" in str(exc):
+                    erro = (
+                        "A IA está indisponível porque a variável de ambiente NVIDIA_API_KEY "
+                        "não foi configurada.\n\n"
+                        "Configure assim:\n"
+                        "- PowerShell: $env:NVIDIA_API_KEY='sua-chave'\n"
+                        "- CMD: set NVIDIA_API_KEY=sua-chave\n"
+                        "- Arquivo .env: NVIDIA_API_KEY=sua-chave\n\n"
+                        "Depois reinicie o servidor."
+                    )
+                else:
+                    erro = f"Erro ao consultar a IA: {exc}"
+
+    return render_template(
+        "admin_ai.html",
+        pergunta=pergunta,
+        resposta=resposta,
+        erro=erro,
+        history=history,
+    )
+
+
 def _format_codigo_code(value):
     """Normaliza o código do item para o formato ##-##-#####.
 
@@ -483,7 +696,7 @@ def _append_producao_info(existing_info: str, nova_info: str) -> str:
     if not nova_info:
         return existing_info
 
-    timestamp = pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S")
+    timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     extra = f"[{timestamp}] {nova_info}"
     if existing_info:
         return existing_info + "\n" + extra
@@ -621,7 +834,7 @@ def producao():
                 return redirect(url_for("producao"))
 
             dados = [
-                pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S"),
+                datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
                 nome_item,
                 codigo_item,
                 _format_mtc_code(request.form.get("mtc_projeto", "")),
@@ -638,7 +851,7 @@ def producao():
                 flash("Nome do item e código são obrigatórios.", "danger")
                 return redirect(url_for("producao"))
 
-            item_id = str(int(pd.Timestamp.now().timestamp() * 1000))
+            item_id = str(int(datetime.now().timestamp() * 1000))
             row_data = [str(item_id)] + dados
 
             if not sheets_service.add_producao(row_data):
@@ -948,6 +1161,37 @@ def itens():
         chave = (nome_item or "").strip().lower()
         return int(thresholds_especificos.get(chave, threshold_default))
 
+    def _processar_item_compra(item: dict) -> dict:
+        """Extrai quantidade, limite e status de compra de um item de produção."""
+        quantidade = _parse_int_field(
+            item.get(
+                "Quantidade produzida",
+                item.get(
+                    "Quantidade",
+                    item.get(
+                        "Quantidade Item", item.get("Quantidade produzida ", 0)
+                    ),
+                ),
+            ),
+            0,
+        )
+        nome_item_atual = str(item.get("Nome do item", "")).strip()
+        threshold_item = _threshold_para_item(nome_item_atual)
+        status_compra = (
+            "precisa solicitar comprar"
+            if quantidade <= threshold_item
+            else "não precisa solicitar comprar"
+        )
+        return {
+            "nome_item": nome_item_atual,
+            "codigo_item": item.get("Código", ""),
+            "mtc_projeto": _format_mtc_code(item.get("Número do projeto MTC", "")),
+            "quantidade": quantidade,
+            "status_compra": status_compra,
+            "row_id": item.get("row_id"),
+            "threshold": threshold_item,
+        }
+
     try:
         if request.method == "POST":
             if read_only:
@@ -1025,8 +1269,8 @@ def itens():
                 )
 
             row_data = [
-                str(int(pd.Timestamp.now().timestamp() * 1000)),
-                pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S"),
+                str(int(datetime.now().timestamp() * 1000)),
+                datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
                 nome_item,
                 codigo_item,
                 mtc_projeto,
@@ -1056,38 +1300,10 @@ def itens():
             origem = str(item.get("Origem", "")).strip().lower()
             if origem != "item":
                 continue
-            # Recupera a quantidade tentando várias possíveis colunas para
-            # manter compatibilidade com planilhas antigas/variações.
-            quantidade = _parse_int_field(
-                item.get(
-                    "Quantidade produzida",
-                    item.get(
-                        "Quantidade",
-                        item.get(
-                            "Quantidade Item", item.get("Quantidade produzida ", 0)
-                        ),
-                    ),
-                ),
-                0,
-            )
-            nome_item_atual = str(item.get("Nome do item", "")).strip()
-            threshold_item = _threshold_para_item(nome_item_atual)
-            status_compra = (
-                "precisa solicitar comprar"
-                if quantidade <= threshold_item
-                else "não precisa solicitar comprar"
-            )
-            item_compra = {
-                "nome_item": nome_item_atual,
-                "codigo_item": item.get("Código", ""),
-                "mtc_projeto": _format_mtc_code(item.get("Número do projeto MTC", "")),
-                "quantidade": quantidade,
-                "status_compra": status_compra,
-                "row_id": item.get("row_id"),
-                "threshold": threshold_item,
-            }
 
-            if quantidade <= threshold_item:
+            item_compra = _processar_item_compra(item)
+
+            if item_compra["quantidade"] <= item_compra["threshold"]:
                 itens_alerta.append(item_compra)
             else:
                 itens_normais.append(item_compra)
@@ -1123,6 +1339,46 @@ def itens():
         ), 500
 
 
+def _extract_and_format_item_form(form_data, item_original):
+    """Extrai, valida e formata os dados do formulário de edição de item em uma linha estruturada."""
+    nome_item = str(form_data.get("nome_item", "")).strip()
+    codigo_item = _format_codigo_code(
+        str(form_data.get("codigo_item", "")).strip()
+    )
+    mtc_projeto = _format_mtc_code(
+        str(form_data.get("mtc_projeto", "")).strip()
+    )
+    quantidade_raw = _parse_int_field(
+        form_data.get("quantidade", "0"), 0
+    )
+    observacao = str(form_data.get("observacao", "")).strip()
+
+    valido, mensagem = _validate_item_form_data(
+        nome_item=nome_item,
+        codigo_item=codigo_item,
+        quantidade_raw=quantidade_raw,
+        observacao=observacao,
+    )
+    if not valido:
+        return False, mensagem, None
+
+    row_data = [
+        item_original.get("ID", ""),
+        item_original.get("Carimbo de data/hora", ""),
+        nome_item,
+        codigo_item,
+        mtc_projeto,
+        str(quantidade_raw),
+        item_original.get("Meta de produção", "0"),
+        item_original.get("Status", "Em andamento"),
+        observacao,
+        item_original.get("Responsável", ""),
+        item_original.get("Informações adicionais", ""),
+        item_original.get("Origem", "item"),
+    ]
+    return True, "", row_data
+
+
 @app.route("/itens/<int:row_id>/editar", methods=["GET", "POST"])
 @login_required
 def editar_item(row_id: int):
@@ -1139,44 +1395,12 @@ def editar_item(row_id: int):
 
     if request.method == "POST":
         try:
-            nome_item = str(request.form.get("nome_item", "")).strip()
-            codigo_item = _format_codigo_code(
-                str(request.form.get("codigo_item", "")).strip()
-            )
-            mtc_projeto = _format_mtc_code(
-                str(request.form.get("mtc_projeto", "")).strip()
-            )
-            quantidade_raw = _parse_int_field(
-                request.form.get("quantidade", "0"), 0
-            )
-            observacao = str(request.form.get("observacao", "")).strip()
-
-            valido, mensagem = _validate_item_form_data(
-                nome_item=nome_item,
-                codigo_item=codigo_item,
-                quantidade_raw=quantidade_raw,
-                observacao=observacao,
+            valido, mensagem, row_data = _extract_and_format_item_form(
+                request.form, item
             )
             if not valido:
                 flash(mensagem, "danger")
                 return redirect(url_for("editar_item", row_id=row_id))
-
-            quantidade = quantidade_raw
-
-            row_data = [
-                item.get("ID", ""),
-                item.get("Carimbo de data/hora", ""),
-                nome_item,
-                codigo_item,
-                mtc_projeto,
-                str(quantidade),
-                item.get("Meta de produção", "0"),
-                item.get("Status", "Em andamento"),
-                observacao,
-                item.get("Responsável", ""),
-                item.get("Informações adicionais", ""),
-                item.get("Origem", "item"),
-            ]
 
             if not sheets_service.update_producao(row_id, row_data):
                 flash("Não foi possível atualizar o item.", "danger")
@@ -1233,7 +1457,7 @@ def ferramentas():
             dados = [
                 request.form.get("nome", ""),
                 request.form.get("patrocinio", ""),
-                pd.Timestamp.now().strftime("%d/%m/%Y"),
+                datetime.now().strftime("%d/%m/%Y"),
                 request.form.get("ultima_manutencao", ""),
                 request.form.get("status", "Disponível"),
                 request.form.get("observacao", ""),
@@ -1334,7 +1558,7 @@ def add_historico_entry(sheets_service, nome_ferramenta, evento, usuario, detalh
     """Adiciona uma entrada no histórico de ferramentas."""
     try:
         worksheet = get_or_create_historico_worksheet(sheets_service)
-        data_hora = pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S")
+        data_hora = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
         worksheet.append_row([nome_ferramenta, evento, data_hora, usuario, detalhes])
     except Exception as e:
         logger.warning(f"Erro ao adicionar histórico: {e}")
@@ -1456,11 +1680,11 @@ if __name__ == "__main__":
     # Prioriza variáveis de ambiente, mas com padrões seguros.
     port = int(os.getenv("PORT", Config.FLASK.PORT))
     debug_mode = os.getenv("FLASK_DEBUG", str(Config.FLASK.DEBUG)).lower() in ("true", "1")
-    
+
     # Padrão para '127.0.0.1' (localhost) que é mais seguro para desenvolvimento.
     # Use a variável de ambiente HOST=0.0.0.0 para permitir acesso de outras máquinas na rede.
     host = os.getenv("HOST", "127.0.0.1")
-    
+
     # Adiciona um aviso de segurança se o modo debug estiver ativo em um ambiente de "produção"
     if debug_mode and app_env == "production":
         logger.warning(

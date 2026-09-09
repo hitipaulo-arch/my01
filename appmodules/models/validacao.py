@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import List, Dict, Any
 import re
+from appmodules.models.ordem_servico import StatusOS
 
 
 @dataclass
@@ -17,13 +18,12 @@ class ValidadorOS:
     """Validador centralizado para Ordens de Serviço."""
 
     PRIORIDADES_VALIDAS = ["Baixa", "Média", "Alta", "Urgente"]
-    STATUS_VALIDOS = [
-        "Aberto",
-        "Em Andamento",
-        "Aguardando Compra",
-        "Finalizada",
-        "Cancelada",
-    ]
+    STATUS_VALIDOS = [status.value for status in StatusOS]
+    STATUS_LEGACY_ALIASES = {
+        "Aguardando Compra": StatusOS.EM_ANDAMENTO.value,
+        "Finalizada": StatusOS.CONCLUIDO.value,
+        "Cancelada": StatusOS.CANCELADO.value,
+    }
     MIN_DESCRICAO_LENGTH = 5
 
     @staticmethod
@@ -73,7 +73,10 @@ class ValidadorOS:
 
         # Validar status se fornecido
         status_provided = form_data.get("status_os", "").strip()
-        if status_provided and status_provided not in ValidadorOS.STATUS_VALIDOS:
+        status_normalizado = ValidadorOS.STATUS_LEGACY_ALIASES.get(
+            status_provided, status_provided
+        )
+        if status_provided and status_normalizado not in ValidadorOS.STATUS_VALIDOS:
             status_list = ", ".join(ValidadorOS.STATUS_VALIDOS)
             erros.append(
                 f'Status inválido: "{status_provided}". Valores aceitos: {status_list}'
@@ -86,7 +89,7 @@ class ValidadorUsuario:
     """Validador centralizado para usuários."""
 
     MIN_USERNAME_LENGTH = 3
-    MIN_PASSWORD_LENGTH = 12  # OWASP minimum - aumentado de 6 para 12
+    MIN_PASSWORD_LENGTH = 12  # Mantido alinhado com Config.VALIDATION
 
     # Caracteres obrigatórios para senha forte
     PASSWORD_MUST_HAVE_UPPERCASE = True

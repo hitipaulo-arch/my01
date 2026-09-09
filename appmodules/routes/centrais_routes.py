@@ -8,8 +8,8 @@ from flask import (
     jsonify,
     current_app,
 )
-import pandas as pd
 import logging
+from datetime import datetime
 
 from appmodules.utils import admin_required
 
@@ -40,7 +40,7 @@ def centrais():
                 "Código de Série": request.form.get("codigo_serie", ""),
                 "Status": request.form.get("status", ""),
                 "Obra Utilizada": request.form.get("obra", ""),
-                "Data Cadastro": pd.Timestamp.now().strftime("%d/%m/%Y %H:%M:%S"),
+                "Data Cadastro": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
                 "Programação": "",
                 "Programação Resumo": "",
             }

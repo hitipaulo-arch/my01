@@ -21,12 +21,12 @@ class Usuario:
 
     username: str
     senha_hash: str
-    role: str = Role.ADMIN.value
+    role: str = Role.VISUALIZADOR.value
     data_cadastro: Optional[str] = ""
 
     @classmethod
     def criar(
-        cls, username: str, senha: str, role: str = Role.ADMIN.value
+        cls, username: str, senha: str, role: str = Role.VISUALIZADOR.value
     ) -> "Usuario":
         """Cria novo usuário com senha hasheada."""
         senha_hash = generate_password_hash(senha, method="pbkdf2:sha256")

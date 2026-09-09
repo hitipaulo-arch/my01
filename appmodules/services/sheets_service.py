@@ -15,8 +15,9 @@ from google.oauth2.service_account import Credentials
 logger = logging.getLogger(__name__)
 
 # Chaves de cache (compartilháveis entre workers via Redis)
-CACHE_KEY_OS = "sheets:os:all"
-CACHE_KEY_PRODUCAO = "sheets:producao:all"
+_CACHE_PREFIX = os.getenv("CACHE_KEY_PREFIX", "my01").strip() or "my01"
+CACHE_KEY_OS = f"{_CACHE_PREFIX}:sheets:os:all"
+CACHE_KEY_PRODUCAO = f"{_CACHE_PREFIX}:sheets:producao:all"
 
 
 class SheetsService:

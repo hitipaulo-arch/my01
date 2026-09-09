@@ -44,7 +44,7 @@
     <a href="{{ url_for('dashboard_producao') }}" class="btn btn-sm btn-outline-dark me-2">📊 Dashboard</a>
     <a href="{{ url_for('itens') }}" class="btn btn-sm btn-outline-warning me-2">📦 Itens</a>
     <a href="{{ url_for('relatorios') }}" class="btn btn-sm btn-outline-primary me-2">📈 Relatórios</a>
-    <!-- Botão NVIDIA removido após reversão -->
+    <a href="{{ url_for('admin_ia') }}" class="btn btn-sm btn-outline-dark me-2">🤖 IA Admin</a>
     <a href="{{ url_for('usuarios_admin') }}" class="btn btn-sm btn-outline-primary me-2">👥 Usuários</a>
     {% elif 'operador' in _role or 'visualizador' in _role %}
     <a href="{{ url_for('os.homepage') }}" class="btn btn-sm btn-outline-success me-2">📝 Nova OS</a>

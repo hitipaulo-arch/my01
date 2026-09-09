@@ -11,7 +11,8 @@ from appmodules.services.sheets_service import SheetsService
 logger = logging.getLogger(__name__)
 
 # Chave usada no Flask-Caching (Redis em produção, SimpleCache em dev single-worker)
-CACHE_KEY_USUARIOS = "sheets:usuarios:all"
+_CACHE_PREFIX = os.getenv("CACHE_KEY_PREFIX", "my01").strip() or "my01"
+CACHE_KEY_USUARIOS = f"{_CACHE_PREFIX}:sheets:usuarios:all"
 
 
 class UserService:
@@ -53,6 +54,53 @@ class UserService:
             except Exception as e:
                 logger.warning(f"Falha ao invalidar cache usuários no Redis: {e}")
 
+    @staticmethod
+    def _normalize_role(role: Optional[str], default: str = Role.VISUALIZADOR.value) -> str:
+        """Normaliza roles legadas para o conjunto oficial do sistema."""
+        normalized = str(role or default).strip().lower()
+        if normalized in {r.value for r in Role}:
+            return normalized
+        return default
+
+    def _sync_usuarios_cache(self) -> None:
+        """Persiste o estado atual do cache local no backend compartilhado."""
+        self._persist_usuarios_cache()
+
+    def _build_usuario_from_record(
+        self, record: dict, row_number: int
+    ) -> Optional[Usuario]:
+        """Constrói um usuário a partir de uma linha do Sheets."""
+        username = str(record.get("Username", "")).strip()
+        senha = str(record.get("Senha", "")).strip()
+        role = self._normalize_role(record.get("Role"), Role.ADMIN.value)
+
+        if not username or not senha:
+            return None
+
+        senha_migrada = senha
+        if not Usuario.is_hash_valido(senha):
+            senha_migrada = Usuario.criar(username, senha, role).senha_hash
+            if not self.sheets_service.update_usuario(
+                row_number, username, senha_migrada, role
+            ):
+                logger.warning(
+                    "Falha ao migrar senha legada do usuário %s", username
+                )
+
+        data_cadastro = str(
+            record.get("Data de Cadastro")
+            or record.get("DataCadastro")
+            or record.get("Data")
+            or ""
+        ).strip()
+
+        return Usuario(
+            username=username,
+            senha_hash=senha_migrada,
+            role=role,
+            data_cadastro=data_cadastro,
+        )
+
     def _load_usuarios(self) -> None:
         """Carrega usuários do Sheets ou memória."""
         # Tenta ler do cache compartilhado (Redis) primeiro
@@ -80,36 +128,10 @@ class UserService:
             records = self.sheets_service.get_usuarios_raw()
             self._usuarios_cache = {}
 
-            roles_validos = {r.value for r in Role}
             for i, record in enumerate(records, start=2):
-                username = str(record.get("Username", "")).strip()
-                senha = str(record.get("Senha", "")).strip()
-                role = str(record.get("Role", Role.ADMIN.value)).strip().lower()
-                if role not in roles_validos:
-                    role = Role.ADMIN.value
-
-                if username and senha:
-                    if not Usuario.is_hash_valido(senha):
-                        senha = Usuario.criar(username, senha, role).senha_hash
-                        if not self.sheets_service.update_usuario(
-                            i, username, senha, role
-                        ):
-                            logger.warning(
-                                "Falha ao migrar senha legada do usuário %s", username
-                            )
-                    # Tenta ler coluna de data de cadastro se existir (compatibilidade com planilhas antigas)
-                    data_cadastro = str(
-                        record.get("Data de Cadastro")
-                        or record.get("DataCadastro")
-                        or record.get("Data")
-                        or ""
-                    ).strip()
-                    self._usuarios_cache[username] = Usuario(
-                        username=username,
-                        senha_hash=senha,
-                        role=role,
-                        data_cadastro=data_cadastro,
-                    )
+                usuario = self._build_usuario_from_record(record, i)
+                if usuario is not None:
+                    self._usuarios_cache[usuario.username] = usuario
 
             if not self._usuarios_cache:
                 logger.warning(
@@ -119,13 +141,13 @@ class UserService:
             else:
                 logger.info(f"Carregados {len(self._usuarios_cache)} usuários")
 
-            self._persist_usuarios_cache()
+            self._sync_usuarios_cache()
         except Exception as e:
             logger.warning(
                 f"Erro ao carregar usuários: {e}; cache de usuários permanecerá vazio"
             )
             self._load_local_fallback_user()
-            self._persist_usuarios_cache()
+            self._sync_usuarios_cache()
 
     def _persist_usuarios_cache(self) -> None:
         """Persiste o cache local no Flask-Caching (Redis) com TTL configurável."""
@@ -154,7 +176,9 @@ class UserService:
         # Se permitido, EXIGIR credenciais via variáveis de ambiente (sem defaults inseguros)
         username = os.getenv("LOCAL_ADMIN_USER", "").strip()
         password = os.getenv("LOCAL_ADMIN_PASSWORD", "").strip()
-        role = os.getenv("LOCAL_ADMIN_ROLE", "admin").strip() or "admin"
+        role = self._normalize_role(
+            os.getenv("LOCAL_ADMIN_ROLE", Role.ADMIN.value), Role.ADMIN.value
+        )
 
         if not username or not password:
             logger.critical(
@@ -195,11 +219,13 @@ class UserService:
             self._load_usuarios()
         return list(self._usuarios_cache.values())
 
-    def criar_usuario(self, username: str, senha: str, role: str = "admin") -> bool:
+    def criar_usuario(
+        self, username: str, senha: str, role: str = Role.VISUALIZADOR.value
+    ) -> bool:
         """Cria novo usuário."""
         try:
             username = str(username or "").strip()
-            role = str(role or Role.ADMIN.value).strip().lower()
+            role = self._normalize_role(role, Role.VISUALIZADOR.value)
             if role not in {r.value for r in Role}:
                 logger.warning("Role inválida ao criar usuário: %s", role)
                 self.last_error = "Role inválida"
@@ -234,7 +260,7 @@ class UserService:
 
             # Salva em cache local e propaga para Redis
             self._usuarios_cache[username] = usuario
-            self._persist_usuarios_cache()
+            self._sync_usuarios_cache()
             self.last_error = None
             logger.info(f"Usuário {username} criado com sucesso")
             return True
@@ -262,7 +288,7 @@ class UserService:
             if senha:
                 usuario.atualizar_senha(senha)
             if role:
-                role = str(role).strip().lower()
+                role = self._normalize_role(role, usuario.role)
                 if role not in {r.value for r in Role}:
                     logger.warning("Role inválida ao atualizar usuário: %s", role)
                     return False
@@ -284,7 +310,7 @@ class UserService:
 
             # Atualiza cache local e propaga para Redis (corrige bug de cache desatualizado)
             self._usuarios_cache[usuario.username] = usuario
-            self._persist_usuarios_cache()
+            self._sync_usuarios_cache()
             logger.info(f"Usuário {username} atualizado")
             return True
         except Exception as e:
@@ -312,7 +338,7 @@ class UserService:
 
             # Remove do cache local e propaga invalidação para Redis
             self._usuarios_cache.pop(usuario.username, None)
-            self._persist_usuarios_cache()
+            self._sync_usuarios_cache()
             logger.info(f"Usuário {username} deletado")
             return True
         except Exception as e:

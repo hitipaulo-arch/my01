@@ -1,5 +1,6 @@
 """Serviço unificado de notificações."""
 
+import atexit
 import os
 import logging
 import smtplib
@@ -20,6 +21,14 @@ class NotificationService:
     _executor = ThreadPoolExecutor(
         max_workers=int(os.getenv("NOTIFICATION_MAX_WORKERS", "4"))
     )
+
+    @staticmethod
+    def shutdown() -> None:
+        """Finaliza o executor assíncrono de forma segura."""
+        try:
+            NotificationService._executor.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
 
     @staticmethod
     def _run_async(task_name: str, target, *args, **kwargs) -> bool:
@@ -373,3 +382,6 @@ class NotificationService:
             servico_realizado,
             status_os,
         )
+
+
+atexit.register(NotificationService.shutdown)

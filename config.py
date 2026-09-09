@@ -3,6 +3,7 @@ Configuração centralizada do sistema de Ordem de Serviço.
 """
 import os
 from typing import List
+from appmodules.models.ordem_servico import StatusOS
 
 # --- CONFIGURAÇÕES DO GOOGLE SHEETS ---
 class SheetsConfig:
@@ -114,12 +115,12 @@ class ValidationConfig:
     """Regras de validação."""
     # Usuários
     MIN_USERNAME_LENGTH: int = 3
-    MIN_PASSWORD_LENGTH: int = 6
+    MIN_PASSWORD_LENGTH: int = 12
     
     # OS
     MIN_DESCRICAO_LENGTH: int = 5
     PRIORIDADES_VALIDAS: List[str] = ['Baixa', 'Média', 'Alta', 'Urgente']
-    STATUS_VALIDOS: List[str] = ['Aberto', 'Em Andamento', 'Concluído', 'Cancelado']
+    STATUS_VALIDOS: List[str] = [status.value for status in StatusOS]
 
     # Itens / Compras
     MIN_NOME_ITEM_LENGTH: int = 2
@@ -149,3 +150,9 @@ class Config:
     CACHE = CacheConfig
     VALIDATION = ValidationConfig
     LOGGING = LoggingConfig
+
+# Adicionando configuracao para limiter_config
+limiter_config = {
+    'min_requests': 5,
+    'seconds': 60
+}
