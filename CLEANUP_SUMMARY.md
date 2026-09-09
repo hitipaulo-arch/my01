@@ -1,5 +1,11 @@
 # ✅ Limpeza Concluída - Resumo Executivo
 
+> ⚠️ **ATUALIZAÇÃO (2026-09-09):** Este documento é um marco histórico e **não reflete mais o estado atual**
+> do repositório. Desde então o código evoluiu (organização em `appmodules/`, blueprints, mais rotas,
+> testes movidos para `tests/` e executados via `pytest`). Para o estado vigente, consulte o `README.md`,
+> o `.env.example`, a suíte `tests/` e o `RELATORIO_INCONSISTENCIAS.md`.
+
+
 **Data**: 28 de abril de 2026  
 **Resultado**: 10 arquivos remov​idos com sucesso + 1 diretório redundante
 

@@ -20,6 +20,24 @@ class AdminAIChatTests(unittest.TestCase):
             sess["usuario"] = "admin"
             sess["role"] = "admin"
 
+        # O decorator @admin_required consulta user_service.get_usuario()
+        # (Google Sheets). Sem credenciais/planilha disponíveis no CI, o
+        # usuário 'admin' não existe e a rota redireciona (302). Para testar
+        # o chat em si, injetamos um user_service fake que reconhece 'admin'.
+        self._original_user_service = app_module.app.config.get("user_service")
+
+        class _FakeUsuario:
+            role = "admin"
+
+        class _FakeUserService:
+            def get_usuario(self, username):
+                return _FakeUsuario() if username == "admin" else None
+
+        app_module.app.config["user_service"] = _FakeUserService()
+
+    def tearDown(self):
+        app_module.app.config["user_service"] = self._original_user_service
+
     def test_admin_ai_page_renders(self):
         response = self.client.get("/admin/ia")
         self.assertEqual(response.status_code, 200)

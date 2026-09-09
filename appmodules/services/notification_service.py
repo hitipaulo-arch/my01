@@ -287,7 +287,12 @@ class NotificationService:
         status_os: str = "Finalizada",
     ) -> bool:
         """Envia WhatsApp para o solicitante quando a OS é finalizada usando WhatsApp Web no PC."""
-        enabled = os.getenv("WHATSAPP_WEB_ENABLED", "true").strip().lower() in (
+        enabled = os.getenv("WHATSAPP_ENABLED", "false").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        ) or os.getenv("WHATSAPP_WEB_ENABLED", "false").strip().lower() in (
             "1",
             "true",
             "yes",
@@ -295,7 +300,8 @@ class NotificationService:
         )
         if not enabled:
             logger.warning(
-                "Notificação de finalização desativada: WHATSAPP_WEB_ENABLED=false (OS #%s)",
+                "Notificação de finalização desativada: "
+                "WHATSAPP_ENABLED=false e WHATSAPP_WEB_ENABLED=false (OS #%s)",
                 numero_pedido,
             )
             return False

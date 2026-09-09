@@ -1,18 +1,23 @@
 """
 Formatadores centralizados para códigos e dados de produção.
 
-Este módulo contém funções de formatação reutilizáveis extraídas do app.py
-para evitar duplicação de código e facilitar testes.
+Fonte única de formatação usada por app.py. As implementações vivas
+originalmente em app.py foram movidas para cá; app.py apenas importa.
 """
 
-import re
-from typing import Any, Dict
+from datetime import datetime
 
 
 def format_codigo_code(value: str) -> str:
     """
-    Formata código do item: remove espaços, converte para maiúsculas,
-    mantém apenas alfanuméricos e hífens.
+    Normaliza o código do item para o formato ##-##-#####.
+
+    Alterações recentes mostraram que códigos alfanuméricos eram perdidos
+    porque a função removia tudo que não fosse dígito. Para evitar perda de
+    dados, mantemos o valor original quando ele contém letras. Apenas
+    normalizamos (extraímos dígitos e inserimos hífens) quando o valor contém
+    apenas dígitos ou símbolos. A função é idempotente para formatos já
+    compatíveis.
 
     Args:
         value: Código bruto do formulário
@@ -20,19 +25,28 @@ def format_codigo_code(value: str) -> str:
     Returns:
         Código formatado
     """
-    if not value:
+    raw = str(value or "").strip()
+    if not raw:
         return ""
-    # Remove espaços e converte para maiúsculas
-    formatted = value.strip().upper()
-    # Mantém apenas alfanuméricos e hífens
-    formatted = re.sub(r"[^A-Z0-9\-]", "", formatted)
-    return formatted
+
+    # Se tiver letras, não alteramos para evitar perda de informação
+    if any(ch.isalpha() for ch in raw):
+        return raw
+
+    # Extrai apenas dígitos e formata
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    if not digits:
+        return raw
+    if len(digits) <= 2:
+        return digits
+    if len(digits) <= 4:
+        return f"{digits[:2]}-{digits[2:]}"
+    return f"{digits[:2]}-{digits[2:4]}-{digits[4:9]}"
 
 
 def format_mtc_code(value: str) -> str:
     """
-    Formata código MTC: remove espaços, converte para maiúsculas,
-    mantém apenas alfanuméricos.
+    Normaliza o número MTC para o formato #### (até 4 dígitos).
 
     Args:
         value: Código MTC bruto do formulário
@@ -40,57 +54,34 @@ def format_mtc_code(value: str) -> str:
     Returns:
         Código MTC formatado
     """
-    if not value:
-        return ""
-    # Remove espaços e converte para maiúsculas
-    formatted = value.strip().upper()
-    # Mantém apenas alfanuméricos
-    formatted = re.sub(r"[^A-Z0-9]", "", formatted)
-    return formatted
+    digits = "".join(ch for ch in str(value or "") if ch.isdigit())
+    return digits[:4] if digits else ""
 
 
-def append_producao_info(item: Dict[str, Any]) -> Dict[str, Any]:
+def append_producao_info(existing_info: str, nova_info: str) -> str:
     """
-    Adiciona informações computadas ao item de produção.
+    Concatena informações adicionais com histórico simples.
+
+    Cada nova anotação é prefixada com um timestamp entre colchetes e
+    adicionada em uma nova linha, preservando o histórico anterior.
 
     Args:
-        item: Dicionário com dados do item
+        existing_info: Informações já registradas
+        nova_info: Nova anotação a acrescentar
 
     Returns:
-        Item enriquecido com campos adicionais
+        Texto combinado com histórico
     """
-    if not isinstance(item, dict):
-        return item
+    existing_info = str(existing_info or "").strip()
+    nova_info = str(nova_info or "").strip()
+    if not nova_info:
+        return existing_info
 
-    # Cria cópia para não mutar o original
-    enriched = item.copy()
-
-    # Calcula status de produção baseado em quantidade vs meta
-    try:
-        quantidade = int(enriched.get("Quantidade", 0) or 0)
-        meta = int(enriched.get("Meta de produção", 0) or 0)
-        if meta > 0:
-            percentual = (quantidade / meta) * 100
-            enriched["Percentual Produção"] = round(percentual, 1)
-            if percentual >= 100:
-                enriched["Status Produção"] = "Concluído"
-            elif percentual > 0:
-                enriched["Status Produção"] = "Em andamento"
-            else:
-                enriched["Status Produção"] = "Não iniciado"
-        else:
-            enriched["Percentual Produção"] = 0
-            enriched["Status Produção"] = "Sem meta"
-    except (ValueError, TypeError):
-        enriched["Percentual Produção"] = 0
-        enriched["Status Produção"] = "Inválido"
-
-    # Formata data se existir
-    carimbo = enriched.get("Carimbo de data/hora", "")
-    if carimbo:
-        enriched["Data Formatada"] = carimbo
-
-    return enriched
+    timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    extra = f"[{timestamp}] {nova_info}"
+    if existing_info:
+        return existing_info + "\n" + extra
+    return extra
 
 
 # Compatibilidade com imports legados de app.py

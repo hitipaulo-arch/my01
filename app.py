@@ -6,7 +6,6 @@ Ponto de entrada principal da aplicação.
 
 import os
 import logging
-import json
 import hmac
 import hashlib
 from pathlib import Path
@@ -30,11 +29,10 @@ from flask import (
     flash,
     session,
     current_app,
+    Response,
 )
 from flask_wtf.csrf import CSRFProtect
 from flask_caching import Cache
-# Removed Flask-Limiter for now (will implement async processing instead)
-from config import limiter_config
 
 try:
     from openai import OpenAI
@@ -48,7 +46,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Imports dos serviços
-from appmodules.services import SheetsService, NotificationService, UserService
+from appmodules.services import SheetsService, UserService, MetricsService
 from appmodules.services.whatsapp_webhook_service import WhatsAppWebhookService
 from appmodules.routes.auth_routes import auth_bp
 from appmodules.routes.os_routes import os_bp
@@ -105,12 +103,27 @@ app_env = os.getenv("APP_ENV", os.getenv("FLASK_ENV", "production"))
 csrf = CSRFProtect(app)
 cache = Cache(app)
 
-# Inicializa rate limiter (opcional)
+# Inicializa rate limiter (opcional — requer o pacote 'Flask-Limiter')
 try:
-    limiter = Limiter(app, **limiter_config)
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+
+    # Argumentos nomeados: a ordem dos parâmetros mudou entre versões do
+    # Flask-Limiter (3.5 vs 3.13+), então evite posicional aqui.
+    # Em produção multi-worker o storage precisa ser compartilhado (Redis);
+    # em dev usamos memória.
+    if Config.CACHE.CACHE_TYPE == "RedisCache":
+        limiter_storage_uri = Config.CACHE.CACHE_REDIS_URL
+    else:
+        limiter_storage_uri = "memory://"
+    limiter = Limiter(
+        app=app,
+        key_func=get_remote_address,
+        storage_uri=limiter_storage_uri,
+    )
     app.config["limiter"] = limiter
     logger.info("Flask-Limiter inicializado")
-except Exception:
+except ImportError:
     limiter = None
     logger.warning(
         "Flask-Limiter não disponível. Instale 'Flask-Limiter' para habilitar rate limiting."
@@ -120,7 +133,6 @@ except Exception:
 app.config["sheets_service"] = sheets_service
 app.config["user_service"] = user_service
 app.config["centrais_repository"] = centrais_repository
-app.config["notification_service"] = NotificationService
 
 # Inicializa serviço de webhook WhatsApp
 webhook_service = WhatsAppWebhookService(sheets_service=sheets_service)
@@ -191,14 +203,14 @@ app.register_blueprint(centrais_bp)
 limiter = app.config.get("limiter")
 if limiter:
     try:
-        # Protege a rota de login contra força bruta
-        app.view_functions["auth.login"] = limiter.limit("5/minute")(
-            app.view_functions["auth.login"]
-        )
+        # Protege a rota de login contra força bruta (apenas POST)
+        app.view_functions["auth.login"] = limiter.limit(
+            "5/minute", methods=["POST"]
+        )(app.view_functions["auth.login"])
         # Protege a rota de cadastro contra brute-force de criação de contas
-        app.view_functions["auth.cadastro"] = limiter.limit("3/minute")(
-            app.view_functions["auth.cadastro"]
-        )
+        app.view_functions["auth.cadastro"] = limiter.limit(
+            "3/minute", methods=["POST"]
+        )(app.view_functions["auth.cadastro"])
     except KeyError:
         logger.warning("Não foi possível aplicar rate limit em rotas de auth.")
 
@@ -329,7 +341,7 @@ def webhook_whatsapp():
                 logger.warning(f"Erro ao processar: {resultado.get('erro')}")
 
             # TODO: Aqui você pode enviar resposta automática via WhatsApp API
-            # exemplo: NotificationService.enviar_resposta_whatsapp(remetente, resultado['resposta'])
+            # (ex.: reutilizar WhatsAppClickToChatService / WhatsAppWebhookService)
 
             return jsonify({"OK": True, "resultado": resultado}), 200
 
@@ -427,7 +439,7 @@ def usuarios_admin():
 @app.route("/relatorios")
 @app.route("/auditoria")
 @admin_required
-@cache.cached(timeout=300) # Cache por 5 minutos
+@cache.cached(timeout=Config.CACHE.CACHE_DEFAULT_TIMEOUT)
 def relatorios():
     """
     Página de relatórios.
@@ -447,9 +459,126 @@ def relatorios():
 @app.route("/tempo-por-funcionario")
 @admin_required
 def tempo_por_funcionario():
-    """Página com tempo de trabalho por funcionário."""
+    """Página com tempo de trabalho por funcionário (controle de horário)."""
+    sheets_service = current_app.config.get("sheets_service")
+
+    funcionario = request.args.get("funcionario", "").strip()
+    pedido_os = request.args.get("pedido_os", "").strip()
+    data_inicio = request.args.get("data_inicio", "").strip()
+    data_fim = request.args.get("data_fim", "").strip()
+    export = request.args.get("export", "").strip().lower()
+
+    try:
+        per_page = min(max(int(request.args.get("per_page", 20)), 5), 100)
+    except (TypeError, ValueError):
+        per_page = 20
+    try:
+        page = max(int(request.args.get("page", 1)), 1)
+    except (TypeError, ValueError):
+        page = 1
+
+    registros = []
+    os_list = []
+    if sheets_service:
+        try:
+            if sheets_service.is_available()[0]:
+                registros = sheets_service.get_time_records() or []
+                os_list = sheets_service.get_all_os(use_cache=True) or []
+        except Exception as exc:
+            logger.error(f"Erro ao carregar dados de tempo por funcionário: {exc}")
+
+    metrics = MetricsService()
+    resultado = metrics.calcular_tempo_por_funcionario(
+        registros,
+        os_list=os_list,
+        filtros={
+            "funcionario": funcionario,
+            "pedido_os": pedido_os,
+            "data_inicio": data_inicio,
+            "data_fim": data_fim,
+        },
+    )
+
+    todos = resultado["dados"]
+    total = resultado["total_registros"]
+
+    if export == "csv":
+        import csv
+        import io as _io
+
+        buffer = _io.StringIO()
+        buffer.write("\ufeff")  # BOM p/ Excel reconhecer UTF-8
+        writer = csv.writer(buffer, delimiter=";")
+        writer.writerow(["Funcionário", "Pedido/OS", "Tempo", "Horas", "Urgência"])
+        for d in todos:
+            writer.writerow(
+                [d["funcionario"], d["pedido_os"], d["tempo"], f"{d['horas']:.2f}".replace(".", ","), d["urgencia"]]
+            )
+        nome_arquivo = "tempo_por_funcionario.csv"
+        return Response(
+            buffer.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={nome_arquivo}"},
+        )
+
+    if export == "xlsx":
+        try:
+            from openpyxl import Workbook
+            from openpyxl.styles import Font
+
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Tempo por Funcionário"
+            ws.append(["Funcionário", "Pedido/OS", "Tempo", "Horas", "Urgência"])
+            for cell in ws[1]:
+                cell.font = Font(bold=True)
+            for d in todos:
+                ws.append(
+                    [d["funcionario"], d["pedido_os"], d["tempo"], d["horas"], d["urgencia"]]
+                )
+            nome_arquivo = "tempo_por_funcionario.xlsx"
+            buffer = _io.BytesIO()
+            wb.save(buffer)
+            buffer.seek(0)
+            return Response(
+                buffer.getvalue(),
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={"Content-Disposition": f"attachment; filename={nome_arquivo}"},
+            )
+        except Exception as exc:
+            logger.warning(f"Exportação XLSX indisponível (openpyxl ausente?): {exc}")
+            resultado["aviso_periodo"] = (
+                "Exportação XLSX indisponível neste ambiente (openpyxl não instalado). "
+                "Use a exportação CSV."
+            )
+            export = ""
+
+    if export and export not in ("csv", "xlsx"):
+        resultado["aviso_periodo"] = "Formato de exportação não reconhecido."
+        export = ""
+
+    inicio = (page - 1) * per_page
+    pagina = todos[inicio : inicio + per_page]
+
+    # Normaliza datas p/ os campos <input type="date"> (YYYY-MM-DD)
+    def _iso(data_txt: str) -> str:
+        t = MetricsService._parse_data_hora(data_txt.replace("-", "/"), "")
+        return t.strftime("%Y-%m-%d") if t else data_txt
+
     return render_template(
-        "tempo_por_funcionario.html", dados=[], chart_data={}, total_registros=0
+        "tempo_por_funcionario.html",
+        dados=pagina,
+        total_registros=total,
+        chart_data=resultado["chart_data"],
+        aviso_periodo=resultado["aviso_periodo"],
+        funcionario=funcionario,
+        pedido_os=pedido_os,
+        data_inicio=data_inicio,
+        data_fim=data_fim,
+        data_inicio_iso=_iso(data_inicio),
+        data_fim_iso=_iso(data_fim),
+        per_page=per_page,
+        page=page,
     )
 
 
@@ -480,17 +609,6 @@ def handle_exception(e):
 
     logger.error(f"Erro não tratado: {e}", exc_info=True)
     return render_template("erro.html", mensagem="Ocorreu um erro inesperado."), 500
-
-
-def _parse_int_field(value, default=0):
-    """Converte valores numéricos vindos de formulário em inteiro seguro."""
-    try:
-        texto = str(value or "").strip().replace(".", "").replace(",", ".")
-        if not texto:
-            return default
-        return int(float(texto))
-    except Exception:
-        return default
 
 
 def get_nvidia_ai_client():
@@ -652,124 +770,6 @@ def admin_ia():
         erro=erro,
         history=history,
     )
-
-
-def _format_codigo_code(value):
-    """Normaliza o código do item para o formato ##-##-#####.
-
-    Alterações recentes mostraram que códigos alfanuméricos eram perdidos
-    porque a função removia tudo que não fosse dígito. Para evitar perda de
-    dados, mantemos o valor original quando ele contém letras. Apenas
-    normalizamos (extraímos dígitos e inserimos hífens) quando o valor contém
-    apenas dígitos ou símbolos. A função é idempotente para formatos já
-    compatíveis.
-    """
-    raw = str(value or "").strip()
-    if not raw:
-        return ""
-
-    # Se tiver letras, não alteramos para evitar perda de informação
-    if any(ch.isalpha() for ch in raw):
-        return raw
-
-    # Extrai apenas dígitos e formata
-    digits = "".join(ch for ch in raw if ch.isdigit())
-    if not digits:
-        return raw
-    if len(digits) <= 2:
-        return digits
-    if len(digits) <= 4:
-        return f"{digits[:2]}-{digits[2:]}"
-    return f"{digits[:2]}-{digits[2:4]}-{digits[4:9]}"
-
-
-def _format_mtc_code(value):
-    """Normaliza o número MTC para o formato #### (4 dígitos)."""
-    digits = "".join(ch for ch in str(value or "") if ch.isdigit())
-    return digits[:4] if digits else ""
-
-
-def _append_producao_info(existing_info: str, nova_info: str) -> str:
-    """Concatena informações adicionais com histórico simples."""
-    existing_info = str(existing_info or "").strip()
-    nova_info = str(nova_info or "").strip()
-    if not nova_info:
-        return existing_info
-
-    timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-    extra = f"[{timestamp}] {nova_info}"
-    if existing_info:
-        return existing_info + "\n" + extra
-    return extra
-
-
-def _validate_item_form_data(
-    nome_item: str,
-    codigo_item: str,
-    quantidade_raw: int,
-    observacao: str,
-    *,
-    allow_empty_codigo: bool = False,
-) -> tuple[bool, str]:
-    """Valida os dados de um item de produção/cadastro de compra."""
-    val_cfg = Config.VALIDATION
-    errors = []
-
-    nome_limpo = str(nome_item or "").strip()
-    codigo_limpo = str(codigo_item or "").strip()
-    observacao_limpa = str(observacao or "").strip()
-
-    if len(nome_limpo) < val_cfg.MIN_NOME_ITEM_LENGTH:
-        errors.append(
-            f"Nome do item deve ter pelo menos {val_cfg.MIN_NOME_ITEM_LENGTH} caracteres."
-        )
-    if len(nome_limpo) > val_cfg.MAX_NOME_ITEM_LENGTH:
-        errors.append(
-            f"Nome do item deve ter no máximo {val_cfg.MAX_NOME_ITEM_LENGTH} caracteres."
-        )
-    if not allow_empty_codigo and not codigo_limpo:
-        errors.append("Código do item é obrigatório.")
-    if len(observacao_limpa) > val_cfg.MAX_OBSERVACAO_LENGTH:
-        errors.append(
-            f"Observação deve ter no máximo {val_cfg.MAX_OBSERVACAO_LENGTH} caracteres."
-        )
-    if quantidade_raw < 0:
-        errors.append("Quantidade não pode ser negativa.")
-    if quantidade_raw > val_cfg.MAX_QUANTIDADE:
-        errors.append(
-            f"Quantidade deve ser menor ou igual a {val_cfg.MAX_QUANTIDADE}."
-        )
-
-    if errors:
-        return False, " ".join(errors)
-    return True, ""
-
-
-def _validate_user_payload(username: str, senha: str, role: str) -> tuple[bool, str]:
-    """Valida os dados de criação de usuário."""
-    val_cfg = Config.VALIDATION
-    errors = []
-
-    username_limpo = str(username or "").strip()
-    senha_limpa = str(senha or "").strip()
-    role_limpo = str(role or "").strip().lower()
-
-    if len(username_limpo) < val_cfg.MIN_USERNAME_LENGTH:
-        errors.append(
-            f"Username deve ter pelo menos {val_cfg.MIN_USERNAME_LENGTH} caracteres."
-        )
-    if len(senha_limpa) < val_cfg.MIN_PASSWORD_LENGTH:
-        errors.append(
-            f"Senha deve ter pelo menos {val_cfg.MIN_PASSWORD_LENGTH} caracteres."
-        )
-
-    roles_validos = {r.value for r in Role}
-    if role_limpo not in roles_validos:
-        errors.append("Role inválida.")
-
-    if errors:
-        return False, " ".join(errors)
-    return True, ""
 
 
 def _get_current_user_role():
@@ -966,7 +966,7 @@ def atualizar_producao(row_id):
 
 @app.route("/producao/dados")
 @admin_required
-@cache.cached(timeout=30) # Cache por 30 segundos para dados "quase" em tempo real
+@cache.cached(timeout=Config.CACHE.PRODUCAO_CACHE_TTL_SECONDS)
 def producao_dados():
     """Retorna os dados agregados da produção para atualização em tempo real."""
     sheets_service = current_app.config.get("sheets_service")

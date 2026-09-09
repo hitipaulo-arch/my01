@@ -189,80 +189,39 @@ SMTP_USE_TLS=true
 2. Gere uma **Senha de App** em [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
 3. Use a senha de app gerada (16 caracteres) no `SMTP_PASSWORD`, não sua senha normal
 
-#### 📱 WhatsApp (Twilio API)
+#### 📱 WhatsApp (Click-to-Chat, WhatsApp Web e Webhook)
+
+> **Nota (atualizado em 2026-09-09):** a integração antiga via **Twilio API** foi substituída por
+> mecanismos nativos — links **wa.me (Click-to-Chat)**, **WhatsApp Web (pywhatkit)** e o
+> **webhook** para técnicos enviarem comandos. Não existem mais variáveis `TWILIO_*` no código.
 
 | Variável | Descrição | Padrão |
 |----------|-----------|--------|
-| `WHATSAPP_ENABLED` | Ativa notificação por WhatsApp (`true`/`false`) | `false` |
-| `TWILIO_ACCOUNT_SID` | SID da conta Twilio (ex: `ACxxxxx`) | - |
-| `TWILIO_AUTH_TOKEN` | Token de autenticação Twilio | - |
-| `TWILIO_WHATSAPP_FROM` | Número WhatsApp remetente (ex: `whatsapp:+14155238886`) | - |
-| `TWILIO_WHATSAPP_TO` | Números destinatários (separados por vírgula, ex: `whatsapp:+5511999999999`) | - |
-| `TWILIO_TIMEOUT_SECONDS` | Timeout de conexão (segundos) | `10` |
+| `WHATSAPP_ENABLED` | Liga o serviço **Click-to-Chat** (abre link `wa.me` no navegador da máquina que roda o app) | `false` |
+| `WHATSAPP_WEB_ENABLED` | Liga o envio automático via **WhatsApp Web/pywhatkit** (exige navegador logado em `WHATSAPP_FROM`) | `false` |
+| `WHATSAPP_WEB_TO` | Número interno que recebe notificações de nova OS (dígitos com DDI, ex.: `5511999999999`) | - |
+| `WHATSAPP_WEB_DELAY_SECONDS` | Atraso (s) antes do envio via pywhatkit | `15` |
+| `WHATSAPP_WEBHOOK_ENABLED` | Liga o webhook que recebe comandos dos técnicos | `false` |
+| `WHATSAPP_WEBHOOK_TOKEN` | Token de autenticação do webhook (Bearer) | - |
+| `WHATSAPP_WEBHOOK_SECRET` | Segredo para validar a assinatura HMAC (obrigatório em produção) | - |
+| `WHATSAPP_WEBHOOK_FROM` | Número autorizado a enviar comandos via webhook | - |
 
-**Exemplo de configuração para WhatsApp via Twilio:**
+**Exemplo de configuração (máquina desktop local):**
 
 ```bash
 # .env
 WHATSAPP_ENABLED=true
-TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_AUTH_TOKEN=seu_auth_token_aqui
-TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
-TWILIO_WHATSAPP_TO=whatsapp:+5511999999999,whatsapp:+5511888888888
+WHATSAPP_WEB_ENABLED=false        # opcional: envio automático via pywhatkit
+WHATSAPP_WEB_TO=5511999999999     # número que recebe as notificações
 ```
 
-**📖 Como configurar Twilio WhatsApp:**
+> ⚠️ O Click-to-Chat **abre o navegador** na máquina que executa o app — use
+> `WHATSAPP_ENABLED=true` apenas em máquina local/desktop; em servidores
+> (ex.: Render) mantenha `false`.
 
-1. Crie conta gratuita em [twilio.com/try-twilio](https://www.twilio.com/try-twilio)
-2. Acesse o [Console Twilio](https://console.twilio.com/)
-3. Copie seu **Account SID** e **Auth Token**
-4. **Para teste (Sandbox):**
-   - Vá em **Messaging** > **Try it out** > **Send a WhatsApp message**
-   - Envie a mensagem de ativação do seu WhatsApp para o número sandbox
-   - Use `whatsapp:+14155238886` como `TWILIO_WHATSAPP_FROM`
-5. **Para produção:**
-   - Solicite aprovação de número WhatsApp Business na Twilio
-   - Use seu número aprovado como `TWILIO_WHATSAPP_FROM`
-
-**💡 Dica:** As notificações são independentes - você pode ativar apenas e-mail, apenas WhatsApp, ou ambos simultaneamente!
-
-##### Templates WhatsApp (ContentSid)
-
-Você pode usar mensagens de template do Twilio definindo `TWILIO_CONTENT_SID`. Se `TWILIO_CONTENT_VARIABLES_JSON` não for fornecido, o sistema monta automaticamente as variáveis com os campos da OS:
-
-| Chave | Valor (auto) |
-|-------|--------------|
-| `"1"` | Número da OS |
-| `"2"` | Timestamp (data/hora) |
-| `"3"` | Solicitante |
-| `"4"` | Setor |
-| `"5"` | Equipamento/Local |
-| `"6"` | Prioridade |
-| `"7"` | Descrição (até 200 chars) |
-| `"8"` | Info adicional (até 100 chars, opcional) |
-
-Exemplo de ativação com template:
-
-```bash
-WHATSAPP_ENABLED=true
-TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-TWILIO_AUTH_TOKEN=seu_auth_token_aqui
-TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
-TWILIO_WHATSAPP_TO=whatsapp:+5512991635552
-TWILIO_CONTENT_SID=HXb5b62575e6e4ff6129ad7c8efe1f983e
-# Opcional: sobrepor variáveis do template
-# TWILIO_CONTENT_VARIABLES_JSON='{"1":"12/1","2":"3pm"}'
-```
-
-Também é possível definir um mapeamento personalizado via `TWILIO_CONTENT_MAP`, no formato `1=campo,2=campo,...`. Campos disponíveis:
-
-- `numero_pedido`, `timestamp`, `solicitante`, `setor`, `equipamento`, `prioridade`, `descricao`, `info`
-
-Exemplo:
-
-```bash
-TWILIO_CONTENT_MAP="1=numero_pedido,2=prioridade,3=solicitante,4=setor,5=equipamento,6=timestamp,7=descricao,8=info"
-```
+**Webhook (técnicos enviam status via WhatsApp):** configure
+`WHATSAPP_WEBHOOK_ENABLED=true` + `WHATSAPP_WEBHOOK_TOKEN` e, em produção,
+`WHATSAPP_WEBHOOK_SECRET`. O endpoint é `/webhook/whatsapp`.
 
 
 ## 📊 Cache

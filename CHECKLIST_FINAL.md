@@ -1,5 +1,11 @@
 # ✅ CHECKLIST FINAL - Implementação Concluída
 
+> ⚠️ **ATUALIZAÇÃO (2026-09-09):** Este documento é um marco histórico e **não reflete mais o estado atual**
+> do repositório. Desde então o código evoluiu (organização em `appmodules/`, blueprints, mais rotas,
+> testes movidos para `tests/` e executados via `pytest`). Para o estado vigente, consulte o `README.md`,
+> o `.env.example`, a suíte `tests/` e o `RELATORIO_INCONSISTENCIAS.md`.
+
+
 ## Pergunta do Usuário
 "tem como mandar a mensagem do whats automaticamente invez de só abrir e deixar escrito?"
 

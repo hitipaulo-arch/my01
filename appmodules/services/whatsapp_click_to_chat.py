@@ -1,6 +1,10 @@
 """
 WhatsApp Click-to-Chat Service
 Envia notificações via WhatsApp usando links wa.me (universal, works em qualquer dispositivo)
+
+ATENÇÃO: este serviço ABRE o navegador (wa.me) na máquina que executa o app —
+adequado para uso local/desktop. Em servidores (ex.: Render) mantenha
+WHATSAPP_ENABLED=false.
 """
 
 import os
@@ -20,11 +24,27 @@ class WhatsAppClickToChatService:
     """
 
     def __init__(self, phone_to: str = None, delay_seconds: int = 0):
-        self.phone_to = phone_to or os.getenv("WHATSAPP_WEB_TO", "5512982200009")
+        # Número de destino vem SEMPRE da env/parâmetro — sem fallback fixo.
+        self.phone_to = phone_to or os.getenv("WHATSAPP_WEB_TO", "").strip()
         self.delay_seconds = delay_seconds or int(
             os.getenv("WHATSAPP_WEB_DELAY_SECONDS", 0)
         )
-        self.enabled = os.getenv("WHATSAPP_WEB_ENABLED", "true").lower() == "true"
+        # Chave mestra: WHATSAPP_ENABLED. WHATSAPP_WEB_ENABLED é mantido como
+        # gatilho compatível (antes este serviço era controlado por ela).
+        master_enabled = os.getenv("WHATSAPP_ENABLED", "false").strip().lower() in (
+            "1", "true", "yes", "on",
+        )
+        web_enabled = os.getenv("WHATSAPP_WEB_ENABLED", "false").strip().lower() in (
+            "1", "true", "yes", "on",
+        )
+        self.enabled = master_enabled or web_enabled
+
+        if not self.phone_to:
+            logger.warning(
+                "WHATSAPP_WEB_TO não configurado. "
+                "WhatsApp Click-to-Chat service será desabilitado."
+            )
+            self.enabled = False
 
     def gerar_link_chat(self, phone_number: str, message: str) -> str:
         """Gera link wa.me com mensagem pré-preenchida"""

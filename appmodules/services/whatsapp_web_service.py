@@ -22,9 +22,10 @@ logger = logging.getLogger(__name__)
 
 class WhatsAppWebNotificationService:
     """
-    Serviço de notificação WhatsApp Web automatizado com pywhatkit
-    Requer WhatsApp Web logado em +5512982200009
-    Requer que o WhatsApp Web esteja logado no navegador do servidor.
+    Serviço de notificação WhatsApp Web automatizado com pywhatkit.
+    Requer WHATSAPP_FROM/WHATSAPP_WEB_TO configurados e WhatsApp Web logado
+    no navegador da máquina que executa o app (controlado por
+    WHATSAPP_WEB_ENABLED).
     """
 
     def __init__(

@@ -93,6 +93,12 @@ class CacheConfig:
     # específico é informado em cache.set().
     CACHE_DEFAULT_TIMEOUT: int = int(os.getenv('CACHE_TTL_SECONDS', 300))
 
+    # TTLs específicos por tipo de dado — fonte única para decorators e
+    # serviços (sheets_service/user_service não leem mais o ambiente).
+    OS_CACHE_TTL_SECONDS: int = max(5, int(os.getenv('OS_CACHE_TTL_SECONDS', 120)))
+    PRODUCAO_CACHE_TTL_SECONDS: int = max(5, int(os.getenv('PRODUCAO_CACHE_TTL_SECONDS', 30)))
+    USUARIOS_CACHE_TTL_SECONDS: int = max(5, int(os.getenv('USUARIOS_CACHE_TTL_SECONDS', 300)))
+
     # Configurações do Redis (ativas quando CACHE_TYPE == 'RedisCache')
     CACHE_REDIS_HOST: str = os.getenv('REDIS_HOST', 'localhost')
     CACHE_REDIS_PORT: int = int(os.getenv('REDIS_PORT', 6379))
@@ -151,8 +157,3 @@ class Config:
     VALIDATION = ValidationConfig
     LOGGING = LoggingConfig
 
-# Adicionando configuracao para limiter_config
-limiter_config = {
-    'min_requests': 5,
-    'seconds': 60
-}

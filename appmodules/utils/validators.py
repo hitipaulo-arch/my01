@@ -1,17 +1,22 @@
 """
 Validadores centralizados para formulários e payloads.
 
-Este módulo contém funções de validação reutilizáveis extraídas do app.py
-para evitar duplicação de código e facilitar testes.
+Fonte única de validação usada por app.py. As implementações vivas
+originalmente em app.py foram movidas para cá; app.py apenas importa.
 """
 
-from typing import Tuple, Any, Dict
+from typing import Tuple, Any
+
+from config import Config
 from appmodules.models.usuario import Role
 
 
 def parse_int_field(value: Any, default: int = 0) -> int:
     """
     Converte um valor para inteiro com fallback seguro.
+
+    Aceita valores no formato brasileiro (ex.: "1.500" ou "1,5")
+    removendo separadores de milhar antes da conversão.
 
     Args:
         value: Valor a ser convertido (string, int, float, None, etc.)
@@ -21,9 +26,10 @@ def parse_int_field(value: Any, default: int = 0) -> int:
         Inteiro convertido ou valor padrão
     """
     try:
-        if value is None or value == "":
+        texto = str(value or "").strip().replace(".", "").replace(",", ".")
+        if not texto:
             return default
-        return int(float(str(value).strip()))
+        return int(float(texto))
     except (ValueError, TypeError):
         return default
 
@@ -33,64 +39,91 @@ def validate_item_form_data(
     codigo_item: str,
     quantidade_raw: int,
     observacao: str,
+    *,
+    allow_empty_codigo: bool = False,
 ) -> Tuple[bool, str]:
     """
-    Valida dados do formulário de item de produção.
+    Valida dados do formulário de item de produção/compra.
+
+    Acumula TODOS os erros encontrados em uma única mensagem.
 
     Args:
         nome_item: Nome do item (obrigatório)
-        codigo_item: Código do item (obrigatório)
+        codigo_item: Código do item (obrigatório, salvo allow_empty_codigo)
         quantidade_raw: Quantidade já convertida para int
         observacao: Observação opcional
+        allow_empty_codigo: permite código vazio (usado em fluxos especiais)
 
     Returns:
         Tupla (valido: bool, mensagem: str)
     """
-    if not nome_item or not nome_item.strip():
-        return False, "Nome do item é obrigatório."
+    val_cfg = Config.VALIDATION
+    errors = []
 
-    if not codigo_item or not codigo_item.strip():
-        return False, "Código do item é obrigatório."
+    nome_limpo = str(nome_item or "").strip()
+    codigo_limpo = str(codigo_item or "").strip()
+    observacao_limpa = str(observacao or "").strip()
 
+    if len(nome_limpo) < val_cfg.MIN_NOME_ITEM_LENGTH:
+        errors.append(
+            f"Nome do item deve ter pelo menos {val_cfg.MIN_NOME_ITEM_LENGTH} caracteres."
+        )
+    if len(nome_limpo) > val_cfg.MAX_NOME_ITEM_LENGTH:
+        errors.append(
+            f"Nome do item deve ter no máximo {val_cfg.MAX_NOME_ITEM_LENGTH} caracteres."
+        )
+    if not allow_empty_codigo and not codigo_limpo:
+        errors.append("Código do item é obrigatório.")
+    if len(observacao_limpa) > val_cfg.MAX_OBSERVACAO_LENGTH:
+        errors.append(
+            f"Observação deve ter no máximo {val_cfg.MAX_OBSERVACAO_LENGTH} caracteres."
+        )
     if quantidade_raw < 0:
-        return False, "Quantidade não pode ser negativa."
+        errors.append("Quantidade não pode ser negativa.")
+    if quantidade_raw > val_cfg.MAX_QUANTIDADE:
+        errors.append(
+            f"Quantidade deve ser menor ou igual a {val_cfg.MAX_QUANTIDADE}."
+        )
 
-    if len(observacao) > 500:
-        return False, "Observação muito longa (máx. 500 caracteres)."
-
+    if errors:
+        return False, " ".join(errors)
     return True, ""
 
 
-def validate_user_payload(payload: Dict[str, Any]) -> Tuple[bool, str]:
+def validate_user_payload(username: str, senha: str, role: str) -> Tuple[bool, str]:
     """
-    Valida payload de criação/atualização de usuário.
+    Valida os dados de criação de usuário (username/senha/role).
 
     Args:
-        payload: Dicionário com dados do usuário
+        username: Nome de usuário
+        senha: Senha
+        role: Papel (admin, operador, visualizador...)
 
     Returns:
         Tupla (valido: bool, mensagem: str)
     """
-    if not isinstance(payload, dict):
-        return False, "Payload deve ser um objeto JSON."
+    val_cfg = Config.VALIDATION
+    errors = []
 
-    required_fields = ["username", "email", "role"]
-    for field in required_fields:
-        if field not in payload or not payload[field]:
-            return False, f"Campo obrigatório ausente: {field}"
+    username_limpo = str(username or "").strip()
+    senha_limpa = str(senha or "").strip()
+    role_limpo = str(role or "").strip().lower()
 
-    # Validar role
-    valid_roles = [role.value for role in Role]
-    if payload.get("role") not in valid_roles:
-        return False, (
-            f"Role inválida. Valores permitidos: {', '.join(valid_roles)}"
+    if len(username_limpo) < val_cfg.MIN_USERNAME_LENGTH:
+        errors.append(
+            f"Username deve ter pelo menos {val_cfg.MIN_USERNAME_LENGTH} caracteres."
+        )
+    if len(senha_limpa) < val_cfg.MIN_PASSWORD_LENGTH:
+        errors.append(
+            f"Senha deve ter pelo menos {val_cfg.MIN_PASSWORD_LENGTH} caracteres."
         )
 
-    # Validar email básico
-    email = payload.get("email", "")
-    if "@" not in email or "." not in email.split("@")[-1]:
-        return False, "Formato de email inválido."
+    roles_validos = {r.value for r in Role}
+    if role_limpo not in roles_validos:
+        errors.append("Role inválida.")
 
+    if errors:
+        return False, " ".join(errors)
     return True, ""
 
 
