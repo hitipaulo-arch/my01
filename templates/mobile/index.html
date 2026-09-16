@@ -1,0 +1,162 @@
+{# Formulário de abertura de OS — mesmos campos/rotas do formulário web #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Abrir OS · Gestão OS{% endblock %}
+{% block appbar_title %}📝 Abertura de OS{% endblock %}
+{% block appbar_sub %}Requerimento de serviços{% endblock %}
+
+{% block content %}
+{% if erros %}
+<div class="m-alert m-alert-danger">
+    <div>
+        <strong>Não foi possível abrir a OS:</strong>
+        <ul class="mb-0 mt-2" style="padding-left: 18px;">
+            {% for erro in erros %}
+            <li>{{ erro }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endif %}
+
+<div class="m-card">
+    <div class="m-page-head mb-3">
+        <h1>Nova ordem de serviço</h1>
+        <p>Preencha os dados abaixo. Você receberá o número do pedido para acompanhar o andamento.</p>
+    </div>
+
+    <form class="m-form" action="{{ url_for('os.criar_os') }}" method="POST" id="formNovaOS">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+        <div class="m-field m-field-required">
+            <label class="m-label" for="nome_solicitante">Nome do solicitante</label>
+            <input type="text" class="form-control" id="nome_solicitante" name="nome_solicitante"
+                   value="{{ form_data.get('nome_solicitante', '') if form_data else '' }}"
+                   autocomplete="name" required>
+        </div>
+
+        <div class="m-field m-field-required">
+            <label class="m-label" for="whatsapp_solicitante">WhatsApp do solicitante</label>
+            <input type="tel" class="form-control" id="whatsapp_solicitante" name="whatsapp_solicitante"
+                   value="{{ form_data.get('whatsapp_solicitante', '') if form_data else '' }}"
+                   inputmode="tel" autocomplete="tel" placeholder="Ex: (12) 99999-0000" required>
+            <small>Informe com DDD para receber o aviso quando a OS for finalizada.</small>
+        </div>
+
+        <div class="m-field m-field-required">
+            <label class="m-label" for="setor">Setor em que será realizado o serviço</label>
+            <input type="text" class="form-control" id="setor" name="setor"
+                   value="{{ form_data.get('setor', '') if form_data else '' }}" required>
+        </div>
+
+        <div class="m-field m-field-required">
+            <label class="m-label" for="equipamento">Equipamento ou local afetado</label>
+            <input type="text" class="form-control" id="equipamento" name="equipamento"
+                   value="{{ form_data.get('equipamento', '') if form_data else '' }}" required>
+        </div>
+
+        <div class="m-field m-field-required">
+            <label class="m-label" for="prioridade">Nível de prioridade</label>
+            <select class="form-select" id="prioridade" name="prioridade" required>
+                <option value="" disabled {% if not form_data or not form_data.get('prioridade') %}selected{% endif %}>-- Escolha uma prioridade --</option>
+                <option value="Baixa" {% if form_data and form_data.get('prioridade') == 'Baixa' %}selected{% endif %}>Baixa</option>
+                <option value="Média" {% if form_data and form_data.get('prioridade') == 'Média' %}selected{% endif %}>Média</option>
+                <option value="Alta" {% if form_data and form_data.get('prioridade') == 'Alta' %}selected{% endif %}>Alta</option>
+                <option value="Urgente" {% if form_data and form_data.get('prioridade') == 'Urgente' %}selected{% endif %}>Urgente</option>
+            </select>
+        </div>
+
+        <div class="m-field m-field-required">
+            <label class="m-label" for="descricao">Descrição do problema ou serviço solicitado</label>
+            <textarea class="form-control" id="descricao" name="descricao" rows="4" required
+                      minlength="5" placeholder="Descreva o que está acontecendo">{{ form_data.get('descricao', '') if form_data else '' }}</textarea>
+            <small>Mínimo de 5 caracteres.</small>
+            <button type="button" class="m-btn m-btn-outline m-btn-sm mt-2" id="btnDitar"
+                    onclick="return false;">🎙️ Ditar descrição</button>
+        </div>
+
+        <div class="m-field">
+            <label class="m-label" for="info_adicional">Informações adicionais (opcional)</label>
+            <textarea class="form-control" id="info_adicional" name="info_adicional" rows="2">{{ form_data.get('info_adicional', '') if form_data else '' }}</textarea>
+        </div>
+
+        <button class="m-btn m-btn-primary m-btn-block" type="submit">Abrir chamado</button>
+    </form>
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">Atalhos</h2>
+    <div class="m-btn-row">
+        <a class="m-btn m-btn-secondary" href="{{ url_for('os.consultar_pedido') }}">🔍 Consultar status</a>
+        <a class="m-btn m-btn-secondary" href="{{ url_for('os.os_abertas') }}">🟢 OS abertas</a>
+        <a class="m-btn m-btn-secondary" href="{{ url_for('os.upload_documento') }}">📎 Enviar arquivo</a>
+    </div>
+</div>
+
+<div class="m-card">
+    <div class="d-flex align-items-start gap-3">
+        <span class="m-tile-icon">📤</span>
+        <div>
+            <strong>Compartilhar o formulário</strong>
+            <p class="m-item-sub">Envie o link para outra pessoa abrir a OS pelo celular.</p>
+        </div>
+    </div>
+    <button type="button" class="m-btn m-btn-outline m-btn-block mt-3" id="btnCompartilhar">
+        Compartilhar link
+    </button>
+    <small class="m-hint">O QR Code para abrir este formulário continua disponível na versão web.</small>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        // Ditado por voz (quando o navegador suporta a Web Speech API).
+        var btnDitar = document.getElementById("btnDitar");
+        var descricao = document.getElementById("descricao");
+        var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+        if (!SpeechRecognition || !btnDitar || !descricao) {
+            if (btnDitar) btnDitar.style.display = "none";
+        } else {
+            var reconhecimento = new SpeechRecognition();
+            reconhecimento.lang = "pt-BR";
+            reconhecimento.continuous = false;
+            reconhecimento.interimResults = false;
+
+            btnDitar.addEventListener("click", function () {
+                try {
+                    reconhecimento.start();
+                    btnDitar.textContent = "🎙️ Ouvindo…";
+                } catch (e) {
+                    btnDitar.textContent = "🎙️ Ditar descrição";
+                }
+            });
+
+            reconhecimento.addEventListener("result", function (event) {
+                var texto = event.results[0][0].transcript || "";
+                descricao.value = (descricao.value ? descricao.value + " " : "") + texto.trim();
+            });
+
+            reconhecimento.addEventListener("end", function () {
+                btnDitar.textContent = "🎙️ Ditar descrição";
+            });
+        }
+
+        // Compartilhamento nativo do link do formulário.
+        var btnCompartilhar = document.getElementById("btnCompartilhar");
+        if (btnCompartilhar) {
+            btnCompartilhar.addEventListener("click", function () {
+                var url = window.location.origin + "{{ url_for('os.homepage') }}";
+                if (navigator.share) {
+                    navigator.share({ title: "Abertura de OS", text: "Abra sua OS pelo celular", url: url }).catch(function () {});
+                } else if (navigator.clipboard) {
+                    navigator.clipboard.writeText(url).then(function () {
+                        window.mShowToast("Link copiado!", "success");
+                    });
+                }
+            });
+        }
+    })();
+</script>
+{% endblock %}

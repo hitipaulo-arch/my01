@@ -1,0 +1,150 @@
+{# Tempo por funcionário — mesmos filtros, gráficos e exportação da versão web #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Tempo por Funcionário{% endblock %}
+{% block appbar_title %}⏱️ Tempo por Funcionário{% endblock %}
+{% block appbar_sub %}{{ total_registros or 0 }} registro(s) no período{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+{% if mensagem_erro %}
+<div class="m-alert m-alert-danger"><div>{{ mensagem_erro }}</div></div>
+{% endif %}
+
+{% if aviso_periodo %}
+<div class="m-alert m-alert-warning"><div>{{ aviso_periodo }}</div></div>
+{% endif %}
+
+<details class="m-card" {% if not dados %}open{% endif %}>
+    <summary style="font-weight: 700; cursor: pointer;">🔎 Filtros do relatório</summary>
+    <form class="m-form mt-3" method="GET" action="{{ url_for('tempo_por_funcionario') }}">
+        <div class="m-field">
+            <label class="m-label" for="funcionario">Funcionário</label>
+            <input type="text" class="form-control" id="funcionario" name="funcionario" value="{{ funcionario or '' }}">
+        </div>
+        <div class="m-field">
+            <label class="m-label" for="pedido_os">Nº da OS</label>
+            <input type="text" class="form-control" id="pedido_os" name="pedido_os" value="{{ pedido_os or '' }}" inputmode="numeric">
+        </div>
+        <div class="m-grid-2">
+            <div class="m-field">
+                <label class="m-label" for="data_inicio">De</label>
+                <input type="date" class="form-control" id="data_inicio" name="data_inicio" value="{{ data_inicio_iso or '' }}">
+            </div>
+            <div class="m-field">
+                <label class="m-label" for="data_fim">Até</label>
+                <input type="date" class="form-control" id="data_fim" name="data_fim" value="{{ data_fim_iso or '' }}">
+            </div>
+        </div>
+        <div class="m-field">
+            <label class="m-label" for="per_page">Registros por página</label>
+            <select class="form-select" id="per_page" name="per_page">
+                {% for opcao in [10, 25, 50, 100] %}
+                <option value="{{ opcao }}" {% if per_page == opcao %}selected{% endif %}>{{ opcao }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="m-btn-row">
+            <button type="submit" class="m-btn m-btn-primary">🔎 Aplicar filtros</button>
+            <a class="m-btn m-btn-secondary" href="{{ url_for('tempo_por_funcionario') }}">Limpar</a>
+        </div>
+    </form>
+</details>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">📊 Horas por funcionário</h2>
+    <div class="m-chart"><canvas id="chartBarras"></canvas></div>
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">🚨 Urgências no período</h2>
+    <div class="m-chart-sm"><canvas id="chartUrgencias"></canvas></div>
+</div>
+
+<div class="m-list">
+    {% for d in dados %}
+    <div class="m-item">
+        <div class="m-item-head">
+            <div>
+                <span class="m-item-id">OS #{{ d.get('pedido_os', '-') }}</span>
+                <h2 class="m-item-title">{{ d.get('funcionario', '-') }}</h2>
+            </div>
+            {% set urg = (d.urgencia or 'Desconhecida') | lower %}
+            <div class="m-badges">
+                <span class="m-badge
+                    {% if 'alta' in urg %}m-badge-danger
+                    {% elif 'média' in urg or 'media' in urg %}m-badge-warning
+                    {% elif 'baixa' in urg %}m-badge-success
+                    {% else %}m-badge-muted{% endif %}">
+                    {{ d.urgencia or 'Desconhecida' }}
+                </span>
+            </div>
+        </div>
+        <div class="m-item-body">
+            <div class="m-item-field">
+                <span>Tempo total</span>
+                <span><strong>{{ d.tempo }}</strong></span>
+            </div>
+            <div class="m-item-field">
+                <span>Horas</span>
+                <span>{{ "%.2f"|format(d.horas or 0) }}</span>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="m-card m-empty">
+        <span class="m-empty-icon">⏱️</span>
+        Nenhum registro encontrado para os filtros selecionados.
+    </div>
+    {% endfor %}
+</div>
+
+<div class="m-card">
+    <div class="m-btn-row">
+        <a class="m-btn m-btn-secondary" href="{{ url_for('tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, export='csv') }}">⬇️ CSV</a>
+        <a class="m-btn m-btn-secondary" href="{{ url_for('tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, export='xlsx') }}">⬇️ XLSX</a>
+    </div>
+    <div class="m-btn-row mt-3">
+        <a class="m-btn m-btn-primary {% if page <= 1 %}disabled{% endif %}"
+           href="{{ url_for('tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, page=(page - 1 if page > 1 else 1)) }}">
+            ← Anterior
+        </a>
+        <a class="m-btn m-btn-primary {% if (page * per_page) >= (total_registros or 0) %}disabled{% endif %}"
+           href="{{ url_for('tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, page=page + 1) }}">
+            Próxima →
+        </a>
+    </div>
+    <small class="m-hint">Página {{ page }} · {{ total_registros or 0 }} registro(s)</small>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const barLabels = {{ chart_data.bar_labels | tojson }};
+    const barValues = {{ chart_data.bar_values | tojson }};
+    const urgLabels = {{ chart_data.urg_labels | tojson }};
+    const urgValues = {{ chart_data.urg_values | tojson }};
+    const opcoes = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } };
+
+    new Chart(document.getElementById("chartBarras"), {
+        type: "bar",
+        data: {
+            labels: barLabels,
+            datasets: [{ label: "Horas", data: barValues, backgroundColor: "#5468d4", borderRadius: 6 }]
+        },
+        options: Object.assign({}, opcoes, { indexAxis: "y" })
+    });
+
+    new Chart(document.getElementById("chartUrgencias"), {
+        type: "bar",
+        data: {
+            labels: urgLabels,
+            datasets: [{ label: "Urgências", data: urgValues, backgroundColor: "#ef4444", borderRadius: 6 }]
+        },
+        options: Object.assign({}, opcoes, { scales: { y: { ticks: { precision: 0 } } } })
+    });
+</script>
+{% endblock %}

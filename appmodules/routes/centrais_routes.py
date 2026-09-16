@@ -1,6 +1,5 @@
 from flask import (
     Blueprint,
-    render_template,
     request,
     redirect,
     url_for,
@@ -11,6 +10,7 @@ from flask import (
 import logging
 from datetime import datetime
 
+from appmodules.mobile import render_page
 from appmodules.utils import admin_required
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ def centrais():
     """Página de controle de centrais."""
     repo = current_app.config.get("centrais_repository")
     if not repo:
-        return render_template(
+        return render_page(
             "centrais.html",
             centrais=[],
             mensagem="Serviço de repositório de centrais indisponível",
@@ -55,10 +55,10 @@ def centrais():
     # GET
     try:
         lista_centrais = repo.get_all()
-        return render_template("centrais.html", centrais=lista_centrais)
+        return render_page("centrais.html", centrais=lista_centrais)
     except Exception as e:
         logger.error(f"Erro ao listar centrais: {e}", exc_info=True)
-        return render_template(
+        return render_page(
             "centrais.html",
             centrais=[],
             mensagem=f"Erro ao carregar dados: {e}",

@@ -2,6 +2,25 @@
 
 Sistema web para gerenciamento de Ordens de Serviço integrado com Google Sheets.
 
+## 📱 Aplicativo para celular (PWA)
+
+O mesmo sistema também funciona como **aplicativo instalável no celular**, com a
+mesma aparência, os mesmos dados e o mesmo login:
+
+| | Web | App |
+|---|---|---|
+| Endereço | `/` | **`/m/`** |
+| Instalação | — | *Adicionar à tela inicial* (ícone, splash e modo offline) |
+
+Todas as telas foram adaptadas para o celular (Início, Nova OS, OS Abertas,
+Consultar, Gerenciar, Produção, OPs Abertas, Dashboard, Itens/Compras, Centrais,
+Ferramentas, Relatórios, Tempo por Funcionário, Usuários, IA Admin e Login), sem
+duplicar regra de negócio — as telas mobile usam exatamente as mesmas rotas,
+sessão e CSRF da versão web.
+
+**📖 Veja [APP_MOBILE.md](APP_MOBILE.md) para o guia completo (arquitetura,
+instalação no Android/iPhone e testes).**
+
 ## 🚀 Funcionalidades
 
 - ✅ Abertura de OS via formulário web

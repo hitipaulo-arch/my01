@@ -1,0 +1,1054 @@
+/* ==========================================================================
+   App mobile (PWA) — mesma identidade visual do sistema web
+   --------------------------------------------------------------------------
+   Este arquivo é sempre carregado DEPOIS de static/unified.css, portanto
+   reaproveita as mesmas variáveis (--ui-accent, --ui-radius, ...) e apenas
+   adapta a ergonomia para telas de celular:
+     • barra superior compacta com botão voltar;
+     • cartões no lugar de tabelas largas;
+     • campos com 16px (evita zoom automático no iOS);
+     • navegação por abas fixas no rodapé com área segura.
+   ========================================================================== */
+
+:root {
+    --m-content-max: 620px;
+    --m-tabbar-height: 62px;
+    --m-gap: 14px;
+    --m-radius: 18px;
+    --m-radius-sm: 12px;
+    --m-border: rgba(148, 163, 184, 0.28);
+    --m-shadow-soft: 0 10px 30px rgba(15, 23, 42, 0.16);
+}
+
+* {
+    -webkit-tap-highlight-color: transparent;
+}
+
+html {
+    -webkit-text-size-adjust: 100%;
+}
+
+body.m-app {
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: 0;
+    margin: 0;
+    background: linear-gradient(135deg, var(--ui-bg-start) 0%, var(--ui-bg-end) 100%);
+    background-attachment: fixed;
+    color: var(--ui-text);
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    overscroll-behavior-y: contain;
+}
+
+/* --------------------------------------------------------------------------
+   Barra superior
+   -------------------------------------------------------------------------- */
+.m-appbar {
+    position: sticky;
+    top: 0;
+    z-index: 1030;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px 10px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.92));
+    backdrop-filter: blur(14px);
+    border-bottom-left-radius: 20px;
+    border-bottom-right-radius: 20px;
+    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.18);
+}
+
+.m-appbar-icon {
+    flex: 0 0 auto;
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    border: 1px solid var(--m-border);
+    background: #fff;
+    color: var(--ui-accent);
+    font-size: 20px;
+    text-decoration: none;
+}
+
+.m-appbar-titles {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.m-appbar-title {
+    margin: 0;
+    font-size: 1.06rem;
+    font-weight: 700;
+    line-height: 1.2;
+    background: linear-gradient(135deg, var(--ui-accent) 0%, var(--ui-accent-2) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.m-appbar-sub {
+    margin: 2px 0 0;
+    font-size: 0.75rem;
+    color: var(--ui-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.m-appbar-actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.m-user-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 42vw;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #eef2ff, #f8fafc);
+    border: 1px solid var(--m-border);
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--ui-text);
+    text-decoration: none;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.m-user-chip .m-role {
+    font-size: 0.66rem;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: var(--ui-accent);
+    color: #fff;
+}
+
+.m-user-chip .m-role.operador { background: #f59e0b; color: #1f2937; }
+.m-user-chip .m-role.visualizador { background: #0ea5e9; }
+.m-user-chip .m-role.publico { background: #64748b; }
+
+/* --------------------------------------------------------------------------
+   Estrutura de conteúdo
+   -------------------------------------------------------------------------- */
+.m-content {
+    width: 100%;
+    max-width: var(--m-content-max);
+    margin: 0 auto;
+    padding: 14px 12px calc(var(--m-tabbar-height) + env(safe-area-inset-bottom, 0px) + 22px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--m-gap);
+}
+
+.m-content-flush {
+    padding-top: 8px;
+}
+
+.m-card {
+    background: var(--ui-surface);
+    border-radius: var(--m-radius);
+    box-shadow: var(--m-shadow-soft);
+    padding: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.m-card-tight {
+    padding: 12px;
+}
+
+.m-card + .m-card {
+    margin-top: 0;
+}
+
+.m-section-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 4px 2px 0;
+}
+
+.m-section-title h2 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #fff;
+    margin: 0;
+    text-shadow: 0 1px 6px rgba(15, 23, 42, 0.25);
+}
+
+.m-section-title a {
+    color: #fff;
+    font-size: 0.8rem;
+    text-decoration: none;
+    opacity: 0.9;
+}
+
+.m-page-head h1 {
+    font-size: 1.35rem;
+    margin: 0 0 6px;
+    background: linear-gradient(135deg, var(--ui-accent) 0%, var(--ui-accent-2) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.m-page-head p {
+    margin: 0;
+    color: var(--ui-muted);
+    font-size: 0.85rem;
+    line-height: 1.45;
+}
+
+.m-hero {
+    background: linear-gradient(135deg, rgba(84, 104, 212, 0.96), rgba(122, 91, 194, 0.96));
+    color: #fff;
+    border-radius: var(--m-radius);
+    padding: 18px;
+    box-shadow: 0 16px 40px rgba(19, 25, 46, 0.28);
+}
+
+.m-hero h1 {
+    color: #fff;
+    font-size: 1.3rem;
+    margin: 0 0 6px;
+}
+
+.m-hero p {
+    margin: 0;
+    opacity: 0.92;
+    font-size: 0.86rem;
+    line-height: 1.5;
+}
+
+.m-hero-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.m-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    color: #fff;
+    font-size: 0.74rem;
+    font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+   KPIs e métricas (mesma linguagem dos .stats-card da versão web)
+   -------------------------------------------------------------------------- */
+.m-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.m-kpi-grid-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.m-kpi {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.95));
+    border: 1px solid var(--m-border);
+    border-radius: var(--m-radius-sm);
+    padding: 13px 13px 12px;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+}
+
+.m-kpi::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    height: 4px;
+    background: linear-gradient(90deg, var(--ui-accent), var(--ui-accent-2));
+}
+
+.m-kpi-success::before { background: linear-gradient(90deg, #16a34a, #22c55e); }
+.m-kpi-danger::before { background: linear-gradient(90deg, #dc2626, #f87171); }
+.m-kpi-warning::before { background: linear-gradient(90deg, #d97706, #fbbf24); }
+.m-kpi-info::before { background: linear-gradient(90deg, #0284c7, #38bdf8); }
+
+.m-kpi-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--ui-muted);
+    margin-bottom: 6px;
+}
+
+.m-kpi-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    line-height: 1.05;
+    color: var(--ui-text);
+}
+
+.m-kpi-hint {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.72rem;
+    color: var(--ui-muted);
+}
+
+/* --------------------------------------------------------------------------
+   Ações rápidas (home do app)
+   -------------------------------------------------------------------------- */
+.m-tiles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.m-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 14px;
+    min-height: 96px;
+    border-radius: var(--m-radius-sm);
+    background: var(--ui-surface);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+    color: var(--ui-text);
+    text-decoration: none;
+    transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.m-tile:active {
+    transform: scale(0.97);
+}
+
+.m-tile-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+.m-tile-label {
+    font-weight: 700;
+    font-size: 0.92rem;
+}
+
+.m-tile-hint {
+    font-size: 0.72rem;
+    color: var(--ui-muted);
+    line-height: 1.35;
+}
+
+/* --------------------------------------------------------------------------
+   Listas / cartões de item (substituem as tabelas largas)
+   -------------------------------------------------------------------------- */
+.m-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.m-item {
+    background: var(--ui-surface);
+    border-radius: var(--m-radius-sm);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+    padding: 13px;
+}
+
+.m-item-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.m-item-id {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--ui-accent);
+    letter-spacing: 0.04em;
+}
+
+.m-item-title {
+    font-size: 0.98rem;
+    font-weight: 700;
+    margin: 2px 0 0;
+    word-break: break-word;
+}
+
+.m-item-sub {
+    font-size: 0.78rem;
+    color: var(--ui-muted);
+    margin: 2px 0 0;
+    word-break: break-word;
+}
+
+.m-item-body {
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    font-size: 0.79rem;
+}
+
+.m-item-field {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.m-item-field span:first-child {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ui-muted);
+    font-weight: 700;
+}
+
+.m-item-field span:last-child {
+    word-break: break-word;
+}
+
+.m-item-desc {
+    margin-top: 8px;
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
+.m-item-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.m-item-actions form {
+    display: inline-flex;
+    margin: 0;
+}
+
+.m-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+.m-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    background: #e2e8f0;
+    color: #1f2937;
+    white-space: nowrap;
+}
+
+.m-badge-primary { background: #0d6efd; color: #fff; }
+.m-badge-success { background: #198754; color: #fff; }
+.m-badge-warning { background: #ffc107; color: #1f2937; }
+.m-badge-danger { background: #dc3545; color: #fff; }
+.m-badge-info { background: #0dcaf0; color: #083344; }
+.m-badge-dark { background: #343a40; color: #fff; }
+.m-badge-muted { background: #94a3b8; color: #fff; }
+
+.m-empty {
+    text-align: center;
+    padding: 26px 16px;
+    color: var(--ui-muted);
+    font-size: 0.86rem;
+}
+
+.m-empty-icon {
+    font-size: 2.2rem;
+    display: block;
+    margin-bottom: 8px;
+}
+
+/* --------------------------------------------------------------------------
+   Formulários
+   -------------------------------------------------------------------------- */
+.m-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.m-field label,
+.m-field .m-label {
+    font-weight: 600;
+    font-size: 0.82rem;
+    margin-bottom: 5px;
+    display: block;
+    color: var(--ui-text);
+}
+
+.m-field .form-control,
+.m-field .form-select,
+.m-input,
+.m-select,
+.m-textarea {
+    font-size: 1rem; /* evita zoom automático no iOS */
+    border-radius: var(--m-radius-sm);
+    border: 1px solid #d9e0ea;
+    padding: 11px 12px;
+    width: 100%;
+    background: #fff;
+    color: var(--ui-text);
+}
+
+.m-field textarea.form-control,
+.m-textarea {
+    min-height: 96px;
+    resize: vertical;
+}
+
+.m-field small,
+.m-hint {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.74rem;
+    color: var(--ui-muted);
+}
+
+.m-field-required .m-label::after {
+    content: " *";
+    color: #dc3545;
+}
+
+.m-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.m-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.m-input-group {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+}
+
+.m-input-group .form-control,
+.m-input-group .m-input {
+    flex: 1 1 auto;
+}
+
+/* --------------------------------------------------------------------------
+   Botões
+   -------------------------------------------------------------------------- */
+.m-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 46px;
+    padding: 11px 16px;
+    border-radius: var(--m-radius-sm);
+    border: none;
+    font-size: 0.94rem;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.m-btn:active {
+    transform: scale(0.98);
+}
+
+.m-btn-block {
+    width: 100%;
+}
+
+.m-btn-primary {
+    background: linear-gradient(135deg, var(--ui-accent) 0%, var(--ui-accent-2) 100%);
+    color: #fff;
+}
+
+.m-btn-success {
+    background: linear-gradient(135deg, #15803d, #22c55e);
+    color: #fff;
+}
+
+.m-btn-danger {
+    background: linear-gradient(135deg, #b91c1c, #ef4444);
+    color: #fff;
+}
+
+.m-btn-warning {
+    background: linear-gradient(135deg, #d97706, #fbbf24);
+    color: #1f2937;
+}
+
+.m-btn-secondary {
+    background: #e2e8f0;
+    color: var(--ui-text);
+}
+
+.m-btn-outline {
+    background: #fff;
+    border: 1.5px solid var(--ui-accent);
+    color: var(--ui-accent);
+}
+
+.m-btn-ghost {
+    background: rgba(255, 255, 255, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    color: #fff;
+}
+
+.m-btn-sm {
+    min-height: 38px;
+    padding: 8px 12px;
+    font-size: 0.8rem;
+    border-radius: 10px;
+}
+
+.m-btn-xs {
+    min-height: 32px;
+    padding: 6px 10px;
+    font-size: 0.74rem;
+    border-radius: 9px;
+}
+
+.m-btn-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.m-btn-row > .m-btn {
+    flex: 1 1 140px;
+}
+
+/* Botão flutuante (atalho de criação) */
+.m-fab {
+    position: fixed;
+    right: 16px;
+    bottom: calc(var(--m-tabbar-height) + env(safe-area-inset-bottom, 0px) + 14px);
+    z-index: 1040;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    color: #fff;
+    background: linear-gradient(135deg, var(--ui-accent) 0%, var(--ui-accent-2) 100%);
+    box-shadow: 0 16px 34px rgba(84, 104, 212, 0.45);
+    text-decoration: none;
+}
+
+/* --------------------------------------------------------------------------
+   Abas inferiores
+   -------------------------------------------------------------------------- */
+.m-tabbar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1045;
+    display: flex;
+    justify-content: space-around;
+    align-items: stretch;
+    gap: 2px;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
+    min-height: var(--m-tabbar-height);
+    background: rgba(255, 255, 255, 0.96);
+    backdrop-filter: blur(16px);
+    border-top-left-radius: 20px;
+    border-top-right-radius: 20px;
+    box-shadow: 0 -10px 28px rgba(15, 23, 42, 0.2);
+}
+
+.m-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 6px 2px;
+    border-radius: 12px;
+    color: var(--ui-muted);
+    text-decoration: none;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+.m-tab-icon {
+    font-size: 1.18rem;
+    line-height: 1;
+}
+
+.m-tab-active {
+    color: var(--ui-accent);
+    background: linear-gradient(135deg, #eef2ff, #f3e8ff);
+}
+
+/* --------------------------------------------------------------------------
+   Filtros, chips e busca
+   -------------------------------------------------------------------------- */
+.m-search {
+    position: sticky;
+    top: calc(env(safe-area-inset-top, 0px) + 66px);
+    z-index: 1020;
+    background: rgba(255, 255, 255, 0.96);
+    border-radius: var(--m-radius-sm);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+    padding: 8px;
+}
+
+.m-chips {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 2px 0 8px;
+    scrollbar-width: none;
+}
+
+.m-chips::-webkit-scrollbar {
+    display: none;
+}
+
+.m-chip {
+    flex: 0 0 auto;
+    padding: 8px 13px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid var(--m-border);
+    color: var(--ui-text);
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.m-chip-active {
+    background: linear-gradient(135deg, var(--ui-accent), var(--ui-accent-2));
+    border-color: transparent;
+    color: #fff;
+}
+
+/* --------------------------------------------------------------------------
+   Progresso
+   -------------------------------------------------------------------------- */
+.m-progress {
+    height: 8px;
+    border-radius: 999px;
+    background: #e2e8f0;
+    overflow: hidden;
+    margin-top: 8px;
+}
+
+.m-progress-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--ui-accent), var(--ui-accent-2));
+}
+
+.m-progress-fill-success {
+    background: linear-gradient(90deg, #15803d, #22c55e);
+}
+
+.m-progress-fill-warning {
+    background: linear-gradient(90deg, #d97706, #fbbf24);
+}
+
+.m-progress-fill-danger {
+    background: linear-gradient(90deg, #b91c1c, #ef4444);
+}
+
+/* --------------------------------------------------------------------------
+   Alertas, avisos e estados
+   -------------------------------------------------------------------------- */
+.m-alert {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 12px 13px;
+    border-radius: var(--m-radius-sm);
+    font-size: 0.84rem;
+    line-height: 1.45;
+    border-left: 4px solid var(--ui-accent);
+    background: rgba(255, 255, 255, 0.96);
+    color: var(--ui-text);
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+}
+
+.m-alert-success { border-left-color: #16a34a; }
+.m-alert-danger { border-left-color: #dc2626; }
+.m-alert-warning { border-left-color: #f59e0b; }
+.m-alert-info { border-left-color: #0ea5e9; }
+
+.m-alert strong {
+    display: block;
+}
+
+.m-state {
+    text-align: center;
+    padding: 22px 16px;
+}
+
+.m-state-icon {
+    font-size: 2.6rem;
+    display: block;
+    margin-bottom: 10px;
+}
+
+.m-state h2 {
+    font-size: 1.15rem;
+    margin: 0 0 8px;
+}
+
+.m-state p {
+    color: var(--ui-muted);
+    font-size: 0.88rem;
+    line-height: 1.5;
+    margin: 0 0 16px;
+}
+
+.m-offline-bar {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(var(--m-tabbar-height) + env(safe-area-inset-bottom, 0px) + 12px);
+    z-index: 1046;
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    background: #1f2937;
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 600;
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.3);
+}
+
+body.m-offline .m-offline-bar {
+    display: flex;
+}
+
+.m-install-banner {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+    border-radius: var(--m-radius-sm);
+    background: linear-gradient(135deg, rgba(84, 104, 212, 0.12), rgba(122, 91, 194, 0.12));
+    border: 1px dashed rgba(84, 104, 212, 0.45);
+    color: var(--ui-text);
+    font-size: 0.8rem;
+}
+
+body.m-can-install #m-install-banner {
+    display: flex;
+}
+
+/* --------------------------------------------------------------------------
+   Tabelas (quando realmente necessárias no celular)
+   -------------------------------------------------------------------------- */
+.m-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: var(--m-radius-sm);
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+    background: var(--ui-surface);
+}
+
+.m-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    min-width: 520px;
+}
+
+.m-table th,
+.m-table td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;
+}
+
+.m-table thead th {
+    background: #1f2937;
+    color: #fff;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+/* --------------------------------------------------------------------------
+   Gráficos
+   -------------------------------------------------------------------------- */
+.m-chart {
+    position: relative;
+    height: 260px;
+}
+
+.m-chart-sm {
+    position: relative;
+    height: 210px;
+}
+
+.m-chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+/* --------------------------------------------------------------------------
+   Programação de centrais (matriz tocável)
+   -------------------------------------------------------------------------- */
+.m-matrix-wrap {
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    border-radius: var(--m-radius-sm);
+    border: 1px solid var(--m-border);
+    background: #fff;
+}
+
+.m-matrix {
+    border-collapse: collapse;
+    font-size: 0.72rem;
+}
+
+.m-matrix th,
+.m-matrix td {
+    border: 1px solid #e2e8f0;
+    text-align: center;
+    padding: 0;
+}
+
+.m-matrix th {
+    background: #f1f5f9;
+    color: var(--ui-muted);
+    font-weight: 700;
+    padding: 6px;
+    min-width: 40px;
+}
+
+.m-matrix-cell {
+    width: 42px;
+    height: 42px;
+    border: none;
+    background: transparent;
+    font-weight: 800;
+    font-size: 0.9rem;
+    color: var(--ui-accent);
+    cursor: pointer;
+}
+
+.m-matrix-cell-on {
+    background: linear-gradient(135deg, var(--ui-accent), var(--ui-accent-2));
+    color: #fff;
+}
+
+/* --------------------------------------------------------------------------
+   Modal (bottom sheet)
+   -------------------------------------------------------------------------- */
+.modal-content.m-sheet {
+    border: none;
+    border-radius: 22px 22px 0 0;
+    max-height: 92vh;
+}
+
+.modal-content.m-sheet .modal-header {
+    border-bottom: 1px solid var(--m-border);
+    border-radius: 22px 22px 0 0;
+    position: sticky;
+    top: 0;
+    background: #fff;
+    z-index: 2;
+}
+
+.modal-content.m-sheet .modal-body {
+    padding-bottom: 20px;
+}
+
+.modal-content.m-sheet .modal-footer {
+    position: sticky;
+    bottom: 0;
+    background: #fff;
+    border-top: 1px solid var(--m-border);
+}
+
+@media (max-width: 420px) {
+    .modal-dialog {
+        margin: 0;
+        max-width: none;
+    }
+}
+
+/* --------------------------------------------------------------------------
+   Rodapé
+   -------------------------------------------------------------------------- */
+.m-footer {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.76rem;
+    padding: 6px 0 4px;
+}
+
+.m-footer a {
+    color: #fff;
+}
+
+/* --------------------------------------------------------------------------
+   Ajustes para telas maiores (tablet / landscape)
+   -------------------------------------------------------------------------- */
+@media (min-width: 700px) {
+    :root {
+        --m-content-max: 760px;
+    }
+
+    .m-tiles {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .m-kpi-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .m-btn,
+    .m-tile {
+        transition: none;
+    }
+}

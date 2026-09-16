@@ -1,0 +1,343 @@
+{# Controle de Produção — mesmos endpoints da tela web (cadastro, edição, exclusão) #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Produção{% endblock %}
+{% block appbar_title %}🏭 Produção{% endblock %}
+{% block appbar_sub %}Projeto MTC · acompanhamento em tempo real{% endblock %}
+
+{% block content %}
+{% if mensagem %}
+<div class="m-alert m-alert-{{ tipo_mensagem or 'info' }}"><div>{{ mensagem }}</div></div>
+{% endif %}
+
+{% if read_only %}
+<div class="m-alert m-alert-warning">
+    <div>👀 Modo somente visualização ativo para o seu perfil.</div>
+</div>
+{% endif %}
+
+{% set total_itens = itens|length %}
+{% set ns = namespace(produzido=0, meta=0) %}
+{% for item in itens %}
+    {% set ns.produzido = ns.produzido + (item.get('Quantidade produzida', '0')|int) %}
+    {% set ns.meta = ns.meta + (item.get('Meta de produção', '0')|int) %}
+{% endfor %}
+{% set percentual_global = ((ns.produzido / ns.meta) * 100) if ns.meta else 0 %}
+
+<div class="m-kpi-grid m-kpi-grid-3">
+    <div class="m-kpi">
+        <div class="m-kpi-label">Itens</div>
+        <div class="m-kpi-value">{{ total_itens }}</div>
+    </div>
+    <div class="m-kpi m-kpi-success">
+        <div class="m-kpi-label">Produzido</div>
+        <div class="m-kpi-value">{{ ns.produzido }}</div>
+    </div>
+    <div class="m-kpi m-kpi-info">
+        <div class="m-kpi-label">Meta</div>
+        <div class="m-kpi-value">{{ ns.meta }}</div>
+    </div>
+</div>
+
+<div class="m-card">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <div class="m-kpi-label">Avanço global</div>
+            <strong style="font-size: 1.1rem;">{{ "%.1f"|format(percentual_global) }}%</strong>
+        </div>
+        <a class="m-btn m-btn-outline m-btn-sm" href="{{ url_for('dashboard_producao') }}">📊 Dashboard</a>
+    </div>
+    <div class="m-progress">
+        <div class="m-progress-fill {% if percentual_global >= 100 %}m-progress-fill-success{% elif percentual_global < 40 %}m-progress-fill-warning{% endif %}"
+             style="width: {{ percentual_global if percentual_global <= 100 else 100 }}%"></div>
+    </div>
+</div>
+
+{% if not read_only %}
+<div class="m-card">
+    <h2 class="m-kpi-label">➕ Cadastrar novo item</h2>
+    <form class="m-form" method="POST" action="{{ url_for('producao') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div class="m-field m-field-required">
+            <label class="m-label" for="nome_item">Nome do item</label>
+            <input type="text" class="form-control" id="nome_item" name="nome_item" placeholder="Ex: Estrutura metálica" required>
+        </div>
+        <div class="m-grid-2">
+            <div class="m-field m-field-required">
+                <label class="m-label" for="codigo_item">Código</label>
+                <input type="text" class="form-control js-codigo-code" id="codigo_item" name="codigo_item"
+                       placeholder="12-34-56789" inputmode="numeric" required>
+                <small>Formato ##-##-#####</small>
+            </div>
+            <div class="m-field">
+                <label class="m-label" for="mtc_projeto">MTC</label>
+                <input type="text" class="form-control js-mtc-code" id="mtc_projeto" name="mtc_projeto"
+                       placeholder="1234" inputmode="numeric" maxlength="4" pattern="\d{4}">
+                <small>4 dígitos</small>
+            </div>
+            <div class="m-field">
+                <label class="m-label" for="quantidade_produzida">Qtd. produzida</label>
+                <input type="number" class="form-control" id="quantidade_produzida" name="quantidade_produzida"
+                       value="0" min="0" inputmode="numeric" required>
+            </div>
+            <div class="m-field">
+                <label class="m-label" for="meta_producao">Meta</label>
+                <input type="number" class="form-control" id="meta_producao" name="meta_producao"
+                       value="0" min="0" inputmode="numeric" required>
+            </div>
+        </div>
+        <div class="m-field">
+            <label class="m-label" for="responsavel">Responsável</label>
+            <input type="text" class="form-control" id="responsavel" name="responsavel" placeholder="Ex: João Silva">
+        </div>
+        <div class="m-field">
+            <label class="m-label" for="status">Status</label>
+            <select class="form-select" id="status" name="status">
+                <option value="Em andamento" selected>Em andamento</option>
+                <option value="Pendente">Pendente</option>
+                <option value="Aguardando compra">Aguardando compra</option>
+                <option value="Concluído">Concluído</option>
+                <option value="Bloqueado">Bloqueado</option>
+            </select>
+        </div>
+        <div class="m-field">
+            <label class="m-label" for="observacao">Observação</label>
+            <input type="text" class="form-control" id="observacao" name="observacao" placeholder="Observações rápidas">
+        </div>
+        <div class="m-field">
+            <label class="m-label" for="informacoes_adicionais">Informações adicionais</label>
+            <textarea class="form-control" id="informacoes_adicionais" name="informacoes_adicionais" rows="3"
+                      placeholder="Detalhes, pendências e contexto"></textarea>
+        </div>
+        <button type="submit" class="m-btn m-btn-success m-btn-block">💾 Salvar item</button>
+    </form>
+</div>
+{% endif %}
+
+<div class="m-search">
+    <input type="text" class="form-control" placeholder="Filtrar por item, código, MTC, responsável…"
+           data-m-filter="#listaProducao .m-item" aria-label="Filtrar itens de produção">
+</div>
+
+<div class="m-list" id="listaProducao">
+    {% for item in itens %}
+    {% set produzido = item.get('Quantidade produzida', '0')|int %}
+    {% set meta = item.get('Meta de produção', '0')|int %}
+    {% set percentual = ((produzido / meta) * 100) if meta else 0 %}
+    {% set status_item = item.get('Status', '') %}
+    <div class="m-item" data-item="{{ item | tojson | forceescape }}">
+        <div class="m-item-head">
+            <div>
+                <span class="m-item-id">#{{ loop.index }} · {{ item.get('Código', '-') }}</span>
+                <h2 class="m-item-title">{{ item.get('Nome do item', '-') }}</h2>
+                {% if item.get('Número do projeto MTC') %}
+                <p class="m-item-sub">MTC {{ item.get('Número do projeto MTC') }}</p>
+                {% endif %}
+            </div>
+            <div class="m-badges">
+                <span class="m-badge
+                    {% if status_item == 'Concluído' %}m-badge-success
+                    {% elif status_item == 'Em andamento' %}m-badge-primary
+                    {% elif status_item == 'Aguardando compra' %}m-badge-warning
+                    {% elif status_item == 'Bloqueado' %}m-badge-danger
+                    {% else %}m-badge-muted{% endif %}">
+                    {{ status_item or 'Sem status' }}
+                </span>
+            </div>
+        </div>
+
+        <div class="m-item-body">
+            <div class="m-item-field">
+                <span>Produzido</span>
+                <span><strong>{{ produzido }}</strong> / meta {{ meta }}</span>
+            </div>
+            <div class="m-item-field">
+                <span>Responsável</span>
+                <span>{{ item.get('Responsável', '-') or '-' }}</span>
+            </div>
+            <div class="m-item-field">
+                <span>Observação</span>
+                <span>{{ item.get('Observação', '-') or '-' }}</span>
+            </div>
+        </div>
+
+        <div class="m-progress">
+            <div class="m-progress-fill {% if percentual >= 100 %}m-progress-fill-success{% elif status_item == 'Bloqueado' %}m-progress-fill-danger{% endif %}"
+                 style="width: {{ percentual if percentual <= 100 else 100 }}%"></div>
+        </div>
+
+        {% if item.get('Informações adicionais') %}
+        <p class="m-item-sub mt-2">📝 {{ item.get('Informações adicionais') | truncate(160) }}</p>
+        {% endif %}
+
+        {% if not read_only %}
+        <div class="m-item-actions">
+            <button type="button" class="m-btn m-btn-primary m-btn-sm" data-m-editar-producao>✏️ Atualizar</button>
+            <form method="POST" action="{{ url_for('excluir_item', row_id=item.row_id) }}"
+                  data-m-confirm="Excluir o item {{ item.get('Nome do item', '') }}? Esta ação não pode ser desfeita.">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="m-btn m-btn-danger m-btn-sm">🗑️ Excluir</button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
+    <div class="m-card m-empty">
+        <span class="m-empty-icon">🏭</span>
+        Nenhum item de produção cadastrado ainda.
+    </div>
+    {% endfor %}
+</div>
+
+{% if not read_only %}
+<div class="modal fade" id="modalEdicaoProducao" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content m-sheet">
+            <form id="formEdicaoProducao" data-edit-url="{{ url_for('atualizar_producao', row_id=0) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" id="edit-row-id" name="row_id">
+                <div class="modal-header">
+                    <h5 class="modal-title">Atualizar item de produção</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="m-field m-field-required">
+                        <label class="m-label" for="edit-nome-item">Nome do item</label>
+                        <input type="text" class="form-control" id="edit-nome-item" name="nome_item" required>
+                    </div>
+                    <div class="m-grid-2">
+                        <div class="m-field">
+                            <label class="m-label" for="edit-codigo-item">Código</label>
+                            <input type="text" class="form-control js-codigo-code" id="edit-codigo-item" name="codigo_item" required>
+                        </div>
+                        <div class="m-field">
+                            <label class="m-label" for="edit-mtc-projeto">MTC</label>
+                            <input type="text" class="form-control js-mtc-code" id="edit-mtc-projeto" name="mtc_projeto" maxlength="4">
+                        </div>
+                        <div class="m-field">
+                            <label class="m-label" for="edit-quantidade-produzida">Qtd. produzida</label>
+                            <input type="number" class="form-control" id="edit-quantidade-produzida" name="quantidade_produzida" min="0" inputmode="numeric" required>
+                        </div>
+                        <div class="m-field">
+                            <label class="m-label" for="edit-meta-producao">Meta</label>
+                            <input type="number" class="form-control" id="edit-meta-producao" name="meta_producao" min="0" inputmode="numeric" required>
+                        </div>
+                    </div>
+                    <div class="m-field">
+                        <label class="m-label" for="edit-responsavel">Responsável</label>
+                        <input type="text" class="form-control" id="edit-responsavel" name="responsavel">
+                    </div>
+                    <div class="m-field">
+                        <label class="m-label" for="edit-status">Status</label>
+                        <select class="form-select" id="edit-status" name="status">
+                            <option value="Pendente">Pendente</option>
+                            <option value="Em andamento">Em andamento</option>
+                            <option value="Aguardando compra">Aguardando compra</option>
+                            <option value="Bloqueado">Bloqueado</option>
+                            <option value="Concluído">Concluído</option>
+                        </select>
+                    </div>
+                    <div class="m-field">
+                        <label class="m-label" for="edit-observacao">Observação</label>
+                        <input type="text" class="form-control" id="edit-observacao" name="observacao">
+                    </div>
+                    <div class="m-field">
+                        <label class="m-label" for="edit-informacoes-adicionais">Informações adicionais</label>
+                        <textarea class="form-control" id="edit-informacoes-adicionais" name="informacoes_adicionais" rows="3"></textarea>
+                    </div>
+                    <div class="m-field">
+                        <label class="m-label" for="edit-nova-informacao">Acrescentar nova informação</label>
+                        <textarea class="form-control" id="edit-nova-informacao" name="nova_informacao" rows="2"
+                                  placeholder="Atualização que será anexada ao histórico do item"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="m-btn m-btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="m-btn m-btn-primary">💾 Salvar alterações</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block fab %}
+{% if not read_only %}
+<a class="m-fab" href="#nome_item" id="fabProducao" title="Cadastrar item">＋</a>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if not read_only %}
+<script>
+    (function () {
+        var modal = new bootstrap.Modal(document.getElementById("modalEdicaoProducao"));
+
+        function preencher(item) {
+            var set = function (id, valor) {
+                var el = document.getElementById(id);
+                if (el) el.value = valor === null || valor === undefined ? "" : valor;
+            };
+            set("edit-row-id", item["row_id"]);
+            set("edit-nome-item", item["Nome do item"]);
+            set("edit-codigo-item", item["Código"]);
+            set("edit-mtc-projeto", item["Número do projeto MTC"]);
+            set("edit-quantidade-produzida", item["Quantidade produzida"] || 0);
+            set("edit-meta-producao", item["Meta de produção"] || 0);
+            set("edit-status", item["Status"] || "Em andamento");
+            set("edit-observacao", item["Observação"]);
+            set("edit-responsavel", item["Responsável"]);
+            set("edit-informacoes-adicionais", item["Informações adicionais"]);
+            set("edit-nova-informacao", "");
+        }
+
+        document.querySelectorAll("#listaProducao [data-m-editar-producao]").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var card = btn.closest(".m-item");
+                var item = {};
+                try { item = JSON.parse(card.getAttribute("data-item") || "{}"); } catch (e) { item = {}; }
+                preencher(item);
+                modal.show();
+            });
+        });
+
+        document.getElementById("formEdicaoProducao").addEventListener("submit", function (event) {
+            event.preventDefault();
+            var rowId = document.getElementById("edit-row-id").value;
+            var formData = new FormData(this);
+            var baseUrl = this.getAttribute("data-edit-url") || "";
+            fetch(baseUrl.replace(/\d+$/, rowId), {
+                method: "POST",
+                body: formData,
+                headers: { "X-Requested-With": "XMLHttpRequest" }
+            })
+            .then(function (resp) { return resp.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    window.mShowToast("Item atualizado com sucesso!", "success");
+                    setTimeout(function () { window.location.reload(); }, 600);
+                } else {
+                    window.mShowToast("Erro: " + data.message, "danger");
+                }
+            })
+            .catch(function (erro) {
+                window.mShowToast("Erro ao atualizar: " + erro, "danger");
+            });
+        });
+
+        var fab = document.getElementById("fabProducao");
+        if (fab) {
+            fab.addEventListener("click", function (event) {
+                event.preventDefault();
+                var form = document.getElementById("nome_item");
+                if (form) {
+                    form.scrollIntoView({ behavior: "smooth", block: "center" });
+                    form.focus();
+                }
+            });
+        }
+    })();
+</script>
+{% endif %}
+{% endblock %}

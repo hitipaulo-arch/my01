@@ -1,0 +1,89 @@
+{# OPs abertas (produção não concluída/bloqueada) — mesmos dados e ações #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}OPs Abertas{% endblock %}
+{% block appbar_title %}📦 OPs Abertas{% endblock %}
+{% block appbar_sub %}{{ total_ops_abertas }} item(ns) em produção{% endblock %}
+
+{% block content %}
+{% if mensagem %}
+<div class="m-alert m-alert-{{ tipo_mensagem or 'info' }}"><div>{{ mensagem }}</div></div>
+{% endif %}
+
+<div class="m-kpi-grid m-kpi-grid-3">
+    <div class="m-kpi">
+        <div class="m-kpi-label">OPs abertas</div>
+        <div class="m-kpi-value">{{ total_ops_abertas or 0 }}</div>
+    </div>
+    <div class="m-kpi m-kpi-danger">
+        <div class="m-kpi-label">Bloqueados</div>
+        <div class="m-kpi-value">{{ itens_bloqueados or 0 }}</div>
+    </div>
+    <div class="m-kpi m-kpi-success">
+        <div class="m-kpi-label">Conclusão</div>
+        <div class="m-kpi-value">{{ taxa_conclusao or 0 }}%</div>
+    </div>
+</div>
+
+<div class="m-search">
+    <input type="text" class="form-control" placeholder="Filtrar por item, código, status…"
+           data-m-filter="#listaOpsAbertas .m-item" aria-label="Filtrar OPs abertas">
+</div>
+
+<div class="m-list" id="listaOpsAbertas">
+    {% for item in itens %}
+    {% set produzido = item.get('Quantidade produzida', '0')|int %}
+    {% set meta = item.get('Meta de produção', '0')|int %}
+    {% set percentual = ((produzido / meta) * 100) if meta else 0 %}
+    {% set status_item = item.get('Status', '') %}
+    <div class="m-item">
+        <div class="m-item-head">
+            <div>
+                <span class="m-item-id">{{ item.get('Carimbo de data/hora', '') }}</span>
+                <h2 class="m-item-title">{{ item.get('Nome do item', '-') }}</h2>
+                <p class="m-item-sub">{{ item.get('Código', '-') }} · MTC {{ item.get('Número do projeto MTC', '-') or '-' }}</p>
+            </div>
+            <div class="m-badges">
+                <span class="m-badge
+                    {% if 'concluído' in status_item|lower %}m-badge-success
+                    {% elif 'andamento' in status_item|lower %}m-badge-primary
+                    {% elif 'pendente' in status_item|lower %}m-badge-warning
+                    {% elif 'bloqueado' in status_item|lower or 'cancelad' in status_item|lower %}m-badge-danger
+                    {% else %}m-badge-muted{% endif %}">
+                    {{ status_item or 'N/A' }}
+                </span>
+            </div>
+        </div>
+
+        <div class="m-item-body">
+            <div class="m-item-field">
+                <span>Produzido / meta</span>
+                <span><strong>{{ produzido }}</strong> / {{ meta }}</span>
+            </div>
+            <div class="m-item-field">
+                <span>Responsável</span>
+                <span>{{ item.get('Responsável', '-') or '-' }}</span>
+            </div>
+        </div>
+
+        <div class="m-progress">
+            <div class="m-progress-fill" style="width: {{ percentual if percentual <= 100 else 100 }}%"></div>
+        </div>
+
+        {% if item.get('Observação') %}
+        <p class="m-item-sub mt-2">📝 {{ item.get('Observação') }}</p>
+        {% endif %}
+
+        <div class="m-item-actions">
+            <a class="m-btn m-btn-primary m-btn-sm" href="{{ url_for('producao') }}">🏭 Abrir em Produção</a>
+            <a class="m-btn m-btn-secondary m-btn-sm" href="{{ url_for('dashboard_producao') }}">📊 Dashboard</a>
+        </div>
+    </div>
+    {% else %}
+    <div class="m-card m-empty">
+        <span class="m-empty-icon">🎉</span>
+        Nenhuma OP em aberto — tudo concluído ou bloqueado.
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

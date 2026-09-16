@@ -1,0 +1,147 @@
+{# Relatórios / auditoria — mesmos dados de appmodules/logic/report_logic.py #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Relatórios{% endblock %}
+{% block appbar_title %}📈 Relatórios{% endblock %}
+{% block appbar_sub %}Indicadores e auditoria de OS{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+{% if mensagem_erro %}
+<div class="m-alert m-alert-danger"><div>{{ mensagem_erro }}</div></div>
+{% endif %}
+
+<div class="m-kpi-grid">
+    <div class="m-kpi m-kpi-info">
+        <div class="m-kpi-label">Total de OS</div>
+        <div class="m-kpi-value">{{ total_os }}</div>
+    </div>
+    <div class="m-kpi m-kpi-success">
+        <div class="m-kpi-label">Finalizadas</div>
+        <div class="m-kpi-value">{{ total_finalizadas }}</div>
+        <span class="m-kpi-hint">{{ taxa_conclusao }} de conclusão</span>
+    </div>
+    <div class="m-kpi m-kpi-warning">
+        <div class="m-kpi-label">Em andamento</div>
+        <div class="m-kpi-value">{{ total_andamento }}</div>
+    </div>
+    <div class="m-kpi">
+        <div class="m-kpi-label">Tempo médio</div>
+        <div class="m-kpi-value" style="font-size: 1.2rem;">{{ tempo_medio }}</div>
+    </div>
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">🏷️ OS por prioridade</h2>
+    <div class="m-chart-sm"><canvas id="chartPrioridade"></canvas></div>
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">🏢 Top setores</h2>
+    <div class="m-chart"><canvas id="chartSetor"></canvas></div>
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">📅 OS por dia da semana</h2>
+    <div class="m-chart"><canvas id="chartDiaSemana"></canvas></div>
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">⏱️ Tempo médio de resolução</h2>
+    <div class="m-chart"><canvas id="chartTempo"></canvas></div>
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">🧾 Resumo por status</h2>
+    <div class="m-list">
+        {% for r in tabela_resumo %}
+        <div class="m-item m-card-tight">
+            <div class="d-flex justify-content-between align-items-center gap-2">
+                <strong>{{ r.status }}</strong>
+                <span class="m-badge m-badge-dark">{{ r.quantidade }}</span>
+            </div>
+            {% if r.tempo_medio %}<p class="m-item-sub mt-1 mb-0">⏱️ {{ r.tempo_medio }}</p>{% endif %}
+        </div>
+        {% else %}
+        <div class="m-empty">Sem dados para exibir.</div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="m-card">
+    <div class="m-btn-row">
+        <a class="m-btn m-btn-secondary" href="{{ url_for('os.gerenciar') }}">📋 Gerenciar OS</a>
+        <a class="m-btn m-btn-secondary" href="{{ url_for('dashboard_producao') }}">📊 Dashboard</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const labelsPrioridade = {{ labels_prioridade | tojson | safe }};
+    const dadosPrioridade = {{ dados_prioridade | tojson | safe }};
+    const labelsSetor = {{ labels_setor | tojson | safe }};
+    const dadosSetor = {{ dados_setor | tojson | safe }};
+    const labelsTempo = {{ labels_tempo_resolucao | tojson | safe }};
+    const dadosTempo = {{ dados_tempo_resolucao | tojson | safe }};
+    const labelsDia = {{ labels_dia_semana | tojson | safe }};
+    const dadosDia = {{ dados_dia_semana | tojson | safe }};
+
+    const paleta = ["#5468d4", "#7a5bc2", "#0ea5e9", "#22c55e", "#f59e0b", "#ef4444", "#14b8a6", "#8b5cf6"];
+    const opcoesBase = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { labels: { boxWidth: 12, font: { size: 10 } } } }
+    };
+
+    function renderSeHouver(id, config) {
+        const el = document.getElementById(id);
+        if (el) new Chart(el, config);
+    }
+
+    renderSeHouver("chartPrioridade", {
+        type: "pie",
+        data: { labels: labelsPrioridade, datasets: [{ data: dadosPrioridade, backgroundColor: paleta, borderColor: "#fff", borderWidth: 2 }] },
+        options: opcoesBase
+    });
+
+    renderSeHouver("chartSetor", {
+        type: "bar",
+        data: { labels: labelsSetor, datasets: [{ label: "OS", data: dadosSetor, backgroundColor: "#5468d4", borderRadius: 6 }] },
+        options: Object.assign({}, opcoesBase, {
+            indexAxis: "y",
+            plugins: { legend: { display: false } },
+            scales: { x: { ticks: { precision: 0 } } }
+        })
+    });
+
+    renderSeHouver("chartDiaSemana", {
+        type: "bar",
+        data: { labels: labelsDia, datasets: [{ label: "OS", data: dadosDia, backgroundColor: "#7a5bc2", borderRadius: 6 }] },
+        options: Object.assign({}, opcoesBase, {
+            plugins: { legend: { display: false } },
+            scales: { y: { ticks: { precision: 0 } } }
+        })
+    });
+
+    renderSeHouver("chartTempo", {
+        type: "line",
+        data: {
+            labels: labelsTempo,
+            datasets: [{
+                label: "Horas",
+                data: dadosTempo,
+                borderColor: "#0ea5e9",
+                backgroundColor: "rgba(14, 165, 233, 0.2)",
+                fill: true,
+                tension: 0.3,
+                pointRadius: 3
+            }]
+        },
+        options: Object.assign({}, opcoesBase, { plugins: { legend: { display: false } } })
+    });
+</script>
+{% endblock %}

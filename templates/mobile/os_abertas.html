@@ -1,0 +1,95 @@
+{# Lista pública de OS abertas/em andamento — mesmos dados da tela web #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}OS Abertas{% endblock %}
+{% block appbar_title %}🟢 OS Abertas{% endblock %}
+{% block appbar_sub %}{{ total_chamados }} chamado(s) em andamento{% endblock %}
+
+{% block content %}
+{% if mensagem_erro %}
+<div class="m-alert m-alert-danger"><div>{{ mensagem_erro }}</div></div>
+{% endif %}
+
+<div class="m-kpi-grid">
+    <div class="m-kpi m-kpi-success">
+        <div class="m-kpi-label">OS concluídas</div>
+        <div class="m-kpi-value">{{ percentual_concluidas }}</div>
+        <span class="m-kpi-hint">do total já finalizado</span>
+    </div>
+    <div class="m-kpi m-kpi-info">
+        <div class="m-kpi-label">Tempo médio</div>
+        <div class="m-kpi-value" style="font-size: 1.25rem;">{{ tempo_medio_conclusao }}</div>
+        <span class="m-kpi-hint">para concluir uma OS</span>
+    </div>
+</div>
+
+<div class="m-search">
+    <input type="text" class="form-control" placeholder="Filtrar por OS, setor, solicitante…"
+           data-m-filter="#listaOsAbertas .m-item" aria-label="Filtrar chamados">
+</div>
+
+<div class="m-list" id="listaOsAbertas">
+    {% for chamado in chamados %}
+    {% set status = chamado.get('Status da OS', '') %}
+    <div class="m-item">
+        <div class="m-item-head">
+            <div>
+                <span class="m-item-id">OS #{{ chamado.get('ID', chamado['row_id']) }}</span>
+                <p class="m-item-sub">{{ chamado.get('Carimbo de data/hora', '') }}</p>
+            </div>
+            <div class="m-badges">
+                <span class="m-badge
+                    {% if status == 'Em Andamento' %}m-badge-primary
+                    {% elif status == 'Concluído' %}m-badge-success
+                    {% elif status == 'Cancelado' %}m-badge-danger
+                    {% else %}m-badge-warning{% endif %}">
+                    {{ status if status else 'Aberto' }}
+                </span>
+            </div>
+        </div>
+
+        <div class="m-item-body">
+            <div class="m-item-field">
+                <span>Setor</span>
+                <span>{{ chamado.get('Setor em que será realizado o serviço', '-') }}</span>
+            </div>
+            <div class="m-item-field">
+                <span>Prioridade</span>
+                <span>{{ chamado.get('Nível de prioridade', chamado.get('Prioridade', '-')) }}</span>
+            </div>
+            <div class="m-item-field">
+                <span>Solicitante</span>
+                <span>{{ chamado.get('Nome do solicitante', '-') }}</span>
+            </div>
+            <div class="m-item-field">
+                <span>Equipamento</span>
+                <span>{{ chamado.get('Equipamento ou Local afetado', '-') }}</span>
+            </div>
+        </div>
+
+        <div class="m-item-desc">
+            {{ chamado.get('Descrição do Problema ou Serviço Solicitado', chamado.get('Descrição', '')) | truncate(140) }}
+        </div>
+
+        <div class="m-item-actions">
+            <a class="m-btn m-btn-outline m-btn-sm"
+               href="{{ url_for('os.consultar_pedido', numero_pedido=chamado.get('ID', chamado['row_id'])) }}">
+                🔍 Ver status
+            </a>
+        </div>
+    </div>
+    {% else %}
+    <div class="m-card m-empty">
+        <span class="m-empty-icon">✅</span>
+        Nenhuma OS aberta ou em andamento no momento.
+    </div>
+    {% endfor %}
+</div>
+
+<div class="m-card">
+    <div class="m-btn-row">
+        <a class="m-btn m-btn-primary" href="{{ url_for('mobile.nova_os') }}">📝 Nova OS</a>
+        <a class="m-btn m-btn-secondary" href="{{ url_for('os.gerenciar') }}">📋 Gerenciar</a>
+    </div>
+</div>
+{% endblock %}

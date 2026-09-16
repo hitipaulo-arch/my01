@@ -1,0 +1,245 @@
+{# Gerenciamento de OS — mesmos dados/rota do gerenciar.html, em cartões #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Gerenciar OS{% endblock %}
+{% block appbar_title %}📋 Gerenciar OS{% endblock %}
+{% block appbar_sub %}{{ chamados|length }} chamado(s) na planilha{% endblock %}
+
+{% block content %}
+{% if mensagem_erro %}
+<div class="m-alert m-alert-danger"><div>{{ mensagem_erro }}</div></div>
+{% endif %}
+
+<div class="m-chips">
+    {% set setores_ordem = [
+        ('Carimbo de data/hora', '📅 Data'),
+        ('Nome do solicitante', '👤 Solicitante'),
+        ('Setor em que será realizado o serviço', '🏢 Setor'),
+        ('Status da OS', '📌 Status')
+    ] %}
+    {% for campo, rotulo in setores_ordem %}
+    {% set ativo = (current_sort == campo) %}
+    <a class="m-chip {% if ativo %}m-chip-active{% endif %}"
+       href="{{ url_for('os.gerenciar', sort_by=campo, order=('asc' if (ativo and current_order == 'desc') else 'desc')) }}">
+        {{ rotulo }} {% if ativo %}{{ '↑' if current_order == 'asc' else '↓' }}{% endif %}
+    </a>
+    {% endfor %}
+</div>
+
+<div class="m-search">
+    <input type="text" class="form-control" placeholder="Filtrar chamados por qualquer campo…"
+           data-m-filter="#listaChamados .m-item" aria-label="Filtrar chamados">
+</div>
+
+<div class="m-list" id="listaChamados">
+    {% for chamado in chamados %}
+    {% set status = chamado.get('Status da OS', '') %}
+    {% set whats = chamado.get('WhatsApp do solicitante') or chamado.get('WhatsApp') or chamado.get('Whatsapp do solicitante') or chamado.get('Whatsapp') or '' %}
+    {% set numero_os = chamado.get('ID', chamado['row_id']) %}
+    <div class="m-item" data-os-row="{{ chamado | tojson | forceescape }}">
+        <div class="m-item-head">
+            <div>
+                <span class="m-item-id">OS #{{ numero_os }}</span>
+                <p class="m-item-sub">{{ chamado.get('Data da Solicitação', '') }}</p>
+            </div>
+            <div class="m-badges">
+                <span class="m-badge
+                    {% if status == 'Finalizada' %}m-badge-success
+                    {% elif status == 'Em Andamento' %}m-badge-primary
+                    {% elif status == 'Aguardando Compra' %}m-badge-warning
+                    {% elif status == 'Cancelada' %}m-badge-danger
+                    {% else %}m-badge-muted{% endif %}">
+                    {{ status if status else 'Sem status' }}
+                </span>
+                {% if chamado.get('Nível de prioridade') %}
+                <span class="m-badge m-badge-dark">{{ chamado.get('Nível de prioridade') }}</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="m-item-body">
+            <div class="m-item-field">
+                <span>Solicitante</span>
+                <span>{{ chamado.get('Nome do solicitante', '-') }}</span>
+            </div>
+            <div class="m-item-field">
+                <span>Setor</span>
+                <span>{{ chamado.get('Setor em que será realizado o serviço', '-') }}</span>
+            </div>
+            <div class="m-item-field">
+                <span>Equipamento</span>
+                <span>{{ chamado.get('Equipamento ou Local afetado', '-') }}</span>
+            </div>
+        </div>
+
+        <div class="m-item-desc">{{ chamado.get('Descrição do Problema ou Serviço Solicitado', '') | truncate(120) }}</div>
+
+        <div class="m-item-actions">
+            <button type="button" class="m-btn m-btn-primary m-btn-sm" data-m-editar-os>✏️ Editar / atualizar</button>
+            {% if whats %}
+            <a class="m-btn m-btn-success m-btn-sm" data-whatsapp="{{ whats }}" target="_blank" rel="noopener noreferrer">💬 WhatsApp</a>
+            {% endif %}
+            <a class="m-btn m-btn-secondary m-btn-sm" href="{{ url_for('os.consultar_pedido', numero_pedido=numero_os) }}">🔍 Status</a>
+        </div>
+    </div>
+    {% else %}
+    <div class="m-card m-empty">
+        <span class="m-empty-icon">📭</span>
+        Nenhum chamado encontrado.
+    </div>
+    {% endfor %}
+</div>
+
+<div class="modal fade" id="modalEdicaoOS" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content m-sheet">
+            <form method="POST" action="{{ url_for('os.atualizar_chamado') }}" id="formEdicaoOS">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="row_id" id="edit-row-id">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title mb-1">OS <span id="edit-numero-os">—</span></h5>
+                        <small class="text-muted">Dados do solicitante são somente leitura.</small>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <h6 class="m-kpi-label">Informações da solicitação</h6>
+                    <div class="m-grid-2">
+                        <div class="m-field">
+                            <label class="m-label" for="edit-solicitante">Solicitante</label>
+                            <input type="text" class="form-control" id="edit-solicitante" name="nome_solicitante" readonly>
+                        </div>
+                        <div class="m-field">
+                            <label class="m-label" for="edit-whatsapp">WhatsApp</label>
+                            <input type="text" class="form-control" id="edit-whatsapp" name="whatsapp_solicitante" readonly>
+                        </div>
+                        <div class="m-field">
+                            <label class="m-label" for="edit-setor">Setor</label>
+                            <input type="text" class="form-control" id="edit-setor" name="setor" readonly>
+                        </div>
+                        <div class="m-field">
+                            <label class="m-label" for="edit-data-solicitacao">Data da solicitação</label>
+                            <input type="text" class="form-control" id="edit-data-solicitacao" name="data_solicitacao" readonly>
+                        </div>
+                        <div class="m-field">
+                            <label class="m-label" for="edit-prioridade">Prioridade</label>
+                            <input type="text" class="form-control" id="edit-prioridade" name="prioridade" readonly>
+                        </div>
+                    </div>
+                    <div class="m-field mt-2">
+                        <label class="m-label" for="edit-descricao">Descrição do problema</label>
+                        <textarea class="form-control" id="edit-descricao" name="descricao" rows="3" readonly></textarea>
+                    </div>
+                    <div class="m-field">
+                        <label class="m-label" for="edit-equipamento">Equipamento / local</label>
+                        <textarea class="form-control" id="edit-equipamento" name="equipamento" rows="2" readonly></textarea>
+                    </div>
+                    <div class="m-field">
+                        <label class="m-label" for="edit-info-adicional">Informações adicionais (solicitante)</label>
+                        <textarea class="form-control" id="edit-info-adicional" name="info_adicional" rows="2" readonly></textarea>
+                    </div>
+
+                    <hr>
+                    <h6 class="m-kpi-label">Dados da manutenção (editável)</h6>
+
+                    <div class="m-field">
+                        <label class="m-label" for="edit-status">Status da OS</label>
+                        <select class="form-select" id="edit-status" name="status_os">
+                            <option value="Aberto">Aberto</option>
+                            <option value="Em Andamento">Em Andamento</option>
+                            <option value="Aguardando Compra">Aguardando Compra</option>
+                            <option value="Finalizada">Finalizada</option>
+                            <option value="Cancelada">Cancelada</option>
+                        </select>
+                    </div>
+
+                    <div class="m-field">
+                        <label class="m-label" for="edit-servico-realizado">Serviço realizado</label>
+                        <textarea class="form-control" id="edit-servico-realizado" name="servico_realizado" rows="3"></textarea>
+                    </div>
+
+                    <div class="m-grid-2">
+                        <div class="m-field">
+                            <label class="m-label" for="edit-horario-inicio">Horário início</label>
+                            <input type="text" class="form-control" id="edit-horario-inicio" name="horario_inicio" placeholder="HH:MM">
+                        </div>
+                        <div class="m-field">
+                            <label class="m-label" for="edit-horario-andamento">Horário andamento</label>
+                            <input type="text" class="form-control" id="edit-horario-andamento" name="horario_andamento" placeholder="HH:MM">
+                        </div>
+                        <div class="m-field">
+                            <label class="m-label" for="edit-horario-termino">Horário término</label>
+                            <input type="text" class="form-control" id="edit-horario-termino" name="horario_termino" placeholder="HH:MM">
+                        </div>
+                        <div class="m-field">
+                            <label class="m-label" for="edit-horas-trabalhadas">Horas trabalhadas</label>
+                            <input type="text" class="form-control" id="edit-horas-trabalhadas" name="horas_trabalhadas" inputmode="decimal">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="m-btn m-btn-secondary" data-bs-dismiss="modal">Fechar</button>
+                    <button type="submit" class="m-btn m-btn-primary">💾 Salvar alterações</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        var modalEl = document.getElementById("modalEdicaoOS");
+        var modal = new bootstrap.Modal(modalEl);
+        var campos = ["row-id", "numero-os", "solicitante", "whatsapp", "setor", "data-solicitacao",
+                      "descricao", "equipamento", "prioridade", "status", "info-adicional",
+                      "servico-realizado", "horario-inicio", "horario-andamento", "horario-termino",
+                      "horas-trabalhadas"];
+
+        document.querySelectorAll("#listaChamados [data-m-editar-os]").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var card = btn.closest(".m-item");
+                var dados = {};
+                try {
+                    dados = JSON.parse(card.getAttribute("data-os-row") || "{}");
+                } catch (e) {
+                    dados = {};
+                }
+                var mapa = {
+                    "row-id": dados["row_id"],
+                    "numero-os": dados["ID"],
+                    "solicitante": dados["Nome do solicitante"],
+                    "whatsapp": dados["WhatsApp do solicitante"] || dados["WhatsApp"] || dados["Whatsapp do solicitante"] || dados["Whatsapp"],
+                    "setor": dados["Setor em que será realizado o serviço"],
+                    "data-solicitacao": dados["Data da Solicitação"],
+                    "descricao": dados["Descrição do Problema ou Serviço Solicitado"],
+                    "equipamento": dados["Equipamento ou Local afetado"],
+                    "prioridade": dados["Nível de prioridade"],
+                    "status": dados["Status da OS"],
+                    "info-adicional": dados["Informações adicionais (Opcional)"],
+                    "servico-realizado": dados["Serviço realizado"],
+                    "horario-inicio": dados["Horario de Inicio"],
+                    "horario-andamento": dados["Horario de Andamento"],
+                    "horario-termino": dados["Horario de Término"],
+                    "horas-trabalhadas": dados["Horas trabalhadas"]
+                };
+                Object.keys(mapa).forEach(function (chave) {
+                    var el = document.getElementById("edit-" + chave);
+                    if (el) {
+                        el.value = mapa[chave] === null || mapa[chave] === undefined ? "" : mapa[chave];
+                    }
+                });
+                modal.show();
+            });
+        });
+
+        // Mantém o título do modal visível com o número da OS.
+        modalEl.addEventListener("show.bs.modal", function () {
+            var numero = document.getElementById("edit-numero-os");
+            if (numero) numero.textContent = "#" + (document.getElementById("edit-row-id").value || "");
+        });
+    })();
+</script>
+{% endblock %}

@@ -1,0 +1,282 @@
+{# Controle de Ferramentas — cadastro, edição, exclusão e histórico #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Ferramentas{% endblock %}
+{% block appbar_title %}🔧 Ferramentas{% endblock %}
+{% block appbar_sub %}{{ ferramentas|length }} ferramenta(s) cadastrada(s){% endblock %}
+
+{% block content %}
+{% if mensagem %}
+<div class="m-alert m-alert-{{ tipo_mensagem or 'info' }}"><div>{{ mensagem }}</div></div>
+{% endif %}
+
+{% set ns = namespace(disponiveis=0, manutencao=0, indisponiveis=0) %}
+{% for f in ferramentas %}
+    {% if f.get('Status') == 'Disponível' %}{% set ns.disponiveis = ns.disponiveis + 1 %}
+    {% elif f.get('Status') == 'Em Manutenção' %}{% set ns.manutencao = ns.manutencao + 1 %}
+    {% else %}{% set ns.indisponiveis = ns.indisponiveis + 1 %}{% endif %}
+{% endfor %}
+
+<div class="m-kpi-grid m-kpi-grid-3">
+    <div class="m-kpi m-kpi-success">
+        <div class="m-kpi-label">Disponíveis</div>
+        <div class="m-kpi-value">{{ ns.disponiveis }}</div>
+    </div>
+    <div class="m-kpi m-kpi-warning">
+        <div class="m-kpi-label">Manutenção</div>
+        <div class="m-kpi-value">{{ ns.manutencao }}</div>
+    </div>
+    <div class="m-kpi m-kpi-danger">
+        <div class="m-kpi-label">Indisponíveis</div>
+        <div class="m-kpi-value">{{ ns.indisponiveis }}</div>
+    </div>
+</div>
+
+<details class="m-card">
+    <summary style="font-weight: 700; cursor: pointer;">➕ Cadastrar nova ferramenta</summary>
+    <form class="m-form mt-3" method="POST" action="{{ url_for('ferramentas') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div class="m-field m-field-required">
+            <label class="m-label" for="nome">Nome</label>
+            <input type="text" class="form-control" id="nome" name="nome" required>
+        </div>
+        <div class="m-field">
+            <label class="m-label" for="patrocinio">Patrocínio</label>
+            <input type="text" class="form-control" id="patrocinio" name="patrocinio">
+        </div>
+        <div class="m-field">
+            <label class="m-label" for="responsavel">Responsável</label>
+            <input type="text" class="form-control" id="responsavel" name="responsavel">
+        </div>
+        <div class="m-field">
+            <label class="m-label" for="ultima_manutencao">Última manutenção</label>
+            <input type="date" class="form-control" id="ultima_manutencao" name="ultima_manutencao">
+        </div>
+        <div class="m-field">
+            <label class="m-label" for="status">Status</label>
+            <select class="form-select" id="status" name="status">
+                <option value="Disponível">Disponível</option>
+                <option value="Em Manutenção">Em Manutenção</option>
+                <option value="Indisponível">Indisponível</option>
+            </select>
+        </div>
+        <div class="m-field">
+            <label class="m-label" for="observacao">Observação</label>
+            <input type="text" class="form-control" id="observacao" name="observacao">
+        </div>
+        <button type="submit" class="m-btn m-btn-success m-btn-block">💾 Cadastrar ferramenta</button>
+    </form>
+</details>
+
+<div class="m-search">
+    <input type="text" class="form-control" placeholder="Filtrar por nome, responsável, status…"
+           data-m-filter="#listaFerramentas .m-item" aria-label="Filtrar ferramentas">
+</div>
+
+<div class="m-list" id="listaFerramentas">
+    {% for ferramenta in ferramentas %}
+    <div class="m-item"
+         data-ferramenta="{{ {'row_id': ferramenta.row_id, 'nome': ferramenta.get('Nome', ''), 'patrocinio': ferramenta.get('Patrocínio', ''), 'responsavel': ferramenta.get('Responsável', ''), 'ultima_manutencao': ferramenta.get('Última Manutenção', ''), 'status': ferramenta.get('Status', 'Disponível'), 'observacao': ferramenta.get('Observação', '')} | tojson | forceescape }}">
+        <div class="m-item-head">
+            <div>
+                <span class="m-item-id">#{{ loop.index }}</span>
+                <h2 class="m-item-title">{{ ferramenta.get('Nome', '-') }}</h2>
+                <p class="m-item-sub">{{ ferramenta.get('Patrocínio', '-') or '-' }}</p>
+            </div>
+            <div class="m-badges">
+                <span class="m-badge
+                    {% if ferramenta.get('Status') == 'Disponível' %}m-badge-success
+                    {% elif ferramenta.get('Status') == 'Em Manutenção' %}m-badge-warning
+                    {% else %}m-badge-danger{% endif %}">
+                    {{ ferramenta.get('Status', '-') }}
+                </span>
+            </div>
+        </div>
+
+        <div class="m-item-body">
+            <div class="m-item-field">
+                <span>Responsável</span>
+                <span>{{ ferramenta.get('Responsável', '-') or '-' }}</span>
+            </div>
+            <div class="m-item-field">
+                <span>Última manutenção</span>
+                <span>{{ ferramenta.get('Última Manutenção', '-') or '-' }}</span>
+            </div>
+            <div class="m-item-field">
+                <span>Cadastro</span>
+                <span>{{ ferramenta.get('Data de Cadastro', '-') }}</span>
+            </div>
+        </div>
+
+        {% if ferramenta.get('Observação') %}
+        <p class="m-item-sub mt-2">📝 {{ ferramenta.get('Observação') }}</p>
+        {% endif %}
+
+        <div class="m-item-actions">
+            <button type="button" class="m-btn m-btn-primary m-btn-sm" data-m-editar-ferramenta>✏️ Editar</button>
+            <button type="button" class="m-btn m-btn-secondary m-btn-sm" data-m-historico>📜 Histórico</button>
+            <button type="button" class="m-btn m-btn-danger m-btn-sm" data-m-excluir-ferramenta>🗑️ Excluir</button>
+        </div>
+    </div>
+    {% else %}
+    <div class="m-card m-empty">
+        <span class="m-empty-icon">🔧</span>
+        Nenhuma ferramenta cadastrada ainda.
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<div class="modal fade" id="modalFerramenta" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content m-sheet">
+            <form id="formFerramenta">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" id="ferramenta-row-id">
+                <div class="modal-header">
+                    <h5 class="modal-title">Editar ferramenta</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="m-field m-field-required">
+                        <label class="m-label" for="f-nome">Nome</label>
+                        <input type="text" class="form-control" id="f-nome" name="nome" required>
+                    </div>
+                    <div class="m-field">
+                        <label class="m-label" for="f-patrocinio">Patrocínio</label>
+                        <input type="text" class="form-control" id="f-patrocinio" name="patrocinio">
+                    </div>
+                    <div class="m-field">
+                        <label class="m-label" for="f-responsavel">Responsável</label>
+                        <input type="text" class="form-control" id="f-responsavel" name="responsavel">
+                    </div>
+                    <div class="m-field">
+                        <label class="m-label" for="f-ultima-manutencao">Última manutenção</label>
+                        <input type="text" class="form-control" id="f-ultima-manutencao" name="ultima_manutencao" placeholder="AAAA-MM-DD">
+                    </div>
+                    <div class="m-field">
+                        <label class="m-label" for="f-status">Status</label>
+                        <select class="form-select" id="f-status" name="status">
+                            <option value="Disponível">Disponível</option>
+                            <option value="Em Manutenção">Em Manutenção</option>
+                            <option value="Indisponível">Indisponível</option>
+                        </select>
+                    </div>
+                    <div class="m-field">
+                        <label class="m-label" for="f-observacao">Observação</label>
+                        <input type="text" class="form-control" id="f-observacao" name="observacao">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="m-btn m-btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="m-btn m-btn-primary">💾 Salvar alterações</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalHistorico" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content m-sheet">
+            <div class="modal-header">
+                <h5 class="modal-title" id="historicoTitulo">Histórico</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body" id="historicoCorpo">
+                <div class="m-empty">Carregando…</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        var modalEdicao = new bootstrap.Modal(document.getElementById("modalFerramenta"));
+        var modalHistorico = new bootstrap.Modal(document.getElementById("modalHistorico"));
+
+        document.querySelectorAll("#listaFerramentas [data-m-editar-ferramenta]").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var d = JSON.parse(btn.closest(".m-item").getAttribute("data-ferramenta") || "{}");
+                document.getElementById("ferramenta-row-id").value = d.row_id || "";
+                document.getElementById("f-nome").value = d.nome || "";
+                document.getElementById("f-patrocinio").value = d.patrocinio || "";
+                document.getElementById("f-responsavel").value = d.responsavel || "";
+                document.getElementById("f-ultima-manutencao").value = d.ultima_manutencao || "";
+                document.getElementById("f-status").value = d.status || "Disponível";
+                document.getElementById("f-observacao").value = d.observacao || "";
+                modalEdicao.show();
+            });
+        });
+
+        document.getElementById("formFerramenta").addEventListener("submit", function (event) {
+            event.preventDefault();
+            var rowId = document.getElementById("ferramenta-row-id").value;
+            var formData = new FormData(this);
+            fetch("{{ url_for('atualizar_ferramenta', row_id=0) }}".replace(/0$/, rowId), {
+                method: "POST", body: formData, headers: { "X-Requested-With": "XMLHttpRequest" }
+            }).then(function (r) { return r.json(); }).then(function (resposta) {
+                if (resposta.success) {
+                    window.mShowToast("Ferramenta atualizada!", "success");
+                    setTimeout(function () { window.location.reload(); }, 600);
+                } else {
+                    window.mShowToast("Erro: " + resposta.message, "danger");
+                }
+            }).catch(function (e) { window.mShowToast("Erro: " + e, "danger"); });
+        });
+
+        document.querySelectorAll("#listaFerramentas [data-m-excluir-ferramenta]").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var d = JSON.parse(btn.closest(".m-item").getAttribute("data-ferramenta") || "{}");
+                if (!window.confirm("Excluir a ferramenta " + (d.nome || "") + "?")) return;
+                var formData = new FormData();
+                formData.append("csrf_token", "{{ csrf_token() }}");
+                fetch("{{ url_for('deletar_ferramenta', row_id=0) }}".replace(/0$/, d.row_id), {
+                    method: "POST", body: formData, headers: { "X-Requested-With": "XMLHttpRequest" }
+                }).then(function (r) { return r.json(); }).then(function (resposta) {
+                    if (resposta.success) {
+                        window.mShowToast("Ferramenta excluída.", "success");
+                        setTimeout(function () { window.location.reload(); }, 600);
+                    } else {
+                        window.mShowToast("Erro: " + resposta.message, "danger");
+                    }
+                }).catch(function (e) { window.mShowToast("Erro ao excluir: " + e, "danger"); });
+            });
+        });
+
+        document.querySelectorAll("#listaFerramentas [data-m-historico]").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var d = JSON.parse(btn.closest(".m-item").getAttribute("data-ferramenta") || "{}");
+                var corpo = document.getElementById("historicoCorpo");
+                document.getElementById("historicoTitulo").textContent = "📜 " + (d.nome || "Histórico");
+                corpo.innerHTML = '<div class="m-empty">Carregando…</div>';
+                modalHistorico.show();
+
+                fetch("{{ url_for('historico_ferramentas') }}?nome=" + encodeURIComponent(d.nome || ""))
+                    .then(function (r) { return r.json(); })
+                    .then(function (resposta) {
+                        var eventos = (resposta && (resposta.historico || resposta.eventos || resposta)) || [];
+                        if (!Array.isArray(eventos) || eventos.length === 0) {
+                            corpo.innerHTML = '<div class="m-empty">Nenhum evento registrado.</div>';
+                            return;
+                        }
+                        corpo.innerHTML = eventos.map(function (ev) {
+                            var titulo = ev["Evento"] || "Evento";
+                            var data = ev["Data/Hora"] || "";
+                            var usuario = ev["Usuário"] || "";
+                            var detalhes = ev["Detalhes"] || "";
+                            return '<div class="m-item m-card-tight"><span class="m-item-id">' + data + "</span>" +
+                                   '<div class="m-item-title">' + titulo + "</div>" +
+                                   (usuario ? '<p class="m-item-sub">👤 ' + usuario + "</p>" : "") +
+                                   (detalhes ? '<p class="m-item-sub">' + detalhes + "</p>" : "") + "</div>";
+                        }).join("");
+                    })
+                    .catch(function (e) {
+                        corpo.innerHTML = '<div class="m-empty">Não foi possível carregar o histórico agora.</div>';
+                    });
+            });
+        });
+    })();
+</script>
+{% endblock %}

@@ -1,0 +1,198 @@
+{# Dashboard de produção — consome /producao/dados (mesma API da tela web) #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Dashboard de Produção{% endblock %}
+{% block appbar_title %}📊 Dashboard{% endblock %}
+{% block appbar_sub %}Indicadores atualizados de produção{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+{% if mensagem_erro %}
+<div class="m-alert m-alert-danger"><div>{{ mensagem_erro }}</div></div>
+{% endif %}
+
+<div class="m-kpi-grid">
+    <div class="m-kpi">
+        <div class="m-kpi-label">Itens</div>
+        <div class="m-kpi-value" id="kpiTotalItens">—</div>
+    </div>
+    <div class="m-kpi m-kpi-success">
+        <div class="m-kpi-label">Produzido</div>
+        <div class="m-kpi-value" id="kpiProduzido">—</div>
+    </div>
+    <div class="m-kpi m-kpi-info">
+        <div class="m-kpi-label">Meta</div>
+        <div class="m-kpi-value" id="kpiMeta">—</div>
+    </div>
+    <div class="m-kpi m-kpi-warning">
+        <div class="m-kpi-label">Faltante</div>
+        <div class="m-kpi-value" id="kpiFaltante">—</div>
+    </div>
+</div>
+
+<div class="m-card">
+    <div class="d-flex justify-content-between align-items-center">
+        <div>
+            <div class="m-kpi-label">Avanço global</div>
+            <strong style="font-size: 1.15rem;" id="kpiPercentual">—</strong>
+        </div>
+        <button class="m-btn m-btn-outline m-btn-sm" type="button" id="btnAtualizarDashboard">🔄 Atualizar</button>
+    </div>
+    <div class="m-progress"><div class="m-progress-fill" id="barraGlobal" style="width: 0%"></div></div>
+    <small class="m-hint" id="dashboardAtualizadoEm"></small>
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">📦 Itens por status</h2>
+    <div class="m-chart-sm"><canvas id="chartStatusOps"></canvas></div>
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">👷 Itens por responsável</h2>
+    <div class="m-chart-sm"><canvas id="chartResponsavel"></canvas></div>
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">🏭 Progresso por item</h2>
+    <div class="m-chart"><canvas id="chartProgresso"></canvas></div>
+</div>
+
+<div class="m-alert m-alert-info" id="dashboardErro" style="display: none;">
+    <div id="dashboardErroTexto">Não foi possível carregar os indicadores.</div>
+</div>
+
+<div class="m-card">
+    <div class="m-btn-row">
+        <a class="m-btn m-btn-secondary" href="{{ url_for('producao') }}">🏭 Produção</a>
+        <a class="m-btn m-btn-secondary" href="{{ url_for('producao_abertas') }}">📦 OPs abertas</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        var dadosUrl = "{{ url_for('producao_dados') }}";
+        var graficos = {};
+
+        function destruir(id) {
+            if (graficos[id]) {
+                graficos[id].destroy();
+                delete graficos[id];
+            }
+        }
+
+        function textoOuTraco(valor) {
+            return valor === null || valor === undefined || valor === "" ? "—" : valor;
+        }
+
+        function render(payload) {
+            var summary = payload.summary || {};
+            document.getElementById("kpiTotalItens").textContent = textoOuTraco(summary.total_itens);
+            document.getElementById("kpiProduzido").textContent = textoOuTraco(summary.total_produzido);
+            document.getElementById("kpiMeta").textContent = textoOuTraco(summary.total_meta);
+            document.getElementById("kpiFaltante").textContent = textoOuTraco(summary.total_faltante);
+            document.getElementById("kpiPercentual").textContent = (summary.percentual_global || 0) + "%";
+
+            var barra = document.getElementById("barraGlobal");
+            barra.style.width = Math.min(summary.percentual_global || 0, 100) + "%";
+            barra.className = "m-progress-fill" + ((summary.percentual_global || 0) >= 100 ? " m-progress-fill-success" : "");
+
+            var agora = new Date();
+            document.getElementById("dashboardAtualizadoEm").textContent =
+                "Atualizado às " + agora.toLocaleTimeString("pt-BR").slice(0, 5);
+
+            var statusCounts = payload.status_counts || {};
+            destruir("status");
+            var elStatus = document.getElementById("chartStatusOps");
+            if (elStatus) {
+                graficos.status = new Chart(elStatus, {
+                    type: "doughnut",
+                    data: {
+                        labels: Object.keys(statusCounts),
+                        datasets: [{
+                            data: Object.values(statusCounts),
+                            backgroundColor: ["#22c55e", "#5468d4", "#f59e0b", "#ef4444"],
+                            borderColor: "#fff",
+                            borderWidth: 2
+                        }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 10 } } } } }
+                });
+            }
+
+            var responsaveis = payload.responsavel_counts || {};
+            destruir("responsavel");
+            var elResp = document.getElementById("chartResponsavel");
+            if (elResp) {
+                var nomes = Object.keys(responsaveis).slice(0, 8);
+                graficos.responsavel = new Chart(elResp, {
+                    type: "bar",
+                    data: {
+                        labels: nomes,
+                        datasets: [{ label: "Itens", data: nomes.map(function (n) { return responsaveis[n]; }), backgroundColor: "#7a5bc2", borderRadius: 6 }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: { y: { ticks: { precision: 0 } } }
+                    }
+                });
+            }
+
+            var itens = (payload.items || []).slice(0, 12);
+            destruir("progresso");
+            var elProg = document.getElementById("chartProgresso");
+            if (elProg) {
+                graficos.progresso = new Chart(elProg, {
+                    type: "bar",
+                    data: {
+                        labels: itens.map(function (i) { return i.nome; }),
+                        datasets: [
+                            { label: "Produzido", data: itens.map(function (i) { return i.produzido; }), backgroundColor: "#22c55e", borderRadius: 4 },
+                            { label: "Faltante", data: itens.map(function (i) { return i.restante; }), backgroundColor: "#e2e8f0", borderRadius: 4 }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        indexAxis: "y",
+                        scales: { x: { stacked: true }, y: { stacked: true, ticks: { font: { size: 9 } } } },
+                        plugins: { legend: { position: "bottom", labels: { boxWidth: 12, font: { size: 10 } } } }
+                    }
+                });
+            }
+        }
+
+        function carregar() {
+            var erro = document.getElementById("dashboardErro");
+            fetch(dadosUrl, { headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" } })
+                .then(function (resp) {
+                    if (!resp.ok) throw new Error("HTTP " + resp.status);
+                    return resp.json();
+                })
+                .then(function (payload) {
+                    erro.style.display = "none";
+                    if (payload && payload.success) {
+                        render(payload);
+                    } else {
+                        throw new Error((payload && payload.message) || "Resposta inválida");
+                    }
+                })
+                .catch(function (e) {
+                    erro.style.display = "flex";
+                    document.getElementById("dashboardErroTexto").textContent =
+                        "Não foi possível carregar os indicadores agora (" + e.message + "). Toque em atualizar.";
+                });
+        }
+
+        document.getElementById("btnAtualizarDashboard").addEventListener("click", carregar);
+        carregar();
+        setInterval(carregar, 60000);
+    })();
+</script>
+{% endblock %}

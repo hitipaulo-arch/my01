@@ -21,7 +21,6 @@ except ImportError:
 
 from flask import (
     Flask,
-    render_template,
     jsonify,
     request,
     redirect,
@@ -51,6 +50,13 @@ from appmodules.services.whatsapp_webhook_service import WhatsAppWebhookService
 from appmodules.routes.auth_routes import auth_bp
 from appmodules.routes.os_routes import os_bp
 from appmodules.routes.centrais_routes import centrais_bp
+from appmodules.mobile import (
+    cache_key_by_mode,
+    install_mobile_middleware,
+    mobile_bp,
+    register_context_processors,
+    render_page,
+)
 from appmodules.repositories import CentraisRepository
 from appmodules.logic import gerar_dados_relatorio
 from appmodules.utils import (
@@ -142,8 +148,19 @@ app.config["webhook_service"] = webhook_service
 @app.before_request
 def check_services_availability():
     """Verifica se os serviços essenciais estão disponíveis e retorna 503 caso contrário."""
+    # O shell do app mobile (manifest, service worker e tela offline) precisa
+    # continuar acessível mesmo com o Sheets fora do ar — assim o PWA instala e
+    # exibe o aviso de indisponibilidade em vez de falhar silenciosamente.
+    recursos_pwa = {
+        "mobile.manifest",
+        "mobile.service_worker",
+        "mobile.offline",
+        "mobile.instalar",
+    }
     if request.endpoint and (
-        request.endpoint.startswith("static") or request.endpoint == "favicon"
+        request.endpoint.startswith("static")
+        or request.endpoint == "favicon"
+        or request.endpoint in recursos_pwa
     ):
         return None
 
@@ -198,6 +215,12 @@ elif webhook_enabled and not webhook_token:
 app.register_blueprint(auth_bp)
 app.register_blueprint(os_bp)
 app.register_blueprint(centrais_bp)
+app.register_blueprint(mobile_bp)
+
+# App mobile (PWA): prefixo /m + helpers de contexto usados pelos templates.
+# As rotas continuam exatamente as mesmas — apenas o template muda no modo app.
+install_mobile_middleware(app)
+register_context_processors(app)
 
 # Aplica rate limiting em rotas críticas de blueprints (DEPOIS do registro)
 limiter = app.config.get("limiter")
@@ -428,7 +451,7 @@ def usuarios_admin():
     usuarios = user_service.get_todos_usuarios() if user_service else []
     usuarios_dict = {u.username: u.to_dict() for u in usuarios}
 
-    return render_template(
+    return render_page(
         "usuarios.html",
         usuarios=usuarios_dict,
         mensagem=mensagem,
@@ -439,7 +462,10 @@ def usuarios_admin():
 @app.route("/relatorios")
 @app.route("/auditoria")
 @admin_required
-@cache.cached(timeout=Config.CACHE.CACHE_DEFAULT_TIMEOUT)
+@cache.cached(
+    timeout=Config.CACHE.CACHE_DEFAULT_TIMEOUT,
+    key_prefix=cache_key_by_mode("view/relatorios"),
+)
 def relatorios():
     """
     Página de relatórios.
@@ -448,10 +474,10 @@ def relatorios():
     try:
         sheets_service = current_app.config.get("sheets_service")
         dados_relatorio = gerar_dados_relatorio(sheets_service)
-        return render_template("relatorios.html", **dados_relatorio)
+        return render_page("relatorios.html", **dados_relatorio)
     except Exception as e:
         logger.error(f"Erro ao carregar relatórios: {e}")
-        return render_template(
+        return render_page(
             "erro.html", mensagem=f"Erro ao carregar relatórios: {e}"
         ), 500
 
@@ -565,7 +591,7 @@ def tempo_por_funcionario():
         t = MetricsService._parse_data_hora(data_txt.replace("-", "/"), "")
         return t.strftime("%Y-%m-%d") if t else data_txt
 
-    return render_template(
+    return render_page(
         "tempo_por_funcionario.html",
         dados=pagina,
         total_registros=total,
@@ -591,14 +617,14 @@ def tempo_por_funcionario():
 def page_not_found(e):
     """Handler para páginas não encontradas."""
     logger.warning(f"Página não encontrada: {request.url}")
-    return render_template("erro.html", mensagem="Página não encontrada."), 404
+    return render_page("erro.html", mensagem="Página não encontrada."), 404
 
 
 @app.errorhandler(500)
 def internal_server_error(e):
     """Handler para erros internos."""
     logger.error(f"Erro interno: {e}", exc_info=True)
-    return render_template("erro.html", mensagem="Erro interno do servidor."), 500
+    return render_page("erro.html", mensagem="Erro interno do servidor."), 500
 
 
 @app.errorhandler(Exception)
@@ -608,7 +634,7 @@ def handle_exception(e):
         return e
 
     logger.error(f"Erro não tratado: {e}", exc_info=True)
-    return render_template("erro.html", mensagem="Ocorreu um erro inesperado."), 500
+    return render_page("erro.html", mensagem="Ocorreu um erro inesperado."), 500
 
 
 def get_nvidia_ai_client():
@@ -711,7 +737,7 @@ def admin_ia():
         if action == "clear_history":
             session["admin_ai_history"] = []
             history = []
-            return render_template(
+            return render_page(
                 "admin_ai.html",
                 pergunta="",
                 resposta="",
@@ -763,7 +789,7 @@ def admin_ia():
                 else:
                     erro = f"Erro ao consultar a IA: {exc}"
 
-    return render_template(
+    return render_page(
         "admin_ai.html",
         pergunta=pergunta,
         resposta=resposta,
@@ -800,7 +826,7 @@ def producao():
     """Página de cadastro e acompanhamento de produção."""
     sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return render_template(
+        return render_page(
             "producao.html",
             itens=[],
             mensagem="Serviço de planilhas indisponível",
@@ -873,12 +899,12 @@ def producao():
         itens_ordenados = sorted(
             itens, key=lambda item: item.get("row_id", 0), reverse=True
         )
-        return render_template(
+        return render_page(
             "producao.html", itens=itens_ordenados, read_only=read_only
         )
     except Exception as e:
         logger.error(f"Erro ao carregar produção: {e}", exc_info=True)
-        return render_template(
+        return render_page(
             "erro.html", mensagem=f"Erro ao processar dados: {e}"
         ), 500
 
@@ -966,7 +992,10 @@ def atualizar_producao(row_id):
 
 @app.route("/producao/dados")
 @admin_required
-@cache.cached(timeout=Config.CACHE.PRODUCAO_CACHE_TTL_SECONDS)
+@cache.cached(
+    timeout=Config.CACHE.PRODUCAO_CACHE_TTL_SECONDS,
+    key_prefix=cache_key_by_mode("view/producao-dados"),
+)
 def producao_dados():
     """Retorna os dados agregados da produção para atualização em tempo real."""
     sheets_service = current_app.config.get("sheets_service")
@@ -1068,7 +1097,7 @@ def producao_abertas():
     """Página que mostra as OPs de produção que não estão concluídas ou bloqueadas."""
     sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return render_template(
+        return render_page(
             "producao_abertas.html",
             itens=[],
             mensagem="Serviço de planilhas indisponível",
@@ -1106,7 +1135,7 @@ def producao_abertas():
             itens_abertos, key=lambda item: item.get("row_id", 0), reverse=True
         )
 
-        return render_template(
+        return render_page(
             "producao_abertas.html",
             itens=itens_ordenados,
             total_ops_abertas=total_ops_abertas,
@@ -1126,11 +1155,11 @@ def dashboard_producao():
     """Exibe o painel visual de produção."""
     sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return render_template(
+        return render_page(
             "dashboard_producao.html", mensagem_erro="Serviço indisponível"
         ), 503
 
-    return render_template("dashboard_producao.html")
+    return render_page("dashboard_producao.html")
 
 
 @app.route("/itens", methods=["GET", "POST"])
@@ -1140,7 +1169,7 @@ def itens():
     """Exibe e cadastra itens com alerta automático de compra."""
     sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return render_template("compras.html", itens=[], read_only=True), 503
+        return render_page("compras.html", itens=[], read_only=True), 503
 
     user_role = _get_current_user_role()
     read_only = user_role != Role.ADMIN.value
@@ -1319,7 +1348,7 @@ def itens():
         total_normais = len(itens_normais)
         total_estoque = sum(i.get("quantidade", 0) for i in (itens_alerta + itens_normais))
 
-        return render_template(
+        return render_page(
             "compras.html",
             itens_alerta=itens_alerta,
             itens_normais=itens_normais,
@@ -1334,7 +1363,7 @@ def itens():
         )
     except Exception as e:
         logger.error(f"Erro ao carregar compras: {e}", exc_info=True)
-        return render_template(
+        return render_page(
             "erro.html", mensagem=f"Erro ao processar dados: {e}"
         ), 500
 
@@ -1413,7 +1442,7 @@ def editar_item(row_id: int):
             flash(f"Erro ao editar item: {e}", "danger")
             return redirect(url_for("editar_item", row_id=row_id))
 
-    return render_template("editar_item.html", item=item, row_id=row_id)
+    return render_page("editar_item.html", item=item, row_id=row_id)
 
 
 @app.route("/itens/<int:row_id>/excluir", methods=["POST"])
@@ -1445,7 +1474,7 @@ def ferramentas():
     """Página de controle de ferramentas."""
     sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return render_template(
+        return render_page(
             "ferramentas.html",
             ferramentas=[],
             mensagem="Serviço de planilhas indisponível",
@@ -1484,7 +1513,7 @@ def ferramentas():
         if flashes:
             tipo_mensagem, mensagem = flashes[0]
 
-    return render_template(
+    return render_page(
         "ferramentas.html",
         ferramentas=get_ferramentas_list(sheets_service),
         mensagem=mensagem,

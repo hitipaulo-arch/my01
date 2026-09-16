@@ -1,0 +1,50 @@
+{# Menu completo do app — equivale ao topo de navegação da versão web #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Menu · Gestão OS{% endblock %}
+{% block appbar_title %}Menu completo{% endblock %}
+{% block appbar_sub %}{{ mobile.modulos|length }} módulos disponíveis{% endblock %}
+
+{% block content %}
+<div class="m-card">
+    <div class="d-flex align-items-center gap-3">
+        <span class="m-tile-icon">{% if mobile.usuario %}👤{% else %}🔓{% endif %}</span>
+        <div class="flex-grow-1">
+            <strong>{{ mobile.usuario or 'Acesso público' }}</strong>
+            <p class="m-item-sub">{{ mobile.role_label }}</p>
+        </div>
+        <span class="m-badge {% if mobile.role_key == 'admin' %}m-badge-danger{% elif mobile.role_key == 'operador' %}m-badge-warning{% elif mobile.role_key == 'visualizador' %}m-badge-info{% else %}m-badge-muted{% endif %}">
+            {{ mobile.role_label }}
+        </span>
+    </div>
+</div>
+
+<div class="m-list">
+    {% for item in mobile.modulos %}
+    <a class="m-item d-flex align-items-center gap-3 text-decoration-none" href="{{ item.url }}">
+        <span class="m-tile-icon">{{ item.icon }}</span>
+        <span class="flex-grow-1">
+            <span class="m-item-title d-block">{{ item.label }}</span>
+            <span class="m-item-sub d-block">{{ item.hint }}</span>
+        </span>
+        <span class="m-item-id">›</span>
+    </a>
+    {% endfor %}
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">Aplicativo</h2>
+    <div class="m-btn-row">
+        <button type="button" class="m-btn m-btn-primary" data-m-install>📲 Instalar app</button>
+        <a class="m-btn m-btn-outline" href="{{ url_for('mobile.instalar') }}">Instruções</a>
+        <a class="m-btn m-btn-secondary" href="{{ desktop_url }}">🖥️ Versão web</a>
+    </div>
+    {% if mobile.logout_url %}
+    <a class="m-btn m-btn-danger m-btn-block mt-3" href="{{ mobile.logout_url }}">Sair da conta</a>
+    {% else %}
+    <a class="m-btn m-btn-primary m-btn-block mt-3" href="{{ url_for('auth.login') }}">🔐 Entrar</a>
+    {% endif %}
+</div>
+
+<p class="m-footer"><span>Paulo Vieira 2025</span></p>
+{% endblock %}
