@@ -146,7 +146,7 @@ os filtros/atalhos do app, o isolamento do cache entre app e web e a renderizaç
 de **todas** as telas no modo app (com serviços simulados), garantindo que a
 versão web permaneça intacta.
 
-Três travas evitam regressões silenciosas:
+As travas que evitam regressões silenciosas:
 
 * **Cobertura de telas** — varre todo `render_page("*.html")` do projeto e exige
   um template mobile equivalente; sem isso uma tela nova volta ao layout desktop
@@ -157,6 +157,11 @@ Três travas evitam regressões silenciosas:
 * **Sintaxe do JavaScript** — roda `node --check` nos arquivos do app e em todo
   `<script>` inline dos templates mobile, pegando erro que quebra a tela no
   celular mas não aparece em teste de renderização.
+* **Service worker** — confere a versão do cache (incremente ao mexer nos assets),
+  o precache dos arquivos do app, a limpeza de caches antigos, o fallback offline
+  e a regra de nunca cachear dados dinâmicos.
+* **Base das telas** — todas as telas do app precisam estender `mobile/_base.html`
+  e as meta tags de instalação (iOS/Android, `viewport-fit=cover`) precisam existir.
 
 > O manifesto PWA é a única exceção ao `*.json` do `.gitignore`
 > (`!static/mobile/manifest.json`), porque é código do projeto, não credencial.

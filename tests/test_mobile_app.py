@@ -777,3 +777,75 @@ class MobileListCounterTests(_StubbedTestCase):
         body = html.get_data(as_text=True)
         self.assertIn("Planilha indisponível no momento", body)
         self.assertIn('id="contadorChamados">0<', body)
+
+
+class MobileServiceWorkerTests(unittest.TestCase):
+    """O worker é o que mantém o app utilizável sem rede."""
+
+    CODIGO = (ROOT / "static" / "mobile" / "service-worker.js").read_text(encoding="utf-8")
+
+    def test_versao_de_cache_declarada(self):
+        import re
+
+        encontrada = re.search(r'CACHE_VERSION\s*=\s*"(gestao-os-v(\d+))"', self.CODIGO)
+        self.assertIsNotNone(encontrada, "CACHE_VERSION ausente")
+        self.assertGreaterEqual(
+            int(encontrada.group(2)), 2, "incremente CACHE_VERSION ao mudar os assets do app"
+        )
+
+    def test_precache_inclui_os_assets_do_app(self):
+        for recurso in (
+            "/static/unified.css",
+            "/static/mobile/mobile.css",
+            "/static/mobile/app.js",
+            "/static/mobile/icons/icon-192.png",
+        ):
+            with self.subTest(recurso=recurso):
+                self.assertIn(recurso, self.CODIGO)
+
+    def test_limpa_caches_antigos_na_ativacao(self):
+        self.assertIn('addEventListener("activate"', self.CODIGO)
+        self.assertIn("caches.delete", self.CODIGO)
+
+    def test_navegacao_tem_fallback_offline(self):
+        self.assertIn("OFFLINE_URL", self.CODIGO)
+        self.assertIn('mode === "navigate"', self.CODIGO)
+
+    def test_dados_dinamicos_nunca_sao_cacheados(self):
+        """Somente GET de estáticos passam pelo cache."""
+
+        self.assertIn('request.method !== "GET"', self.CODIGO)
+
+
+class MobileTemplateBaseTests(unittest.TestCase):
+    """Ganchos de instalação e ergonomia precisam estar em todas as telas."""
+
+    BASE = (ROOT / "templates" / "mobile" / "_base.html").read_text(encoding="utf-8")
+
+    def test_metatags_de_instalacao(self):
+        for trecho in (
+            'name="mobile-web-app-capable"',
+            'name="apple-mobile-web-app-capable"',
+            'name="apple-mobile-web-app-status-bar-style"',
+            'name="apple-mobile-web-app-title"',
+            'rel="manifest"',
+            'rel="apple-touch-icon"',
+            'name="theme-color"',
+        ):
+            with self.subTest(trecho=trecho):
+                self.assertIn(trecho, self.BASE)
+
+    def test_viewport_respeita_area_segura_do_celular(self):
+        self.assertIn("viewport-fit=cover", self.BASE)
+        self.assertIn("width=device-width", self.BASE)
+
+    def test_todas_as_telas_herdam_a_base(self):
+        for arquivo in sorted((ROOT / "templates" / "mobile").glob("*.html")):
+            if arquivo.name.startswith("_") or arquivo.name == "erro.html":
+                continue  # erro.html é usado também pela versão web
+            with self.subTest(template=arquivo.name):
+                self.assertIn(
+                    "mobile/_base.html",
+                    arquivo.read_text(encoding="utf-8"),
+                    f"{arquivo.name} não estende a base do app",
+                )

@@ -8,9 +8,14 @@
        versionados por URL).
    Nada de dados do Google Sheets é armazenado: as respostas dinâmicas passam
    direto pela rede para não exibir informação desatualizada.
+
+   IMPORTANTE: ao alterar app.js, mobile.css, unified.css ou os ícones do app,
+   incremente CACHE_VERSION abaixo. Os assets usam cache primeiro com
+   revalidação em background, então sem o incremento o celular pode rodar uma
+   versão antiga do JS até a segunda visita.
    ========================================================================== */
 
-const CACHE_VERSION = "gestao-os-v1";
+const CACHE_VERSION = "gestao-os-v2";
 const SCOPE = self.registration.scope; // https://host/m/
 const OFFLINE_URL = new URL("offline", SCOPE).toString();
 
