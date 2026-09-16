@@ -122,6 +122,8 @@ Como funciona o reaproveitamento:
   com o passo a passo por SO. No iOS, onde o navegador não emite
   `beforeinstallprompt`, o convite aparece com as instruções do Safari.
 * **Indicador de conexão** e botão “Tentar novamente”.
+* **Sessão expirada** — quando uma chamada AJAX é desviada para o login, o app
+  avisa e retorna para `/m/login?next=<tela atual>`, sem “erro ao atualizar” solto.
 * **Filtros por status em um toque** (OS Abertas e Gerenciar) e contador de itens
   exibidos, além da busca livre por qualquer campo.
 * **Atualização rápida de produção (−1 / ＋1)** no cartão do item, usando o mesmo
@@ -143,6 +145,21 @@ Cobrem o middleware de prefixo, os assets de PWA, o menu por papel do usuário,
 os filtros/atalhos do app, o isolamento do cache entre app e web e a renderização
 de **todas** as telas no modo app (com serviços simulados), garantindo que a
 versão web permaneça intacta.
+
+Três travas evitam regressões silenciosas:
+
+* **Cobertura de telas** — varre todo `render_page("*.html")` do projeto e exige
+  um template mobile equivalente; sem isso uma tela nova volta ao layout desktop
+  dentro do app sem ninguém perceber.
+* **Manifesto versionado** — confere que `static/mobile/manifest.json` não caiu no
+  `*.json` do `.gitignore` (o app deixa de ser instalável sem ele), que as chaves
+  obrigatórias do PWA existem e que cada ícone declarado tem o tamanho correto.
+* **Sintaxe do JavaScript** — roda `node --check` nos arquivos do app e em todo
+  `<script>` inline dos templates mobile, pegando erro que quebra a tela no
+  celular mas não aparece em teste de renderização.
+
+> O manifesto PWA é a única exceção ao `*.json` do `.gitignore`
+> (`!static/mobile/manifest.json`), porque é código do projeto, não credencial.
 
 ---
 

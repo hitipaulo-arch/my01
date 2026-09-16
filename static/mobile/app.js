@@ -243,5 +243,35 @@
         });
     });
 
+    /* ------------------------------------------------- sessão expirada (AJAX)
+       Várias telas postam via fetch (produção, centrais, ferramentas). Quando a
+       sessão expira, o Flask responde com o HTML da tela de login e o usuário
+       via apenas "erro ao atualizar". Aqui detectamos o desvio para o login e
+       levamos de volta à tela de acesso, avisando o motivo. */
+    (function interceptarSessaoExpirada() {
+        if (typeof window.fetch !== "function") return;
+
+        var fetchOriginal = window.fetch;
+        var avisando = false;
+
+        window.fetch = function () {
+            return fetchOriginal.apply(this, arguments).then(function (resp) {
+                var destino = resp.url || "";
+                var expirou =
+                    resp.status === 401 || (resp.redirected && destino.indexOf("/login") > -1);
+
+                if (expirou && !avisando) {
+                    avisando = true;
+                    showToast("Sessão expirada. Faça login novamente.", "warning");
+                    setTimeout(function () {
+                        var atual = encodeURIComponent(window.location.pathname);
+                        window.location.href = PREFIX + "/login?next=" + atual;
+                    }, 1200);
+                }
+                return resp;
+            });
+        };
+    })();
+
     updateConnectivity();
 })();

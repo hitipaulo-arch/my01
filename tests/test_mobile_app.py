@@ -180,6 +180,12 @@ class _StubSheetsService:
             return dict(PRODUCAO_EXEMPLO)
         return None
 
+    def update_producao(self, row_id, row_data):
+        """Registra a escrita para que os testes confiram o que foi enviado."""
+
+        self.ultima_atualizacao = {"row_id": row_id, "row_data": list(row_data)}
+        return True
+
     def get_os_by_row_id(self, row_id):
         return dict(OS_EXEMPLO)
 
@@ -464,3 +470,310 @@ class MobileJavaScriptSyntaxTests(unittest.TestCase):
                     continue
                 with self.subTest(template=arquivo.name, bloco=indice):
                     self._check(js, f"{arquivo.stem}_{indice}")
+
+
+class MobileScreenCoverageTests(unittest.TestCase):
+    """Toda tela chamada por ``render_page`` precisa ter versão mobile.
+
+    Sem esta trava, uma tela nova (ou renomeada) no sistema volta silenciosamente
+    para o layout desktop dentro do app — foi o que aconteceu com
+    ``editar_item.html``.
+    """
+
+    PADROES = (
+        r'render_page\(\s*f?"([^"{}]+\.html)"',
+        r'template_name\s*=\s*f?"([^"{}]+\.html)"',
+    )
+
+    @classmethod
+    def setUpClass(cls):
+        import re
+
+        fontes = [ROOT / "app.py"] + sorted((ROOT / "appmodules").rglob("*.py"))
+        cls.referencias: dict[str, set[str]] = {}
+        for fonte in fontes:
+            texto = fonte.read_text(encoding="utf-8")
+            for padrao in cls.PADROES:
+                for nome in re.findall(padrao, texto):
+                    # render_page("mobile/home.html") já vem com o prefixo.
+                    cls.referencias.setdefault(nome.removeprefix("mobile/"), set()).add(
+                        str(fonte.relative_to(ROOT))
+                    )
+        cls.mobile_dir = ROOT / "templates" / "mobile"
+        cls.desktop_dir = ROOT / "templates"
+
+    def test_nenhuma_tela_fica_sem_versao_mobile(self):
+        faltando = {
+            nome: fontes
+            for nome, fontes in self.referencias.items()
+            if not (self.mobile_dir / nome).exists()
+        }
+        self.assertEqual(
+            faltando,
+            {},
+            "Telas sem template mobile (o app cairia no layout desktop).",
+        )
+
+    def test_varredura_encontrou_as_telas_esperadas(self):
+        """Evita um falso negativo caso os padrões deixem de casar."""
+        esperadas = {
+            "index.html",
+            "os_abertas.html",
+            "gerenciar.html",
+            "editar_item.html",
+            "producao.html",
+            "relatorios.html",
+            "usuarios.html",
+        }
+        self.assertTrue(
+            esperadas.issubset(self.referencias),
+            f"Varredura incompleta, faltaram: {esperadas - set(self.referencias)}",
+        )
+
+    def test_templates_mobile_tem_par_desktop_ou_sao_exclusivos_do_app(self):
+        """Nomes em templates/mobile/ devem existir no desktop ou ser só do app."""
+
+        exclusivos = {"home.html", "instalar.html", "offline.html", "mais.html"}
+        for arquivo in sorted(self.mobile_dir.glob("*.html")):
+            if arquivo.name in exclusivos or arquivo.name.startswith("_"):
+                continue
+            with self.subTest(template=arquivo.name):
+                self.assertTrue(
+                    (self.desktop_dir / arquivo.name).exists(),
+                    f"{arquivo.name} não tem equivalente desktop — nome divergente?",
+                )
+
+
+class MobileManifestTests(unittest.TestCase):
+    """O manifesto é requisito de instalação e não pode ficar fora do Git."""
+
+    CAMINHO = ROOT / "static" / "mobile" / "manifest.json"
+
+    @classmethod
+    def setUpClass(cls):
+        import json
+
+        cls.manifest = json.loads(cls.CAMINHO.read_text(encoding="utf-8"))
+
+    def test_arquivo_e_versionado(self):
+        """``.gitignore`` ignora ``*.json``: o manifesto precisa da exceção."""
+
+        import shutil
+        import subprocess
+
+        if not shutil.which("git") or not (ROOT / ".git").exists():
+            self.skipTest("git não disponível")
+        resultado = subprocess.run(
+            ["git", "check-ignore", "-q", str(self.CAMINHO)],
+            cwd=ROOT,
+            capture_output=True,
+        )
+        self.assertNotEqual(
+            resultado.returncode, 0, "manifest.json está sendo ignorado pelo git"
+        )
+        versionado = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", "static/mobile/manifest.json"],
+            cwd=ROOT,
+            capture_output=True,
+        )
+        self.assertEqual(
+            versionado.returncode, 0, "manifest.json não está versionado no git"
+        )
+
+    def test_chaves_obrigatorias_do_pwa(self):
+        for chave in ("name", "short_name", "start_url", "scope", "display", "icons"):
+            with self.subTest(chave=chave):
+                self.assertIn(chave, self.manifest)
+
+        self.assertEqual(self.manifest["start_url"], "/m/")
+        self.assertEqual(self.manifest["scope"], "/m/")
+        self.assertEqual(self.manifest["display"], "standalone")
+        self.assertEqual(self.manifest["theme_color"], "#5d6bd6")
+
+        tamanhos = {(i.get("sizes"), i.get("purpose", "any")) for i in self.manifest["icons"]}
+        self.assertIn(("192x192", "any"), tamanhos)
+        self.assertIn(("512x512", "any"), tamanhos)
+        self.assertIn(("512x512", "maskable"), tamanhos)
+
+    def test_icones_declarados_existem_e_tem_o_tamanho_correto(self):
+        try:
+            from PIL import Image
+        except ImportError:  # pragma: no cover - Pillow é opcional
+            self.skipTest("Pillow não instalado")
+
+        for icone in self.manifest["icons"]:
+            with self.subTest(icone=icone["src"]):
+                caminho = ROOT / icone["src"].lstrip("/")
+                self.assertTrue(caminho.exists(), f"ícone ausente: {icone['src']}")
+                with Image.open(caminho) as imagem:
+                    largura, altura = imagem.size
+                self.assertEqual(
+                    f"{largura}x{altura}", icone["sizes"], f"tamanho divergente em {icone['src']}"
+                )
+
+    def test_atalhos_apontam_para_rotas_do_app(self):
+        for atalho in self.manifest.get("shortcuts", []):
+            with self.subTest(atalho=atalho.get("short_name")):
+                self.assertTrue(atalho["url"].startswith("/m/"))
+
+    def test_manifesto_servido_e_igual_ao_arquivo(self):
+        import json
+
+        resposta = app_module.app.test_client().get("/m/manifest.webmanifest")
+        self.assertEqual(json.loads(resposta.get_data(as_text=True)), self.manifest)
+
+
+class MobileSessionExpiryTests(unittest.TestCase):
+    """Sessão expirada em chamadas AJAX não pode virar erro genérico na tela."""
+
+    def test_app_js_intercepta_desvio_para_login(self):
+        codigo = (ROOT / "static" / "mobile" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("interceptarSessaoExpirada", codigo)
+        self.assertIn("Sessão expirada", codigo)
+        self.assertIn('resp.redirected && destino.indexOf("/login") > -1', codigo)
+        self.assertIn("window.fetch = function", codigo)
+
+    def test_rota_de_login_aceita_retorno(self):
+        """O aviso manda o usuário para /m/login?next=<tela atual>."""
+
+        resposta = app_module.app.test_client().get("/m/login?next=/m/producao")
+        self.assertEqual(resposta.status_code, 200)
+        body = resposta.get_data(as_text=True)
+        # Usa a tela mobile de login e mantém o destino no formulário.
+        self.assertIn('action="/m/login', body)
+        self.assertIn('name="username"', body)
+        self.assertIn('name="password"', body)
+
+
+class MobileQuickProductionPostTests(_StubbedTestCase):
+    """Fluxo real dos botões −1/＋1: POST no endereço usado pelo app."""
+
+    def _csrf(self, rota="/m/producao"):
+        import re
+
+        body = self.login("admin").get(rota).get_data(as_text=True)
+        return re.search(r'name="csrf_token"\s+value="([^"]+)"', body).group(1)
+
+    def _post(self, row_id, token, quantidade):
+        return self.client.post(
+            f"/m/producao/atualizar/{row_id}",
+            data={
+                "csrf_token": token,
+                "nome_item": PRODUCAO_EXEMPLO["Nome do item"],
+                "codigo_item": PRODUCAO_EXEMPLO["Código"],
+                "mtc_projeto": PRODUCAO_EXEMPLO["Número do projeto MTC"],
+                "quantidade_produzida": str(quantidade),
+                "meta_producao": str(PRODUCAO_EXEMPLO["Meta de produção"]),
+                "status": PRODUCAO_EXEMPLO["Status"],
+                "observacao": PRODUCAO_EXEMPLO["Observação"],
+                "responsavel": PRODUCAO_EXEMPLO["Responsável"],
+                "nova_informacao": "",
+            },
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+
+    def test_atualizacao_rapida_responde_json_e_grava_quantidade(self):
+        import json
+
+        token = self._csrf()
+        resposta = self._post(PRODUCAO_EXEMPLO["row_id"], token, 7)
+
+        self.assertEqual(resposta.status_code, 200, resposta.get_data(as_text=True)[:300])
+        self.assertEqual(resposta.mimetype, "application/json")
+        self.assertTrue(json.loads(resposta.get_data(as_text=True))["success"])
+
+        gravado = self.client.application.config["sheets_service"].ultima_atualizacao
+        self.assertEqual(gravado["row_id"], PRODUCAO_EXEMPLO["row_id"])
+        # Coluna 5 (índice 5) é "Quantidade produzida" na planilha.
+        self.assertEqual(gravado["row_data"][5], "7")
+        self.assertEqual(gravado["row_data"][2], PRODUCAO_EXEMPLO["Nome do item"])
+
+    def test_atualizacao_rapida_sem_csrf_e_bloqueada(self):
+        """O app envia o token do formulário; sem ele a escrita não passa."""
+
+        self.login("admin")
+        resposta = self.client.post(
+            f"/m/producao/atualizar/{PRODUCAO_EXEMPLO['row_id']}",
+            data={"quantidade_produzida": "5"},
+        )
+        self.assertEqual(resposta.status_code, 400, "CSRF deveria bloquear a escrita")
+        self.assertFalse(
+            getattr(self.client.application.config["sheets_service"], "ultima_atualizacao", None),
+            "nada deveria ter sido gravado na planilha",
+        )
+
+    def test_item_inexistente_devolve_json_de_erro(self):
+        import json
+
+        token = self._csrf()
+        resposta = self._post(999999, token, 1)
+        self.assertEqual(resposta.status_code, 404)
+        corpo = json.loads(resposta.get_data(as_text=True))
+        self.assertFalse(corpo["success"])
+        self.assertIn("não encontrado", corpo["message"].lower())
+
+    def test_versao_web_usa_o_mesmo_endpoint(self):
+        """O app não duplica rota: o mesmo POST funciona fora do prefixo /m."""
+
+        import json
+
+        token = self._csrf()
+        resposta = self.client.post(
+            f"/producao/atualizar/{PRODUCAO_EXEMPLO['row_id']}",
+            data={
+                "csrf_token": token,
+                "nome_item": PRODUCAO_EXEMPLO["Nome do item"],
+                "codigo_item": PRODUCAO_EXEMPLO["Código"],
+                "quantidade_produzida": "42",
+            },
+        )
+        self.assertEqual(resposta.status_code, 200, resposta.get_data(as_text=True)[:300])
+        self.assertTrue(json.loads(resposta.get_data(as_text=True))["success"])
+        gravado = self.client.application.config["sheets_service"].ultima_atualizacao
+        self.assertEqual(gravado["row_data"][5], "42")
+        # O GET continua não permitido (rota é de escrita).
+        self.assertEqual(self.client.get("/producao/atualizar/3").status_code, 405)
+
+
+class MobileListCounterTests(_StubbedTestCase):
+    """O contador ao lado dos filtros precisa mostrar o total recebido da rota."""
+
+    def _contador(self, rota):
+        import re
+
+        body = self.login("admin").get(rota).get_data(as_text=True)
+        return re.search(r'id="contadorChamados">([^<]*)<', body).group(1).strip()
+
+    def test_os_abertas_usa_total_chamados_da_rota(self):
+        """``total_chamados`` é fornecido pela rota; sem ele o Jinja renderiza vazio."""
+
+        rota = "/m/os-abertas"
+        esperado = len([o for o in [OS_EXEMPLO] if str(o["Status da OS"]).lower() in {"aberto", "em andamento"}])
+        valor = self._contador(rota)
+        self.assertNotEqual(valor, "", "o contador ficou vazio — variável ausente no contexto")
+        self.assertTrue(valor.isdigit(), f"contador não numérico: {valor!r}")
+        self.assertEqual(int(valor), esperado)
+
+    def test_gerenciar_usa_tamanho_da_lista(self):
+        valor = self._contador("/m/gerenciar")
+        self.assertTrue(valor.isdigit(), f"contador não numérico: {valor!r}")
+        self.assertEqual(int(valor), 1)
+
+    def test_contador_zerado_quando_a_planilha_esta_indisponivel(self):
+        """Planilha fora do ar: a tela avisa o erro e o contador mostra zero."""
+
+        class _Indisponivel(_StubSheetsService):
+            def is_available(self):
+                return False, "Planilha indisponível no momento"
+
+        self.login("admin")
+        app_module.app.config["sheets_service"] = _Indisponivel()
+        try:
+            html = self.client.get("/m/os-abertas")
+        finally:
+            app_module.app.config["sheets_service"] = _StubSheetsService()
+
+        self.assertEqual(html.status_code, 503)
+        body = html.get_data(as_text=True)
+        self.assertIn("Planilha indisponível no momento", body)
+        self.assertIn('id="contadorChamados">0<', body)
