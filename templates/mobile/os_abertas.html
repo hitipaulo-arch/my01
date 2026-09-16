@@ -23,9 +23,26 @@
     </div>
 </div>
 
+<div class="m-chips">
+    <button type="button" class="m-chip m-chip-active" data-m-chip-group="filtro"
+            data-m-chip-filter="#listaOsAbertas .m-item" data-m-chip-value=""
+            data-m-chip-count="#contadorChamados">Todas</button>
+    <button type="button" class="m-chip" data-m-chip-group="filtro"
+            data-m-chip-filter="#listaOsAbertas .m-item" data-m-chip-value="Aberto">Aberto</button>
+    <button type="button" class="m-chip" data-m-chip-group="filtro"
+            data-m-chip-filter="#listaOsAbertas .m-item" data-m-chip-value="Em Andamento">Em andamento</button>
+    <button type="button" class="m-chip" data-m-chip-group="filtro"
+            data-m-chip-filter="#listaOsAbertas .m-item" data-m-chip-value="Urgente">Urgente</button>
+</div>
+
 <div class="m-search">
     <input type="text" class="form-control" placeholder="Filtrar por OS, setor, solicitante…"
            data-m-filter="#listaOsAbertas .m-item" aria-label="Filtrar chamados">
+</div>
+
+<div class="m-section-title">
+    <h2>🟢 Chamados em andamento</h2>
+    <span><span id="contadorChamados">{{ total_chamados }}</span> exibido(s)</span>
 </div>
 
 <div class="m-list" id="listaOsAbertas">

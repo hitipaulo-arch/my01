@@ -26,9 +26,30 @@
     {% endfor %}
 </div>
 
+<div class="m-chips">
+    <button type="button" class="m-chip m-chip-active" data-m-chip-group="status"
+            data-m-chip-filter="#listaChamados .m-item" data-m-chip-value=""
+            data-m-chip-count="#contadorChamados">Todos</button>
+    <button type="button" class="m-chip" data-m-chip-group="status"
+            data-m-chip-filter="#listaChamados .m-item" data-m-chip-value="Aberto">Aberto</button>
+    <button type="button" class="m-chip" data-m-chip-group="status"
+            data-m-chip-filter="#listaChamados .m-item" data-m-chip-value="Em Andamento">Em andamento</button>
+    <button type="button" class="m-chip" data-m-chip-group="status"
+            data-m-chip-filter="#listaChamados .m-item" data-m-chip-value="Aguardando Compra">Aguardando</button>
+    <button type="button" class="m-chip" data-m-chip-group="status"
+            data-m-chip-filter="#listaChamados .m-item" data-m-chip-value="Finalizada">Finalizada</button>
+    <button type="button" class="m-chip" data-m-chip-group="status"
+            data-m-chip-filter="#listaChamados .m-item" data-m-chip-value="Cancelada">Cancelada</button>
+</div>
+
 <div class="m-search">
     <input type="text" class="form-control" placeholder="Filtrar chamados por qualquer campo…"
            data-m-filter="#listaChamados .m-item" aria-label="Filtrar chamados">
+</div>
+
+<div class="m-section-title">
+    <h2>📋 Chamados</h2>
+    <span><span id="contadorChamados">{{ chamados|length }}</span> exibido(s)</span>
 </div>
 
 <div class="m-list" id="listaChamados">
@@ -231,14 +252,15 @@
                         el.value = mapa[chave] === null || mapa[chave] === undefined ? "" : mapa[chave];
                     }
                 });
+                modalEl.dataset.numeroOs = dados["ID"] || dados["row_id"] || "";
                 modal.show();
             });
         });
 
-        // Mantém o título do modal visível com o número da OS.
+        // Mostra o número da OS (não o row_id da planilha) no título do modal.
         modalEl.addEventListener("show.bs.modal", function () {
             var numero = document.getElementById("edit-numero-os");
-            if (numero) numero.textContent = "#" + (document.getElementById("edit-row-id").value || "");
+            if (numero) numero.textContent = "#" + (modalEl.dataset.numeroOs || "");
         });
     })();
 </script>

@@ -172,7 +172,13 @@ class _StubSheetsService:
         return [dict(PRODUCAO_EXEMPLO), dict(ITEM_EXEMPLO)]
 
     def get_producao_by_row_id(self, row_id):
-        return dict(PRODUCAO_EXEMPLO)
+        try:
+            row_id = int(row_id)
+        except (TypeError, ValueError):
+            return None
+        if row_id in {PRODUCAO_EXEMPLO["row_id"], ITEM_EXEMPLO["row_id"]}:
+            return dict(PRODUCAO_EXEMPLO)
+        return None
 
     def get_os_by_row_id(self, row_id):
         return dict(OS_EXEMPLO)
@@ -194,7 +200,10 @@ class _StubSheetsService:
 
 class _StubUserService:
     def get_usuario(self, username):
-        return _StubUsuario()
+        # Devolve o papel da sessão para simular admin/operador/visualizador.
+        from flask import session
+
+        return _StubUsuario(session.get("role") or "admin")
 
     def get_todos_usuarios(self):
         return [_StubUsuario()]
@@ -349,3 +358,109 @@ class MobileCacheIsolationTests(_StubbedTestCase):
 
         self.assertNotIn("m-tabbar", web, "A versão web não deve receber HTML do app")
         self.assertIn("m-tabbar", app_page, "O app não deve receber HTML da versão web")
+
+
+class MobileItemEditTests(_StubbedTestCase):
+    """A tela de edição de item também tem versão mobile (antes caía no desktop)."""
+
+    def test_editar_item_renders_mobile_template(self):
+        self.login("admin")
+        response = self.client.get("/m/itens/5/editar")
+        self.assertIn(response.status_code, {200, 302, 503})
+        body = response.get_data(as_text=True)
+        if response.status_code == 200:
+            self.assertIn("Editar item", body)
+            self.assertIn("m-tabbar", body)
+            self.assertIn('action="/m/itens/5/editar"', body)
+            self.assertIn("data-m-step", body)
+
+    def test_editar_item_redirects_when_item_missing(self):
+        self.login("admin")
+        response = self.client.get("/m/itens/999999/editar")
+        self.assertIn(response.status_code, {302, 404})
+
+
+class MobileFilterAndQuickActionTests(_StubbedTestCase):
+    """Filtros por status e atualização rápida de produção (+1/−1)."""
+
+    def test_status_chips_present_on_lists(self):
+        self.login("admin")
+        for rota, alvo in (
+            ("/m/os-abertas", "#listaOsAbertas .m-item"),
+            ("/m/gerenciar", "#listaChamados .m-item"),
+        ):
+            with self.subTest(rota=rota):
+                body = self.client.get(rota).get_data(as_text=True)
+                self.assertIn("data-m-chip-filter", body)
+                self.assertIn(alvo, body)
+                self.assertIn("m-chip-active", body)
+
+    def test_quick_buttons_available_for_admin_only(self):
+        self.login("admin")
+        admin_body = self.client.get("/m/producao").get_data(as_text=True)
+        self.assertIn('data-m-quick="1"', admin_body)
+        self.assertIn('data-m-quick="-1"', admin_body)
+        self.assertIn("data-m-quick-url", admin_body)
+
+        self.login("operador")
+        operador_body = self.client.get("/m/producao").get_data(as_text=True)
+        self.assertNotIn('data-m-quick="1"', operador_body)
+        self.assertIn("somente visualização", operador_body)
+
+    def test_install_banner_has_dismiss_button(self):
+        body = self.client.get("/m/").get_data(as_text=True)
+        self.assertIn("data-m-install-dismiss", body)
+        self.assertIn("id=\"m-install-banner\"", body)
+
+
+class MobileJavaScriptSyntaxTests(unittest.TestCase):
+    """Verifica a sintaxe do JS do app (pulado quando o node não está instalado).
+
+    Este teste pega erros que os testes de renderização não pegam: scripts
+    inline quebrados por edições em templates não derrubam o HTML, mas quebram
+    o app no celular.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import shutil
+        import subprocess
+
+        if not shutil.which("node"):
+            raise unittest.SkipTest("node não disponível para checagem de sintaxe JS")
+        cls.subprocess = subprocess
+
+    def _check(self, codigo: str, nome: str):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            caminho = Path(tmp) / f"{nome}.js"
+            caminho.write_text(codigo, encoding="utf-8")
+            resultado = self.subprocess.run(
+                ["node", "--check", str(caminho)], capture_output=True, text=True
+            )
+        self.assertEqual(resultado.returncode, 0, f"{nome}: {resultado.stderr[:400]}")
+
+    def test_arquivos_estaticos(self):
+        for nome in ("app.js", "service-worker.js"):
+            with self.subTest(arquivo=nome):
+                caminho = ROOT / "static" / "mobile" / nome
+                self._check(caminho.read_text(encoding="utf-8"), nome.replace(".js", ""))
+
+    def test_scripts_inline_dos_templates(self):
+        import re
+
+        for arquivo in sorted((ROOT / "templates" / "mobile").glob("*.html")):
+            html = arquivo.read_text(encoding="utf-8")
+            blocos = re.findall(
+                r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", html, flags=re.S
+            )
+            for indice, bloco in enumerate(blocos):
+                js = re.sub(r"\{#.*?#\}", "", bloco, flags=re.S)
+                js = re.sub(r"\{%.*?%\}", "", js, flags=re.S)
+                js = re.sub(r"\{\{.*?\}\}", "0", js, flags=re.S)
+                if not js.strip():
+                    continue
+                with self.subTest(template=arquivo.name, bloco=indice):
+                    self._check(js, f"{arquivo.stem}_{indice}")

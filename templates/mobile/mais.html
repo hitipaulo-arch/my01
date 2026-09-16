@@ -19,7 +19,12 @@
     </div>
 </div>
 
-<div class="m-list">
+<div class="m-search">
+    <input type="text" class="form-control" placeholder="Buscar módulo do sistema…"
+           data-m-filter="#menuModulos .m-item" aria-label="Buscar módulo">
+</div>
+
+<div class="m-list" id="menuModulos">
     {% for item in mobile.modulos %}
     <a class="m-item d-flex align-items-center gap-3 text-decoration-none" href="{{ item.url }}">
         <span class="m-tile-icon">{{ item.icon }}</span>

@@ -149,7 +149,7 @@
         <div class="m-item-body">
             <div class="m-item-field">
                 <span>Produzido</span>
-                <span><strong>{{ produzido }}</strong> / meta {{ meta }}</span>
+                <span><strong data-m-produzido>{{ produzido }}</strong> / meta {{ meta }}</span>
             </div>
             <div class="m-item-field">
                 <span>Responsável</span>
@@ -163,7 +163,7 @@
 
         <div class="m-progress">
             <div class="m-progress-fill {% if percentual >= 100 %}m-progress-fill-success{% elif status_item == 'Bloqueado' %}m-progress-fill-danger{% endif %}"
-                 style="width: {{ percentual if percentual <= 100 else 100 }}%"></div>
+                 data-m-barra style="width: {{ percentual if percentual <= 100 else 100 }}%"></div>
         </div>
 
         {% if item.get('Informações adicionais') %}
@@ -172,6 +172,12 @@
 
         {% if not read_only %}
         <div class="m-item-actions">
+            <button type="button" class="m-btn m-btn-outline m-btn-sm" data-m-quick="-1"
+                    data-m-quick-url="{{ url_for('atualizar_producao', row_id=item.row_id) }}"
+                    aria-label="Reduzir uma unidade">−1</button>
+            <button type="button" class="m-btn m-btn-success m-btn-sm" data-m-quick="1"
+                    data-m-quick-url="{{ url_for('atualizar_producao', row_id=item.row_id) }}"
+                    aria-label="Somar uma unidade">＋1</button>
             <button type="button" class="m-btn m-btn-primary m-btn-sm" data-m-editar-producao>✏️ Atualizar</button>
             <form method="POST" action="{{ url_for('excluir_item', row_id=item.row_id) }}"
                   data-m-confirm="Excluir o item {{ item.get('Nome do item', '') }}? Esta ação não pode ser desfeita.">
@@ -291,6 +297,77 @@
             set("edit-informacoes-adicionais", item["Informações adicionais"]);
             set("edit-nova-informacao", "");
         }
+
+        /* Atualização rápida (+1/−1) direto no cartão, usando o mesmo endpoint
+           /producao/atualizar/<id> — sem reabrir o formulário completo. */
+        function tokenCsrf() {
+            var campo = document.querySelector('input[name="csrf_token"]');
+            return campo ? campo.value : "";
+        }
+
+        function enviarQuantidade(url, item, novaQuantidade, card, botoes) {
+            botoes.forEach(function (b) { b.disabled = true; });
+
+            var formData = new FormData();
+            formData.append("csrf_token", tokenCsrf());
+            formData.append("nome_item", item["Nome do item"] || "");
+            formData.append("codigo_item", item["Código"] || "");
+            formData.append("mtc_projeto", item["Número do projeto MTC"] || "");
+            formData.append("quantidade_produzida", String(novaQuantidade));
+            formData.append("meta_producao", String(item["Meta de produção"] || 0));
+            formData.append("status", item["Status"] || "Em andamento");
+            formData.append("observacao", item["Observação"] || "");
+            formData.append("responsavel", item["Responsável"] || "");
+            formData.append("nova_informacao", "");
+
+            return fetch(url, {
+                method: "POST",
+                body: formData,
+                headers: { "X-Requested-With": "XMLHttpRequest" }
+            })
+                .then(function (resp) { return resp.json(); })
+                .then(function (dados) {
+                    if (!dados.success) {
+                        throw new Error(dados.message || "Falha ao atualizar");
+                    }
+                    item["Quantidade produzida"] = String(novaQuantidade);
+                    card.setAttribute("data-item", JSON.stringify(item));
+
+                    var rotulo = card.querySelector("[data-m-producao]");
+                    if (rotulo) rotulo.textContent = String(novaQuantidade);
+
+                    var meta = parseInt(item["Meta de produção"] || 0, 10) || 0;
+                    var percentual = meta ? Math.round((novaQuantidade / meta) * 100) : 0;
+                    var barra = card.querySelector("[data-m-barra]");
+                    if (barra) barra.style.width = Math.min(percentual, 100) + "%";
+
+                    window.mShowToast("Quantidade atualizada para " + novaQuantidade + ".", "success");
+                })
+                .catch(function (erro) {
+                    window.mShowToast("Erro ao atualizar: " + erro.message, "danger");
+                })
+                .finally(function () {
+                    botoes.forEach(function (b) { b.disabled = false; });
+                });
+        }
+
+        document.querySelectorAll("#listaProducao [data-m-quick]").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var card = btn.closest(".m-item");
+                var item = {};
+                try { item = JSON.parse(card.getAttribute("data-item") || "{}"); } catch (e) { item = {}; }
+
+                var passo = parseInt(btn.getAttribute("data-m-quick"), 10) || 0;
+                var atual = parseInt(item["Quantidade produzida"] || 0, 10) || 0;
+                var novo = Math.max(0, atual + passo);
+                if (novo === atual) {
+                    window.mShowToast("A quantidade já está em zero.", "warning");
+                    return;
+                }
+                var botoes = card.querySelectorAll("[data-m-quick]");
+                enviarQuantidade(btn.getAttribute("data-m-quick-url"), item, novo, card, botoes);
+            });
+        });
 
         document.querySelectorAll("#listaProducao [data-m-editar-producao]").forEach(function (btn) {
             btn.addEventListener("click", function () {

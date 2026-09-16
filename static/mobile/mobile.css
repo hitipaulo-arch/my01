@@ -866,16 +866,44 @@ body.m-offline .m-offline-bar {
     display: none;
     align-items: center;
     gap: 10px;
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(var(--m-tabbar-height) + env(safe-area-inset-bottom, 0px) + 12px);
+    z-index: 1044;
     padding: 12px;
     border-radius: var(--m-radius-sm);
-    background: linear-gradient(135deg, rgba(84, 104, 212, 0.12), rgba(122, 91, 194, 0.12));
+    background: rgba(255, 255, 255, 0.98);
     border: 1px dashed rgba(84, 104, 212, 0.45);
+    box-shadow: 0 14px 30px rgba(15, 23, 42, 0.22);
     color: var(--ui-text);
     font-size: 0.8rem;
 }
 
 body.m-can-install #m-install-banner {
     display: flex;
+}
+
+/* Enquanto o convite estiver na tela, esconde o botão flutuante e evita
+   sobreposição com o aviso de "sem conexão". */
+body.m-can-install .m-fab {
+    display: none;
+}
+
+body.m-offline .m-install-banner {
+    display: none;
+}
+
+.m-install-close {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 50%;
+    background: #eef2ff;
+    color: var(--ui-muted);
+    font-size: 0.95rem;
+    line-height: 1;
 }
 
 /* --------------------------------------------------------------------------

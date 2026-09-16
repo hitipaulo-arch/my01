@@ -54,6 +54,7 @@ Todas as telas do sistema, otimizadas para o dedo:
 | Ferramentas | `/m/ferramentas` | Cadastro, status e histórico de eventos |
 | Relatórios | `/m/relatorios` | Indicadores e gráficos de auditoria |
 | Tempo por Funcionário | `/m/tempo-por-funcionario` | Filtros, gráficos, paginação e exportação CSV/XLSX |
+| Editar Item | `/m/itens/<id>/editar` | Nome, código, MTC, estoque (com botões −/＋) e observação |
 | Usuários | `/m/usuarios` | Criar/atualizar/excluir usuários (admin) |
 | IA Admin | `/m/admin/ia` | Chat com resumo do dia e histórico em sessão |
 | Login / Cadastro | `/m/login`, `/m/cadastro` | Mesa sessão e mesmas regras de senha |
@@ -117,8 +118,14 @@ Como funciona o reaproveitamento:
 * **Service worker** — cache do shell e dos assets do app (inclusive CDNs
   versionadas) e tela `/m/offline`; respostas dinâmicas do Sheets nunca são
   cacheadas (evita dado desatualizado).
-* **Banner de instalação** e página `/m/instalar` com o passo a passo por SO.
+* **Banner de instalação** (dispensável, com memória local) e página `/m/instalar`
+  com o passo a passo por SO. No iOS, onde o navegador não emite
+  `beforeinstallprompt`, o convite aparece com as instruções do Safari.
 * **Indicador de conexão** e botão “Tentar novamente”.
+* **Filtros por status em um toque** (OS Abertas e Gerenciar) e contador de itens
+  exibidos, além da busca livre por qualquer campo.
+* **Atualização rápida de produção (−1 / ＋1)** no cartão do item, usando o mesmo
+  endpoint `/producao/atualizar/<id>` — o chão de fábrica atualiza sem abrir formulário.
 * **Ergonomia de celular**: campos com 16px (sem zoom no iOS), alvos de toque
   ≥ 44px, abas fixas com `safe-area-inset`, bottom sheets, filtro instantâneo,
   máscaras de código (`##-##-#####`) e MTC, links `wa.me`.
@@ -132,9 +139,10 @@ Como funciona o reaproveitamento:
 pytest tests/test_mobile_app.py -v
 ```
 
-Cobrem o middleware de prefixo, os assets de PWA, o menu por papel do usuário e
-a renderização de **todas** as telas no modo app (com serviços simulados),
-garantindo que a versão web permaneça intacta.
+Cobrem o middleware de prefixo, os assets de PWA, o menu por papel do usuário,
+os filtros/atalhos do app, o isolamento do cache entre app e web e a renderização
+de **todas** as telas no modo app (com serviços simulados), garantindo que a
+versão web permaneça intacta.
 
 ---
 

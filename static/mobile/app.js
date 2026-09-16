@@ -46,11 +46,21 @@
     /* -------------------------------------------------------- instalar app */
     var deferredPrompt = null;
     var installButtons = document.querySelectorAll("[data-m-install]");
+    var DISMISS_KEY = "gestaoos_install_dismissed";
+
+    function jaInstalado() {
+        return (
+            window.matchMedia("(display-mode: standalone)").matches ||
+            window.navigator.standalone === true
+        );
+    }
 
     window.addEventListener("beforeinstallprompt", function (event) {
         event.preventDefault();
         deferredPrompt = event;
-        document.body.classList.add("m-can-install");
+        if (!localStorage.getItem(DISMISS_KEY)) {
+            document.body.classList.add("m-can-install");
+        }
     });
 
     window.addEventListener("appinstalled", function () {
@@ -58,6 +68,15 @@
         document.body.classList.remove("m-can-install");
         showToast("App instalado na tela inicial 🎉");
     });
+
+    // iOS/Safari não dispara beforeinstallprompt: mostramos o convite com o
+    // passo a passo (Compartilhar → Adicionar à Tela de Início) uma vez.
+    (function conviteIOS() {
+        var ehIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+        if (ehIOS && !jaInstalado() && !localStorage.getItem(DISMISS_KEY)) {
+            document.body.classList.add("m-can-install");
+        }
+    })();
 
     function triggerInstall() {
         if (!deferredPrompt) {
@@ -77,6 +96,18 @@
         btn.addEventListener("click", function (event) {
             event.preventDefault();
             triggerInstall();
+        });
+    });
+
+    document.querySelectorAll("[data-m-install-dismiss]").forEach(function (btn) {
+        btn.addEventListener("click", function (event) {
+            event.preventDefault();
+            document.body.classList.remove("m-can-install");
+            try {
+                localStorage.setItem(DISMISS_KEY, "1");
+            } catch (e) {
+                /* modo privado: ignora */
+            }
         });
     });
 
@@ -150,6 +181,38 @@
                 var texto = (item.textContent || "").toLowerCase();
                 item.style.display = termo === "" || texto.indexOf(termo) > -1 ? "" : "none";
             });
+        });
+    });
+
+    /* --------------------------------------------------- chips de filtro */
+    document.querySelectorAll("[data-m-chip-filter]").forEach(function (chip) {
+        chip.addEventListener("click", function (event) {
+            event.preventDefault();
+
+            var alvoSeletor = chip.getAttribute("data-m-chip-filter");
+            var valor = (chip.getAttribute("data-m-chip-value") || "").toLowerCase().trim();
+            var grupo = chip.getAttribute("data-m-chip-group") || "default";
+            var contadorSeletor = chip.getAttribute("data-m-chip-count");
+
+            document
+                .querySelectorAll('[data-m-chip-group="' + grupo + '"]')
+                .forEach(function (outro) {
+                    outro.classList.remove("m-chip-active");
+                });
+            chip.classList.add("m-chip-active");
+
+            var visiveis = 0;
+            document.querySelectorAll(alvoSeletor).forEach(function (item) {
+                var texto = (item.textContent || "").toLowerCase();
+                var mostrar = valor === "" || texto.indexOf(valor) > -1;
+                item.style.display = mostrar ? "" : "none";
+                if (mostrar) visiveis += 1;
+            });
+
+            if (contadorSeletor) {
+                var contador = document.querySelector(contadorSeletor);
+                if (contador) contador.textContent = String(visiveis);
+            }
         });
     });
 
