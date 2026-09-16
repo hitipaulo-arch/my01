@@ -2,7 +2,6 @@
 
 from flask import (
     Blueprint,
-    render_template,
     request,
     redirect,
     url_for,
@@ -12,6 +11,7 @@ from flask import (
 )
 from appmodules.models import ValidadorUsuario
 from appmodules.models.usuario import Role
+from appmodules.mobile import render_page
 
 auth_bp = Blueprint("auth", __name__)
 
@@ -29,11 +29,11 @@ def login():
         user_service = current_app.config.get("user_service")
         if not user_service:
             flash("Serviço de usuários não disponível.", "danger")
-            return render_template("login.html", erro="Erro interno")
+            return render_page("login.html", erro="Erro interno")
 
         usuario = user_service.get_usuario(username)
         if not usuario:
-            return render_template("login.html", erro="Usuário ou senha inválidos.")
+            return render_page("login.html", erro="Usuário ou senha inválidos.")
 
         # Verifica senha
         if usuario.verificar_senha(password):
@@ -49,9 +49,9 @@ def login():
                 return redirect(url_for("producao"))
             return redirect(url_for("os.homepage"))
 
-        return render_template("login.html", erro="Usuário ou senha inválidos.")
+        return render_page("login.html", erro="Usuário ou senha inválidos.")
 
-    return render_template("login.html")
+    return render_page("login.html")
 
 
 @auth_bp.route("/logout")
@@ -75,15 +75,15 @@ def cadastro():
             username, password, confirm_password
         )
         if not validacao.valido:
-            return render_template("cadastro.html", erro=" ".join(validacao.erros))
+            return render_page("cadastro.html", erro=" ".join(validacao.erros))
 
         user_service = current_app.config.get("user_service")
         if not user_service:
             flash("Serviço de usuários não disponível.", "danger")
-            return render_template("cadastro.html", erro="Erro interno")
+            return render_page("cadastro.html", erro="Erro interno")
 
         if user_service.get_usuario(username):
-            return render_template("cadastro.html", erro="Usuário já existe.")
+            return render_page("cadastro.html", erro="Usuário já existe.")
 
         if user_service.criar_usuario(username, password, Role.VISUALIZADOR.value):
             flash(
@@ -92,6 +92,6 @@ def cadastro():
             )
             return redirect(url_for("auth.login"))
         else:
-            return render_template("cadastro.html", erro="Erro ao criar usuário.")
+            return render_page("cadastro.html", erro="Erro ao criar usuário.")
 
-    return render_template("cadastro.html")
+    return render_page("cadastro.html")

@@ -1,0 +1,74 @@
+{# Consulta pública de status da OS — mesma rota os.consultar_pedido #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Consultar OS{% endblock %}
+{% block appbar_title %}🔍 Consultar OS{% endblock %}
+{% block appbar_sub %}Status pelo número do pedido{% endblock %}
+
+{% block content %}
+<div class="m-card">
+    <form class="m-form" method="POST" action="{{ url_for('os.consultar_pedido') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div class="m-field m-field-required">
+            <label class="m-label" for="numero_pedido">Número do pedido</label>
+            <input type="text" class="form-control" id="numero_pedido" name="numero_pedido"
+                   value="{{ pedido_buscado if pedido_buscado else '' }}"
+                   inputmode="numeric" placeholder="Ex: 123" required>
+            <small>Informe o número exibido na tela de confirmação da abertura.</small>
+        </div>
+        <button class="m-btn m-btn-primary m-btn-block" type="submit">Consultar status</button>
+    </form>
+</div>
+
+{% if resultado %}
+    {% if resultado.erro %}
+    <div class="m-alert m-alert-danger">
+        <div><strong>❌ {{ resultado.erro }}</strong></div>
+    </div>
+    {% else %}
+    <div class="m-card">
+        <div class="m-item-head">
+            <div>
+                <span class="m-item-id">PEDIDO</span>
+                <h2 class="m-item-title">#{{ resultado.id }}</h2>
+            </div>
+            <span class="m-badge
+                {% if resultado.status == 'Finalizada' %}m-badge-success
+                {% elif resultado.status == 'Em Andamento' %}m-badge-primary
+                {% elif resultado.status == 'Aguardando Compra' %}m-badge-warning
+                {% elif resultado.status == 'Cancelada' %}m-badge-danger
+                {% else %}m-badge-muted{% endif %}">
+                {{ resultado.status if resultado.status else 'Aberto' }}
+            </span>
+        </div>
+
+        <div class="m-item-body">
+            <div class="m-item-field">
+                <span>📅 Data da solicitação</span>
+                <span>{{ resultado.data }}</span>
+            </div>
+        </div>
+
+        <div class="m-item-desc">
+            <span class="m-item-id">📝 DESCRIÇÃO</span>
+            <p class="mb-0 mt-1">{{ resultado.descricao }}</p>
+        </div>
+    </div>
+    {% endif %}
+{% endif %}
+
+<div class="m-card">
+    <h2 class="m-kpi-label">Enquanto aguarda</h2>
+    <div class="m-btn-row">
+        <a class="m-btn m-btn-secondary" href="{{ url_for('os.os_abertas') }}">🟢 OS abertas</a>
+        <a class="m-btn m-btn-secondary" href="{{ url_for('mobile.nova_os') }}">📝 Nova OS</a>
+    </div>
+    <small class="m-hint">A tela atualiza automaticamente a cada 30 segundos.</small>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    setTimeout(function () { window.location.reload(); }, 30000);
+</script>
+{% endblock %}

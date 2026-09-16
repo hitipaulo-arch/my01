@@ -14,7 +14,17 @@ from .whatsapp_utils import (
 
 try:
     import pywhatkit as kit
-except ImportError:
+except Exception as _import_error:  # pragma: no cover - depende do ambiente
+    # Além de ImportError, o pywhatkit (via pyautogui/mouseinfo) levanta
+    # KeyError/DisplayConnectionError em servidores sem X11/DISPLAY — como
+    # Render, Docker e CI. Nesses casos o envio automático fica desabilitado.
+    import logging as _logging
+
+    _logging.getLogger(__name__).warning(
+        "pywhatkit indisponível neste ambiente (%s). "
+        "Envio automático via WhatsApp Web desabilitado.",
+        _import_error,
+    )
     kit = None
 
 logger = logging.getLogger(__name__)

@@ -1,0 +1,42 @@
+{# Envio de arquivo de apoio — mesma rota os.upload_documento #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Enviar arquivo{% endblock %}
+{% block appbar_title %}📎 Enviar arquivo{% endblock %}
+{% block appbar_sub %}Documentos de apoio para a equipe{% endblock %}
+
+{% block content %}
+{% if mensagem %}
+<div class="m-alert m-alert-{{ tipo_mensagem if tipo_mensagem in ['success','danger','warning','info'] else 'info' }}">
+    <div>{{ mensagem }}</div>
+</div>
+{% endif %}
+
+<div class="m-card">
+    <form class="m-form" method="POST" action="{{ url_for('os.upload_documento') }}" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+        <div class="m-field m-field-required">
+            <label class="m-label" for="arquivo">Arquivo</label>
+            <input class="form-control" type="file" id="arquivo" name="arquivo"
+                   accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg,.webp,.xlsx,.xls,image/*" required>
+            <small>Formatos: PDF, DOC, DOCX, TXT, PNG, JPG, JPEG, WEBP, XLSX, XLS. Limite de 10 MB.</small>
+        </div>
+
+        <button class="m-btn m-btn-primary m-btn-block" type="submit">Enviar arquivo</button>
+    </form>
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">💡 Dicas para o celular</h2>
+    <ul class="m-item-sub" style="padding-left: 18px; line-height: 1.7;">
+        <li>Você pode tirar uma foto do equipamento e anexar direto da câmera.</li>
+        <li>Fotos grandes podem passar de 10 MB — reduza a resolução se der erro.</li>
+        <li>Informe o número da OS no nome do arquivo (ex.: <code>OS-123-foto.jpg</code>).</li>
+    </ul>
+    <div class="m-btn-row mt-3">
+        <a class="m-btn m-btn-secondary" href="{{ url_for('mobile.nova_os') }}">📝 Nova OS</a>
+        <a class="m-btn m-btn-secondary" href="{{ url_for('os.os_abertas') }}">🟢 OS abertas</a>
+    </div>
+</div>
+{% endblock %}

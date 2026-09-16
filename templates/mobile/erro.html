@@ -1,0 +1,39 @@
+{# Estado de erro / serviço indisponível — usado também pelos error handlers #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Ops! · Gestão OS{% endblock %}
+{% block appbar_title %}⚠️ Algo deu errado{% endblock %}
+{% block appbar_sub %}O app continua disponível{% endblock %}
+
+{% block content %}
+<div class="m-card">
+    <div class="m-state">
+        <span class="m-state-icon">⚠️</span>
+        <h2>Não foi possível concluir</h2>
+        <p>{{ mensagem }}</p>
+        <div class="m-btn-row">
+            <button type="button" class="m-btn m-btn-primary" data-m-reload>🔄 Tentar novamente</button>
+            <a class="m-btn m-btn-secondary" href="{{ url_for('os.homepage') }}">🏠 Início</a>
+        </div>
+    </div>
+</div>
+
+{% if tipo_mensagem == 'warning' %}
+<div class="m-alert m-alert-warning">
+    <div>
+        <strong>Serviço indisponível</strong>
+        O app depende da conexão com o Google Sheets. Se o problema continuar, avise o administrador.
+    </div>
+</div>
+{% endif %}
+
+<div class="m-card">
+    <h2 class="m-kpi-label">Ainda dá para usar</h2>
+    <div class="m-btn-row">
+        <a class="m-btn m-btn-secondary" href="{{ url_for('mobile.nova_os') }}">📝 Nova OS</a>
+        <a class="m-btn m-btn-secondary" href="{{ url_for('os.os_abertas') }}">🟢 OS abertas</a>
+        <a class="m-btn m-btn-secondary" href="{{ url_for('os.consultar_pedido') }}">🔍 Consultar OS</a>
+        <a class="m-btn m-btn-secondary" href="{{ url_for('mobile.mais') }}">☰ Menu</a>
+    </div>
+</div>
+{% endblock %}

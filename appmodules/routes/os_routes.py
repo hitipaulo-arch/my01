@@ -7,7 +7,6 @@ import logging
 from pathlib import Path
 from flask import (
     Blueprint,
-    render_template,
     request,
     redirect,
     url_for,
@@ -19,6 +18,7 @@ import qrcode
 from werkzeug.utils import secure_filename
 from appmodules.models import OrdemServico, ValidadorOS
 from appmodules.services import NotificationService
+from appmodules.mobile import is_mobile_request, render_page
 from appmodules.utils import admin_required, render_route_error
 
 logger = logging.getLogger(__name__)
@@ -67,8 +67,14 @@ def _extensao_permitida(filename: str) -> bool:
 
 @os_bp.route("/")
 def homepage():
-    """Exibe a página inicial com o formulário."""
-    return render_template("index.html")
+    """Exibe a página inicial com o formulário.
+
+    No modo aplicativo (prefixo ``/m``) o início é um hub com os módulos
+    liberados para o perfil; o formulário continua em ``/m/nova-os``.
+    """
+    if is_mobile_request():
+        return render_page("mobile/home.html")
+    return render_page("index.html")
 
 
 def _gerar_qr_buffer(formato: str = "PNG"):
@@ -121,20 +127,20 @@ def criar_os():
     sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
         logger.error("Sheets service não inicializado")
-        return render_template(
+        return render_page(
             "erro.html", mensagem="Serviço de planilhas indisponível"
         ), 503
 
     disponivel, erro_msg = sheets_service.is_available()
     if not disponivel:
         logger.error(f"Tentativa de envio sem sheet disponível: {erro_msg}")
-        return render_template("erro.html", mensagem=erro_msg), 503
+        return render_page("erro.html", mensagem=erro_msg), 503
 
     # Valida dados
     validacao = ValidadorOS.validar_formulario(request.form)
     if not validacao.valido:
         logger.warning(f"Validação falhou: {validacao.erros}")
-        return render_template(
+        return render_page(
             "index.html", erros=validacao.erros, form_data=request.form
         ), 400
 
@@ -148,7 +154,7 @@ def criar_os():
 
         # Salva no Sheets
         if not sheets_service.add_os(row_data):
-            return render_template(
+            return render_page(
                 "erro.html", mensagem="Erro ao salvar OS. Por favor, tente novamente."
             ), 500
 
@@ -171,7 +177,7 @@ def criar_os():
         except Exception as e:
             logger.error(f"Erro ao notificar (OS #{numero_pedido}): {e}")
 
-        return render_template(
+        return render_page(
             "sucesso.html", nome=os_data.solicitante, os_numero=numero_pedido
         )
 
@@ -181,10 +187,10 @@ def criar_os():
             os.getenv("APP_ENV", os.getenv("FLASK_ENV", "production")).strip().lower()
             == "production"
         ):
-            return render_template(
+            return render_page(
                 "erro.html", mensagem="Erro ao processar sua solicitação"
             ), 500
-        return render_template(
+        return render_page(
             "erro.html", mensagem=f"Erro ao salvar seu requerimento: {e}"
         ), 500
 
@@ -195,7 +201,7 @@ def gerenciar():
     """Exibe página de gerenciamento de OS."""
     sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return render_template(
+        return render_page(
             "gerenciar.html",
             chamados=[],
             current_sort="Carimbo de data/hora",
@@ -205,7 +211,7 @@ def gerenciar():
 
     disponivel, erro_msg = sheets_service.is_available()
     if not disponivel:
-        return render_template(
+        return render_page(
             "gerenciar.html",
             chamados=[],
             current_sort="Carimbo de data/hora",
@@ -232,7 +238,7 @@ def gerenciar():
 
         chamados_ordenados = sorted(chamados, key=sort_key, reverse=(order == "desc"))
 
-        return render_template(
+        return render_page(
             "gerenciar.html",
             chamados=chamados_ordenados,
             current_sort=sort_by,
@@ -244,10 +250,10 @@ def gerenciar():
             os.getenv("APP_ENV", os.getenv("FLASK_ENV", "production")).strip().lower()
             == "production"
         ):
-            return render_template(
+            return render_page(
                 "erro.html", mensagem="Erro ao processar sua solicitação"
             ), 500
-        return render_template(
+        return render_page(
             "erro.html", mensagem=f"Erro ao processar dados: {e}"
         ), 500
 
@@ -287,7 +293,7 @@ def os_abertas():
 
     sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return render_template(
+        return render_page(
             "os_abertas.html",
             chamados=[],
             total_chamados=0,
@@ -297,7 +303,7 @@ def os_abertas():
 
     disponivel, erro_msg = sheets_service.is_available()
     if not disponivel:
-        return render_template(
+        return render_page(
             "os_abertas.html",
             chamados=[],
             total_chamados=0,
@@ -367,7 +373,7 @@ def os_abertas():
 
         chamados_publicos = sorted(chamados_publicos, key=sort_key, reverse=True)
 
-        return render_template(
+        return render_page(
             "os_abertas.html",
             chamados=chamados_publicos,
             total_chamados=len(chamados_publicos),
@@ -393,13 +399,13 @@ def atualizar_chamado():
     """Atualiza uma OS."""
     sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return render_template(
+        return render_page(
             "erro.html", mensagem="Serviço de planilhas indisponível"
         ), 503
 
     disponivel, erro_msg = sheets_service.is_available()
     if not disponivel:
-        return render_template("erro.html", mensagem=erro_msg), 503
+        return render_page("erro.html", mensagem=erro_msg), 503
 
     try:
         # Debug: log dos dados recebidos
@@ -408,18 +414,18 @@ def atualizar_chamado():
         validacao = ValidadorOS.validar_atualizacao(request.form)
         if not validacao.valido:
             logger.warning(f"Validação falhou: {validacao.erros}")
-            return render_template("erro.html", mensagem=" ".join(validacao.erros)), 400
+            return render_page("erro.html", mensagem=" ".join(validacao.erros)), 400
 
         try:
             row_id = int(request.form.get("row_id", "").strip())
         except (TypeError, ValueError):
-            return render_template("erro.html", mensagem="ID da linha inválido"), 400
+            return render_page("erro.html", mensagem="ID da linha inválido"), 400
 
         # Busca dados originais da linha
         os_original = sheets_service.get_os_by_row_id(row_id)
 
         if not os_original:
-            return render_template("erro.html", mensagem="OS não encontrada"), 404
+            return render_page("erro.html", mensagem="OS não encontrada"), 404
 
         solicitante = _valor_form_ou_original(
             request.form.get("nome_solicitante", ""),
@@ -576,7 +582,7 @@ def atualizar_chamado():
         ]
 
         if not sheets_service.update_os(row_id, linha_atualizada):
-            return render_template("erro.html", mensagem="Erro ao atualizar OS"), 500
+            return render_page("erro.html", mensagem="Erro ao atualizar OS"), 500
 
         logger.info(f"OS (linha {row_id}) atualizada com status: {status_os}")
 
@@ -618,10 +624,10 @@ def atualizar_chamado():
             os.getenv("APP_ENV", os.getenv("FLASK_ENV", "production")).strip().lower()
             == "production"
         ):
-            return render_template(
+            return render_page(
                 "erro.html", mensagem="Erro ao processar sua solicitação"
             ), 500
-        return render_template("erro.html", mensagem=f"Erro ao atualizar: {e}"), 500
+        return render_page("erro.html", mensagem=f"Erro ao atualizar: {e}"), 500
 
 
 @os_bp.route("/consultar", methods=["GET", "POST"])
@@ -629,7 +635,7 @@ def consultar_pedido():
     """Página pública para consultar status de OS."""
     sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return render_template(
+        return render_page(
             "consultar.html",
             resultado={"erro": "Serviço de planilhas indisponível"},
             pedido_buscado=None,
@@ -637,7 +643,7 @@ def consultar_pedido():
 
     disponivel, erro_msg = sheets_service.is_available()
     if not disponivel:
-        return render_template(
+        return render_page(
             "consultar.html", resultado={"erro": erro_msg}, pedido_buscado=None
         )
 
@@ -668,7 +674,7 @@ def consultar_pedido():
             logger.error(f"Erro ao buscar pedido: {e}")
             resultado = {"erro": "Ocorreu um erro ao consultar o pedido."}
 
-    return render_template(
+    return render_page(
         "consultar.html", resultado=resultado, pedido_buscado=pedido_buscado
     )
 
@@ -683,7 +689,7 @@ def upload_documento():
         if request.content_length and request.content_length > MAX_UPLOAD_SIZE_BYTES:
             mensagem = "Arquivo muito grande. Limite máximo de 10 MB."
             tipo_mensagem = "danger"
-            return render_template(
+            return render_page(
                 "upload_arquivo.html", mensagem=mensagem, tipo_mensagem=tipo_mensagem
             ), 400
 
@@ -691,14 +697,14 @@ def upload_documento():
         if not file or not file.filename:
             mensagem = "Selecione um arquivo para enviar."
             tipo_mensagem = "danger"
-            return render_template(
+            return render_page(
                 "upload_arquivo.html", mensagem=mensagem, tipo_mensagem=tipo_mensagem
             ), 400
 
         if not _extensao_permitida(file.filename):
             mensagem = "Formato não permitido. Use: PDF, DOC, DOCX, TXT, PNG, JPG, JPEG, WEBP, XLSX ou XLS."
             tipo_mensagem = "danger"
-            return render_template(
+            return render_page(
                 "upload_arquivo.html", mensagem=mensagem, tipo_mensagem=tipo_mensagem
             ), 400
 
@@ -716,18 +722,18 @@ def upload_documento():
 
             mensagem = "Arquivo enviado com sucesso!"
             tipo_mensagem = "success"
-            return render_template(
+            return render_page(
                 "upload_arquivo.html", mensagem=mensagem, tipo_mensagem=tipo_mensagem
             )
         except Exception as e:
             logger.error("Erro ao salvar arquivo enviado: %s", e, exc_info=True)
             mensagem = "Não foi possível enviar o arquivo agora. Tente novamente."
             tipo_mensagem = "danger"
-            return render_template(
+            return render_page(
                 "upload_arquivo.html", mensagem=mensagem, tipo_mensagem=tipo_mensagem
             ), 500
 
-    return render_template(
+    return render_page(
         "upload_arquivo.html", mensagem=mensagem, tipo_mensagem=tipo_mensagem
     )
 

@@ -1,0 +1,89 @@
+{# Gestão de usuários — mesma rota /usuarios (ação upsert/delete via POST) #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Usuários{% endblock %}
+{% block appbar_title %}👥 Usuários{% endblock %}
+{% block appbar_sub %}{{ usuarios|length }} usuário(s) cadastrado(s){% endblock %}
+
+{% block content %}
+{% if mensagem %}
+<div class="m-alert m-alert-{{ tipo_mensagem or 'success' }}"><div>{{ mensagem }}</div></div>
+{% endif %}
+
+<div class="m-card">
+    <h2 class="m-kpi-label">➕ Criar ou atualizar usuário</h2>
+    <form class="m-form" method="POST" action="{{ url_for('usuarios_admin') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="acao" value="upsert">
+        <div class="m-field m-field-required">
+            <label class="m-label" for="username">Usuário</label>
+            <input type="text" class="form-control" id="username" name="username"
+                   minlength="3" autocapitalize="none" autocomplete="off" placeholder="Ex: joao" required>
+        </div>
+        <div class="m-field m-field-required">
+            <label class="m-label" for="senha">Senha</label>
+            <input type="password" class="form-control" id="senha" name="senha"
+                   minlength="12" autocomplete="new-password" placeholder="Mínimo 12 caracteres" required>
+            <small>O sistema exige senha com pelo menos 12 caracteres.</small>
+        </div>
+        <div class="m-field">
+            <label class="m-label" for="role">Perfil (role)</label>
+            <select class="form-select" id="role" name="role">
+                <option value="admin">admin — acesso total</option>
+                <option value="operador">operador — produção e itens (sem edição de compras)</option>
+                <option value="visualizador">visualizador — somente leitura</option>
+            </select>
+        </div>
+        <button type="submit" class="m-btn m-btn-success m-btn-block">💾 Salvar usuário</button>
+    </form>
+</div>
+
+<div class="m-search">
+    <input type="text" class="form-control" placeholder="Filtrar usuários…"
+           data-m-filter="#listaUsuariosMobile .m-item" aria-label="Filtrar usuários">
+</div>
+
+<div class="m-list" id="listaUsuariosMobile">
+    {% for uname, dados in usuarios.items() %}
+    <div class="m-item">
+        <div class="m-item-head">
+            <div>
+                <span class="m-item-id">USUÁRIO</span>
+                <h2 class="m-item-title">{{ uname }}</h2>
+                <p class="m-item-sub">Cadastro: {{ dados.data_cadastro or '—' }}</p>
+            </div>
+            <div class="m-badges">
+                <span class="m-badge
+                    {% if dados.role == 'admin' %}m-badge-danger
+                    {% elif dados.role == 'operador' %}m-badge-warning
+                    {% else %}m-badge-info{% endif %}">
+                    {{ dados.role if dados.role else 'admin' }}
+                </span>
+            </div>
+        </div>
+        <div class="m-item-actions">
+            <form method="POST" action="{{ url_for('usuarios_admin') }}"
+                  data-m-confirm="Deseja realmente excluir o usuário {{ uname }}?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <input type="hidden" name="acao" value="delete">
+                <input type="hidden" name="username" value="{{ uname }}">
+                <button type="submit" class="m-btn m-btn-danger m-btn-sm">🗑️ Excluir</button>
+            </form>
+        </div>
+    </div>
+    {% else %}
+    <div class="m-card m-empty">
+        <span class="m-empty-icon">👥</span>
+        Nenhum usuário cadastrado. Crie o primeiro acima.
+    </div>
+    {% endfor %}
+</div>
+
+<div class="m-alert m-alert-warning">
+    <div>
+        <strong>Atenção</strong>
+        Alterar a senha de um usuário existente não é possível por esta tela — crie o usuário
+        novamente com a nova senha ou use a aba “Usuários” da planilha.
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,128 @@
+{# Itens / Compras — alerta de reposição (mesma rota /itens e /compras) #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Itens e Compras{% endblock %}
+{% block appbar_title %}🧰 Itens / Compras{% endblock %}
+{% block appbar_sub %}Alerta automático de reposição{% endblock %}
+
+{% block content %}
+{% if read_only %}
+<div class="m-alert m-alert-warning"><div>👀 Seu perfil tem acesso somente de visualização nesta página.</div></div>
+{% endif %}
+
+<div class="m-kpi-grid">
+    <div class="m-kpi m-kpi-danger">
+        <div class="m-kpi-label">Precisa comprar</div>
+        <div class="m-kpi-value">{{ stats.total_alerta if stats else 0 }}</div>
+        <span class="m-kpi-hint">no limite de {{ stats.threshold_default if stats else 0 }} un.</span>
+    </div>
+    <div class="m-kpi m-kpi-success">
+        <div class="m-kpi-label">Estoque OK</div>
+        <div class="m-kpi-value">{{ stats.total_normais if stats else 0 }}</div>
+        <span class="m-kpi-hint">acima do limite</span>
+    </div>
+    <div class="m-kpi">
+        <div class="m-kpi-label">Total de itens</div>
+        <div class="m-kpi-value">{{ stats.total_itens if stats else 0 }}</div>
+    </div>
+    <div class="m-kpi m-kpi-info">
+        <div class="m-kpi-label">Unidades</div>
+        <div class="m-kpi-value">{{ stats.total_estoque if stats else 0 }}</div>
+        <span class="m-kpi-hint">somatório do estoque</span>
+    </div>
+</div>
+
+{% if not read_only %}
+<details class="m-card">
+    <summary style="font-weight: 700; cursor: pointer;">➕ Cadastrar novo item</summary>
+    <form class="m-form mt-3" method="POST" action="{{ url_for('itens') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div class="m-field m-field-required">
+            <label class="m-label" for="nome_item">Nome do item</label>
+            <input type="text" class="form-control" id="nome_item" name="nome_item" required>
+        </div>
+        <div class="m-grid-2">
+            <div class="m-field m-field-required">
+                <label class="m-label" for="codigo_item">Código</label>
+                <input type="text" class="form-control js-codigo-code" id="codigo_item" name="codigo_item"
+                       placeholder="12-34-56789" inputmode="numeric" required>
+            </div>
+            <div class="m-field">
+                <label class="m-label" for="mtc_projeto">MTC</label>
+                <input type="text" class="form-control js-mtc-code" id="mtc_projeto" name="mtc_projeto" maxlength="4">
+            </div>
+        </div>
+        <div class="m-field m-field-required">
+            <label class="m-label" for="quantidade">Quantidade em estoque</label>
+            <input type="number" class="form-control" id="quantidade" name="quantidade" min="0"
+                   value="0" inputmode="numeric" required>
+        </div>
+        <div class="m-field">
+            <label class="m-label" for="observacao">Observação</label>
+            <input type="text" class="form-control" id="observacao" name="observacao">
+        </div>
+        <button type="submit" class="m-btn m-btn-success m-btn-block">💾 Salvar item</button>
+    </form>
+</details>
+{% endif %}
+
+<div class="m-search">
+    <input type="text" class="form-control" placeholder="Filtrar itens por nome, código, MTC…"
+           data-m-filter="#listaCompras .m-item" aria-label="Filtrar itens">
+</div>
+
+<div class="m-list" id="listaCompras">
+    {% for item in itens_alerta %}
+    <div class="m-item" style="border-left: 4px solid #dc2626;">
+        <div class="m-item-head">
+            <div>
+                <span class="m-item-id">🚨 COMPRAR · {{ item.codigo_item }}</span>
+                <h2 class="m-item-title">{{ item.nome_item }}</h2>
+                <p class="m-item-sub">MTC {{ item.mtc_projeto or '-' }} · limite {{ item.threshold }} un.</p>
+            </div>
+            <div class="m-badges">
+                <span class="m-badge m-badge-danger">{{ item.quantidade }} un.</span>
+            </div>
+        </div>
+        <div class="m-item-actions">
+            <a class="m-btn m-btn-primary m-btn-sm" href="{{ url_for('editar_item', row_id=item.row_id) }}">✏️ Editar</a>
+            <form method="POST" action="{{ url_for('excluir_item', row_id=item.row_id) }}"
+                  data-m-confirm="Excluir o item {{ item.nome_item }}?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="m-btn m-btn-danger m-btn-sm">🗑️ Excluir</button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+
+    {% for item in itens_normais %}
+    <div class="m-item">
+        <div class="m-item-head">
+            <div>
+                <span class="m-item-id">{{ item.codigo_item }}</span>
+                <h2 class="m-item-title">{{ item.nome_item }}</h2>
+                <p class="m-item-sub">MTC {{ item.mtc_projeto or '-' }} · limite {{ item.threshold }} un.</p>
+            </div>
+            <div class="m-badges">
+                <span class="m-badge m-badge-success">{{ item.quantidade }} un.</span>
+            </div>
+        </div>
+        <div class="m-item-actions">
+            <a class="m-btn m-btn-primary m-btn-sm" href="{{ url_for('editar_item', row_id=item.row_id) }}">✏️ Editar</a>
+            <form method="POST" action="{{ url_for('excluir_item', row_id=item.row_id) }}"
+                  data-m-confirm="Excluir o item {{ item.nome_item }}?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <button type="submit" class="m-btn m-btn-danger m-btn-sm">🗑️ Excluir</button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+
+    {% if not itens_alerta and not itens_normais %}
+    <div class="m-card m-empty">
+        <span class="m-empty-icon">🧰</span>
+        Nenhum item cadastrado. Cadastre itens para ativar o alerta de compra.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

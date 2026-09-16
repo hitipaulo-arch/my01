@@ -1,0 +1,52 @@
+{# IA do administrador — mesma rota /admin/ia e mesmo histórico de sessão #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}IA Admin{% endblock %}
+{% block appbar_title %}🤖 IA Admin{% endblock %}
+{% block appbar_sub %}Resumo e respostas sobre a operação{% endblock %}
+
+{% block content %}
+{% if erro %}
+<div class="m-alert m-alert-danger"><div style="white-space: pre-wrap;">{{ erro }}</div></div>
+{% endif %}
+
+<div class="m-card">
+    <form class="m-form" method="POST" action="{{ url_for('admin_ia') }}" id="adminAiForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div class="m-field">
+            <label class="m-label" for="q">Mensagem</label>
+            <textarea class="form-control" id="q" name="q" rows="4"
+                      placeholder="Ex: Me dê um resumo do estoque, o que está em atraso ou como está a produção do mês…">{{ pergunta or '' }}</textarea>
+        </div>
+        <div class="m-btn-row">
+            <button type="submit" name="action" value="send" class="m-btn m-btn-primary">🔎 Enviar</button>
+        </div>
+        <div class="m-btn-row">
+            <button type="submit" name="action" value="summary" class="m-btn m-btn-success m-btn-sm">📊 Resumo do dia</button>
+            <button type="submit" name="action" value="clear_history" class="m-btn m-btn-secondary m-btn-sm">🧹 Limpar conversa</button>
+        </div>
+    </form>
+</div>
+
+<div class="m-list">
+    {% for item in history %}
+    <div class="m-item" {% if item.role == 'assistant' %}style="border-left: 4px solid #22c55e;"{% else %}style="border-left: 4px solid var(--ui-accent);"{% endif %}>
+        <span class="m-item-id">{{ '👤 VOCÊ' if item.role == 'user' else '🤖 IA' }}</span>
+        <p class="m-item-desc mb-0" style="white-space: pre-wrap;">{{ item.content }}</p>
+    </div>
+    {% else %}
+    <div class="m-card m-empty">
+        <span class="m-empty-icon">🤖</span>
+        Nenhuma conversa ainda. Faça uma pergunta ou peça o resumo do dia.
+    </div>
+    {% endfor %}
+</div>
+
+<div class="m-alert m-alert-info">
+    <div>
+        <strong>Como funciona</strong>
+        A IA recebe um resumo dos dados (produção, itens e status) antes de responder.
+        A chave <code>NVIDIA_API_KEY</code> precisa estar configurada no servidor.
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,117 @@
+{# Home do aplicativo — espelha o menu da versão web, em formato de app #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Início · Gestão OS{% endblock %}
+{% block appbar_title %}Gestão de OS{% endblock %}
+{% block appbar_sub %}Aplicativo · {{ mobile.role_label }}{% endblock %}
+
+{% block content %}
+<section class="m-hero">
+    <h1>Olá{% if mobile.usuario %}, {{ mobile.usuario }}{% endif %} 👋</h1>
+    <p>
+        {% if mobile.usuario %}
+        Você está no app de gestão de ordens de serviço. Todos os módulos liberados
+        para o seu perfil estão abaixo.
+        {% else %}
+        Bem-vindo! Abra uma ordem de serviço, acompanhe os chamados em andamento ou
+        consulte o status de um pedido.
+        {% endif %}
+    </p>
+    <div class="m-hero-badges">
+        <span class="m-pill">🏷️ {{ mobile.role_label }}</span>
+        <span class="m-pill" id="m-hero-status">📶 Verificando conexão…</span>
+    </div>
+</section>
+
+{% if mobile.role_key == 'publico' %}
+<div class="m-card">
+    <div class="m-state">
+        <span class="m-state-icon">🔐</span>
+        <h2>Área da equipe</h2>
+        <p>Entre com seu usuário para acessar produção, centrais, ferramentas e relatórios.</p>
+        <div class="m-btn-row">
+            <a class="m-btn m-btn-primary" href="{{ url_for('auth.login') }}">Entrar</a>
+            <a class="m-btn m-btn-secondary" href="{{ url_for('auth.cadastro') }}">Criar conta</a>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="m-section-title">
+    <h2>⚡ Acesso rápido</h2>
+</div>
+<div class="m-tiles">
+    {% for item in mobile.modulos[:6] %}
+    <a class="m-tile" href="{{ item.url }}">
+        <span class="m-tile-icon">{{ item.icon }}</span>
+        <span class="m-tile-label">{{ item.label }}</span>
+        <span class="m-tile-hint">{{ item.hint }}</span>
+    </a>
+    {% endfor %}
+</div>
+
+<div class="m-section-title">
+    <h2>🧭 Todos os módulos</h2>
+    <a href="{{ url_for('mobile.mais') }}">ver tudo</a>
+</div>
+<div class="m-list">
+    {% for item in mobile.modulos[6:] %}
+    <a class="m-item d-flex align-items-center gap-3 text-decoration-none" href="{{ item.url }}">
+        <span class="m-tile-icon">{{ item.icon }}</span>
+        <span class="flex-grow-1">
+            <span class="m-item-title">{{ item.label }}</span>
+            <span class="m-item-sub d-block">{{ item.hint }}</span>
+        </span>
+        <span class="m-item-id">›</span>
+    </a>
+    {% else %}
+    <div class="m-item m-empty">Nenhum módulo adicional para este perfil.</div>
+    {% endfor %}
+</div>
+
+<div class="m-card">
+    <div class="d-flex align-items-start gap-3">
+        <span class="m-tile-icon">📲</span>
+        <div class="flex-grow-1">
+            <strong>Instalar como aplicativo</strong>
+            <p class="m-item-sub">Adicione à tela inicial para abrir em tela cheia, com ícone próprio e acesso offline.</p>
+        </div>
+    </div>
+    <div class="m-btn-row mt-3">
+        <button type="button" class="m-btn m-btn-primary" data-m-install>Instalar agora</button>
+        <a class="m-btn m-btn-outline" href="{{ url_for('mobile.instalar') }}">Como instalar</a>
+    </div>
+</div>
+
+{% if mobile.usuario %}
+<div class="m-card">
+    <div class="m-btn-row">
+        <a class="m-btn m-btn-secondary" href="{{ url_for('os.gerenciar') }}">📋 Gerenciar OS</a>
+        <a class="m-btn m-btn-secondary" href="{{ url_for('mobile.mais') }}">☰ Menu completo</a>
+    </div>
+    {% if mobile.logout_url %}
+    <a class="m-btn m-btn-danger m-btn-block mt-3" href="{{ mobile.logout_url }}">Sair da conta</a>
+    {% endif %}
+</div>
+{% endif %}
+
+<p class="m-footer">
+    Sistema de Ordens de Serviço · {{ is_mobile_app and 'modo aplicativo' or 'modo web' }}
+</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        var el = document.getElementById("m-hero-status");
+        if (!el) return;
+        function refresh() {
+            var online = navigator.onLine;
+            el.textContent = online ? "📶 Online" : "📴 Offline";
+        }
+        refresh();
+        window.addEventListener("online", refresh);
+        window.addEventListener("offline", refresh);
+    })();
+</script>
+{% endblock %}

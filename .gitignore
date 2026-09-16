@@ -38,6 +38,10 @@ instance/
 credentials.json
 *.json
 
+# Exceção: manifesto do app mobile é código do projeto (não é credencial nem
+# dado local). Sem ele o PWA não é instalável — precisa ser versionado.
+!static/mobile/manifest.json
+
 # IDE
 .vscode/
 .idea/

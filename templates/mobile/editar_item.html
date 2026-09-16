@@ -1,0 +1,118 @@
+{# Edição de item de estoque/compras — mesma rota /itens/<id>/editar #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Editar item{% endblock %}
+{% block appbar_title %}✏️ Editar item{% endblock %}
+{% block appbar_sub %}{{ item.get('Nome do item', '') | truncate(28) }}{% endblock %}
+
+{% block content %}
+<div class="m-card">
+    <div class="m-item-head mb-3">
+        <div>
+            <span class="m-item-id">ITEM #{{ row_id }}</span>
+            <h2 class="m-item-title">{{ item.get('Nome do item', '-') }}</h2>
+            <p class="m-item-sub">Cadastrado em {{ item.get('Carimbo de data/hora', '—') }}</p>
+        </div>
+        <div class="m-badges">
+            <span class="m-badge m-badge-info">{{ item.get('Código', '-') }}</span>
+        </div>
+    </div>
+
+    <form class="m-form" method="POST" action="{{ url_for('editar_item', row_id=row_id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+        <div class="m-field m-field-required">
+            <label class="m-label" for="nome_item">Nome do item</label>
+            <input type="text" class="form-control" id="nome_item" name="nome_item"
+                   value="{{ item.get('Nome do item', '') }}"
+                   required minlength="2" maxlength="100" autocomplete="off">
+            <small>Mínimo 2 e máximo 100 caracteres.</small>
+        </div>
+
+        <div class="m-grid-2">
+            <div class="m-field m-field-required">
+                <label class="m-label" for="codigo_item">Código</label>
+                <input type="text" class="form-control js-codigo-code" id="codigo_item" name="codigo_item"
+                       value="{{ item.get('Código', '') }}" inputmode="numeric" required>
+                <small>Formato ##-##-#####</small>
+            </div>
+            <div class="m-field">
+                <label class="m-label" for="mtc_projeto">MTC</label>
+                <input type="text" class="form-control js-mtc-code" id="mtc_projeto" name="mtc_projeto"
+                       value="{{ item.get('Número do projeto MTC', '') }}" maxlength="4" inputmode="numeric">
+                <small>4 dígitos</small>
+            </div>
+        </div>
+
+        <div class="m-field">
+            <label class="m-label" for="quantidade">Quantidade em estoque</label>
+            <div class="m-input-group">
+                <button type="button" class="m-btn m-btn-secondary" data-m-step="-1" aria-label="Diminuir">−</button>
+                <input type="number" class="form-control" id="quantidade" name="quantidade"
+                       value="{{ item.get('Quantidade produzida', '0') }}"
+                       min="0" max="1000000" inputmode="numeric">
+                <button type="button" class="m-btn m-btn-secondary" data-m-step="1" aria-label="Aumentar">＋</button>
+            </div>
+            <small>O alerta de compra é disparado quando a quantidade fica no limite configurado.</small>
+        </div>
+
+        <div class="m-field">
+            <label class="m-label" for="observacao">Observação</label>
+            <textarea class="form-control" id="observacao" name="observacao" rows="3"
+                      maxlength="500">{{ item.get('Observação', '') }}</textarea>
+            <small>Máximo de 500 caracteres.</small>
+        </div>
+
+        <button type="submit" class="m-btn m-btn-primary m-btn-block">💾 Salvar alterações</button>
+    </form>
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">Histórico de informações</h2>
+    {% if item.get('Informações adicionais') %}
+    <p class="m-item-sub" style="white-space: pre-wrap;">{{ item.get('Informações adicionais') }}</p>
+    {% else %}
+    <p class="m-item-sub mb-0">Nenhuma informação adicional registrada para este item.</p>
+    {% endif %}
+    <div class="m-item-body">
+        <div class="m-item-field">
+            <span>Responsável</span>
+            <span>{{ item.get('Responsável', '—') or '—' }}</span>
+        </div>
+        <div class="m-item-field">
+            <span>Origem</span>
+            <span>{{ item.get('Origem', 'item') }}</span>
+        </div>
+    </div>
+</div>
+
+<div class="m-btn-row">
+    <a class="m-btn m-btn-secondary" href="{{ url_for('itens') }}">← Voltar para Itens</a>
+    <a class="m-btn m-btn-secondary" href="{{ url_for('producao') }}">🏭 Produção</a>
+</div>
+
+<div class="m-alert m-alert-warning">
+    <div>
+        <strong>Atenção</strong>
+        A exclusão de itens é feita na lista de <strong>Itens / Compras</strong> — aqui as alterações
+        são salvas direto na planilha.
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        var campo = document.getElementById("quantidade");
+        if (!campo) return;
+        document.querySelectorAll("[data-m-step]").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var passo = parseInt(btn.getAttribute("data-m-step"), 10) || 0;
+                var atual = parseInt(campo.value || "0", 10) || 0;
+                var novo = Math.max(0, Math.min(1000000, atual + passo));
+                campo.value = novo;
+            });
+        });
+    })();
+</script>
+{% endblock %}
