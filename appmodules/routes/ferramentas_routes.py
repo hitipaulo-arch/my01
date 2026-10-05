@@ -3,8 +3,9 @@
 import logging
 from datetime import datetime
 
-from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, request, session, url_for
 
+from appmodules.mobile import render_page
 from appmodules.repositories.ferramentas_repository import add_historico_entry, get_ferramentas_list, get_or_create_ferramentas_worksheet, get_or_create_historico_worksheet
 from appmodules.utils import admin_required
 
@@ -18,7 +19,7 @@ def ferramentas():
     """Página de controle de ferramentas."""
     sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return render_template("ferramentas.html", ferramentas=[], mensagem="Serviço de planilhas indisponível", tipo_mensagem="danger"), 503
+        return render_page("ferramentas.html", ferramentas=[], mensagem="Serviço de planilhas indisponível", tipo_mensagem="danger"), 503
     if request.method == "POST":
         try:
             dados = [request.form.get("nome", ""), request.form.get("patrocinio", ""), datetime.now().strftime("%d/%m/%Y"), request.form.get("ultima_manutencao", ""), request.form.get("status", "Disponível"), request.form.get("observacao", ""), request.form.get("responsavel", "")]
@@ -33,7 +34,7 @@ def ferramentas():
             return redirect(url_for("ferramentas.ferramentas"))
     flashes = session.get("_flashes", [])
     tipo_mensagem, mensagem = flashes[0] if flashes else (None, None)
-    return render_template("ferramentas.html", ferramentas=get_ferramentas_list(sheets_service), mensagem=mensagem, tipo_mensagem=tipo_mensagem)
+    return render_page("ferramentas.html", ferramentas=get_ferramentas_list(sheets_service), mensagem=mensagem, tipo_mensagem=tipo_mensagem)
 
 
 @ferramentas_bp.route("/ferramentas/atualizar/<int:row_id>", methods=["POST"])

@@ -55,7 +55,7 @@ class MobilePrefixMiddlewareTests(unittest.TestCase):
         body = self.client.get("/").get_data(as_text=True)
         prefixados = set(re.findall(r'href="(/m/[^"]*)"', body))
         self.assertEqual(prefixados, {"/m/"}, f"Atalhos inesperados para o app: {prefixados}")
-        self.assertIn("📱 App", body)
+        self.assertIn("📱 App", __import__("html").unescape(body))
 
 
 class MobileAssetsTests(unittest.TestCase):
@@ -165,7 +165,9 @@ class _StubSheetsService:
     def is_available(self):
         return True, None
 
-    def get_all_os(self, use_cache=True):
+    def get_all_os(self, use_cache=True, force_refresh=False):
+        # ``force_refresh`` faz parte da assinatura real do serviço (usada pelas
+        # rotas para ignorar cache); o stub só precisa aceitar o argumento.
         return [dict(OS_EXEMPLO)]
 
     def get_all_producao(self, use_cache=True, force_refresh=False):

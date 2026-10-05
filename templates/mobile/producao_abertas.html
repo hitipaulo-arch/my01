@@ -87,8 +87,8 @@
         {% endif %}
 
         <div class="m-item-actions">
-            <a class="m-btn m-btn-primary m-btn-sm" href="{{ url_for('producao') }}">🏭 Abrir em Produção</a>
-            <a class="m-btn m-btn-secondary m-btn-sm" href="{{ url_for('dashboard_producao') }}">📊 Dashboard</a>
+            <a class="m-btn m-btn-primary m-btn-sm" href="{{ url_for('producao.producao') }}">🏭 Abrir em Produção</a>
+            <a class="m-btn m-btn-secondary m-btn-sm" href="{{ url_for('producao.dashboard_producao') }}">📊 Dashboard</a>
         </div>
     </div>
     {% else %}

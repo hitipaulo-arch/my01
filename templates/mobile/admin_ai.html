@@ -11,7 +11,7 @@
 {% endif %}
 
 <div class="m-card">
-    <form class="m-form" method="POST" action="{{ url_for('admin_ia') }}" id="adminAiForm">
+    <form class="m-form" method="POST" action="{{ url_for('admin.admin_ia') }}" id="adminAiForm">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <div class="m-field">
             <label class="m-label" for="q">Mensagem</label>

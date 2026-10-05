@@ -57,7 +57,7 @@
             <div class="m-kpi-label">Avanço global</div>
             <strong style="font-size: 1.1rem;">{{ "%.1f"|format(percentual_global) }}%</strong>
         </div>
-        <a class="m-btn m-btn-outline m-btn-sm" href="{{ url_for('dashboard_producao') }}">📊 Dashboard</a>
+        <a class="m-btn m-btn-outline m-btn-sm" href="{{ url_for('producao.dashboard_producao') }}">📊 Dashboard</a>
     </div>
     <div class="m-progress">
         <div class="m-progress-fill {% if percentual_global >= 100 %}m-progress-fill-success{% elif percentual_global < 40 %}m-progress-fill-warning{% endif %}"
@@ -68,7 +68,7 @@
 {% if not read_only %}
 <div class="m-card">
     <h2 class="m-kpi-label">➕ Cadastrar novo item</h2>
-    <form class="m-form" method="POST" action="{{ url_for('producao') }}">
+    <form class="m-form" method="POST" action="{{ url_for('producao.producao') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <div class="m-field m-field-required">
             <label class="m-label" for="nome_item">Nome do item</label>
@@ -185,13 +185,13 @@
         {% if not read_only %}
         <div class="m-item-actions">
             <button type="button" class="m-btn m-btn-outline m-btn-sm" data-m-quick="-1"
-                    data-m-quick-url="{{ url_for('atualizar_producao', row_id=item.row_id) }}"
+                    data-m-quick-url="{{ url_for('producao.atualizar_producao', row_id=item.row_id) }}"
                     aria-label="Reduzir uma unidade">−1</button>
             <button type="button" class="m-btn m-btn-success m-btn-sm" data-m-quick="1"
-                    data-m-quick-url="{{ url_for('atualizar_producao', row_id=item.row_id) }}"
+                    data-m-quick-url="{{ url_for('producao.atualizar_producao', row_id=item.row_id) }}"
                     aria-label="Somar uma unidade">＋1</button>
             <button type="button" class="m-btn m-btn-primary m-btn-sm" data-m-editar-producao>✏️ Atualizar</button>
-            <form method="POST" action="{{ url_for('excluir_item', row_id=item.row_id) }}"
+            <form method="POST" action="{{ url_for('compras.excluir_item', row_id=item.row_id) }}"
                   data-m-confirm="Excluir o item {{ item.get('Nome do item', '') }}? Esta ação não pode ser desfeita.">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <button type="submit" class="m-btn m-btn-danger m-btn-sm">🗑️ Excluir</button>
@@ -211,7 +211,7 @@
 <div class="modal fade" id="modalEdicaoProducao" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content m-sheet">
-            <form id="formEdicaoProducao" data-edit-url="{{ url_for('atualizar_producao', row_id=0) }}">
+            <form id="formEdicaoProducao" data-edit-url="{{ url_for('producao.atualizar_producao', row_id=0) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <input type="hidden" id="edit-row-id" name="row_id">
                 <div class="modal-header">

@@ -12,7 +12,7 @@
 
 <div class="m-card">
     <h2 class="m-kpi-label">➕ Criar ou atualizar usuário</h2>
-    <form class="m-form" method="POST" action="{{ url_for('usuarios_admin') }}">
+    <form class="m-form" method="POST" action="{{ url_for('admin.usuarios_admin') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
         <input type="hidden" name="acao" value="upsert">
         <div class="m-field m-field-required">
@@ -62,7 +62,7 @@
             </div>
         </div>
         <div class="m-item-actions">
-            <form method="POST" action="{{ url_for('usuarios_admin') }}"
+            <form method="POST" action="{{ url_for('admin.usuarios_admin') }}"
                   data-m-confirm="Deseja realmente excluir o usuário {{ uname }}?">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <input type="hidden" name="acao" value="delete">

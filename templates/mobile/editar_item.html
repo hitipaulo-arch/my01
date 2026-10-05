@@ -18,7 +18,7 @@
         </div>
     </div>
 
-    <form class="m-form" method="POST" action="{{ url_for('editar_item', row_id=row_id) }}">
+    <form class="m-form" method="POST" action="{{ url_for('compras.editar_item', row_id=row_id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 
         <div class="m-field m-field-required">
@@ -87,8 +87,8 @@
 </div>
 
 <div class="m-btn-row">
-    <a class="m-btn m-btn-secondary" href="{{ url_for('itens') }}">← Voltar para Itens</a>
-    <a class="m-btn m-btn-secondary" href="{{ url_for('producao') }}">🏭 Produção</a>
+    <a class="m-btn m-btn-secondary" href="{{ url_for('compras.itens') }}">← Voltar para Itens</a>
+    <a class="m-btn m-btn-secondary" href="{{ url_for('producao.producao') }}">🏭 Produção</a>
 </div>
 
 <div class="m-alert m-alert-warning">

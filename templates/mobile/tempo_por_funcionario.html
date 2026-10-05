@@ -20,7 +20,7 @@
 
 <details class="m-card" {% if not dados %}open{% endif %}>
     <summary style="font-weight: 700; cursor: pointer;">🔎 Filtros do relatório</summary>
-    <form class="m-form mt-3" method="GET" action="{{ url_for('tempo_por_funcionario') }}">
+    <form class="m-form mt-3" method="GET" action="{{ url_for('admin.tempo_por_funcionario') }}">
         <div class="m-field">
             <label class="m-label" for="funcionario">Funcionário</label>
             <input type="text" class="form-control" id="funcionario" name="funcionario" value="{{ funcionario or '' }}">
@@ -49,7 +49,7 @@
         </div>
         <div class="m-btn-row">
             <button type="submit" class="m-btn m-btn-primary">🔎 Aplicar filtros</button>
-            <a class="m-btn m-btn-secondary" href="{{ url_for('tempo_por_funcionario') }}">Limpar</a>
+            <a class="m-btn m-btn-secondary" href="{{ url_for('admin.tempo_por_funcionario') }}">Limpar</a>
         </div>
     </form>
 </details>
@@ -104,16 +104,16 @@
 
 <div class="m-card">
     <div class="m-btn-row">
-        <a class="m-btn m-btn-secondary" href="{{ url_for('tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, export='csv') }}">⬇️ CSV</a>
-        <a class="m-btn m-btn-secondary" href="{{ url_for('tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, export='xlsx') }}">⬇️ XLSX</a>
+        <a class="m-btn m-btn-secondary" href="{{ url_for('admin.tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, export='csv') }}">⬇️ CSV</a>
+        <a class="m-btn m-btn-secondary" href="{{ url_for('admin.tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, export='xlsx') }}">⬇️ XLSX</a>
     </div>
     <div class="m-btn-row mt-3">
         <a class="m-btn m-btn-primary {% if page <= 1 %}disabled{% endif %}"
-           href="{{ url_for('tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, page=(page - 1 if page > 1 else 1)) }}">
+           href="{{ url_for('admin.tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, page=(page - 1 if page > 1 else 1)) }}">
             ← Anterior
         </a>
         <a class="m-btn m-btn-primary {% if (page * per_page) >= (total_registros or 0) %}disabled{% endif %}"
-           href="{{ url_for('tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, page=page + 1) }}">
+           href="{{ url_for('admin.tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, page=page + 1) }}">
             Próxima →
         </a>
     </div>

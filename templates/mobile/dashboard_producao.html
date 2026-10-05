@@ -78,8 +78,8 @@
 
 <div class="m-card">
     <div class="m-btn-row">
-        <a class="m-btn m-btn-secondary" href="{{ url_for('producao') }}">🏭 Produção</a>
-        <a class="m-btn m-btn-secondary" href="{{ url_for('producao_abertas') }}">📦 OPs abertas</a>
+        <a class="m-btn m-btn-secondary" href="{{ url_for('producao.producao') }}">🏭 Produção</a>
+        <a class="m-btn m-btn-secondary" href="{{ url_for('producao.producao_abertas') }}">📦 OPs abertas</a>
     </div>
 </div>
 {% endblock %}
@@ -87,7 +87,7 @@
 {% block scripts %}
 <script>
     (function () {
-        var dadosUrl = "{{ url_for('producao_dados') }}";
+        var dadosUrl = "{{ url_for('producao.producao_dados') }}";
         var graficos = {};
 
         function destruir(id) {
