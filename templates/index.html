@@ -16,6 +16,18 @@
         <div class="form-card">
             <h2>Formulário de Abertura de OS</h2>
 
+            {% if revisar_ocr %}
+            <div class="alert alert-warning" role="alert">
+                Revise os dados extraídos da imagem antes de abrir a OS.
+                {% if texto_ocr %}
+                <details class="mt-2">
+                    <summary>Ver texto identificado</summary>
+                    <pre class="mb-0 mt-2 small">{{ texto_ocr }}</pre>
+                </details>
+                {% endif %}
+            </div>
+            {% endif %}
+
             {% if erros %}
             <div class="alert alert-danger" role="alert">
                 <strong>Não foi possível abrir a OS:</strong>

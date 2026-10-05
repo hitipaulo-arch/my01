@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
@@ -17,7 +17,7 @@
 
     
         <div class="page-header">
-            <h1>📊 Dashboard de Produção</h1>
+            <h1>&#128202; Dashboard de Produção</h1>
             <p class="production-subtitle">Acompanhe o que já foi feito e o que ainda falta fazer com atualização automática.</p>
         </div>
 
@@ -105,7 +105,7 @@
     </div>
 
     <script>
-        const dadosUrl = "{{ url_for('producao_dados') }}";
+        const dadosUrl = "{{ url_for('producao.producao_dados') }}";
         let chartProgresso = null;
         let chartResumo = null;
         let chartStatusOps = null;
@@ -302,3 +302,4 @@
     </script>
 </body>
 </html>
+

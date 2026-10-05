@@ -78,7 +78,7 @@
             <div class="alert alert-danger">{{ erro }}</div>
             {% endif %}
 
-            <form method="POST" action="{{ url_for('admin_ia') }}" class="search-box" id="adminAiForm">
+            <form method="POST" action="{{ url_for('admin.admin_ia') }}" class="search-box" id="adminAiForm">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <div class="mb-3">
                     <label for="q" class="form-label text-light">Mensagem</label>

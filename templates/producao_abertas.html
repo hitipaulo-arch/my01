@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -16,10 +16,10 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h1 class="h2">Ordens de Produção Abertas</h1>
         <div>
-            <a href="{{ url_for('producao') }}" class="btn btn-secondary">
+            <a href="{{ url_for('producao.producao') }}" class="btn btn-secondary">
                 <i class="fas fa-list-ul"></i> Ver Todas as OPs
             </a>
-            <a href="{{ url_for('dashboard_producao') }}" class="btn btn-info">
+            <a href="{{ url_for('producao.dashboard_producao') }}" class="btn btn-info">
                 <i class="fas fa-chart-bar"></i> Dashboard
             </a>
         </div>
@@ -134,7 +134,7 @@
                                         <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#editModal-{{ item.row_id }}" title="Editar">
                                             <i class="fas fa-edit"></i>
                                         </button>
-                                        <form method="POST" action="{{ url_for('excluir_item', row_id=item.row_id) }}" class="d-inline" onsubmit="return confirm('Tem certeza que deseja excluir o item {{ item['Nome do item']|e }}? Esta ação não pode ser desfeita.');">
+                                        <form method="POST" action="{{ url_for('compras.excluir_item', row_id=item.row_id) }}" class="d-inline" onsubmit="return confirm('Tem certeza que deseja excluir o item {{ item['Nome do item']|e }}? Esta ação não pode ser desfeita.');">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                                             <button type="submit" class="btn btn-outline-danger" title="Excluir">
                                                 <i class="fas fa-trash"></i>
@@ -152,7 +152,7 @@
                                             <h5 class="modal-title" id="editModalLabel-{{ item.row_id }}">Editar Item: {{ item['Nome do item'] }}</h5>
                                             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                                         </div>
-                                        <form action="{{ url_for('atualizar_producao', row_id=item.row_id) }}" method="POST">
+                                        <form action="{{ url_for('producao.atualizar_producao', row_id=item.row_id) }}" method="POST">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                             <div class="modal-body">
                                                 <div class="row">

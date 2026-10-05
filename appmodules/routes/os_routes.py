@@ -223,7 +223,9 @@ def gerenciar():
     order = request.args.get("order", "desc")
 
     try:
-        chamados = sheets_service.get_all_os()
+        chamados = sheets_service.get_all_os(
+            use_cache=False, force_refresh=True
+        )
 
         # Aplica ordenação
         def sort_key(item):
@@ -312,7 +314,9 @@ def os_abertas():
         ), 503
 
     try:
-        os_list = sheets_service.get_all_os(use_cache=True)
+        os_list = sheets_service.get_all_os(
+            use_cache=False, force_refresh=True
+        )
 
         # Otimização: filtrar OS abertas em memória ao invés de chamar get_open_os()
         # que internamente chama get_all_os() novamente (evita N+1 query pattern)

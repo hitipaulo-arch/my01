@@ -41,7 +41,7 @@
 
     <div class="card">
       <h2>Filtros</h2>
-      <form method="GET" action="{{ url_for('tempo_por_funcionario') }}" class="analytics-filter-grid">
+      <form method="GET" action="{{ url_for('admin.tempo_por_funcionario') }}" class="analytics-filter-grid">
         <div>
           <label>Funcionário</label>
           <input type="text" name="funcionario" value="{{ funcionario or '' }}" class="analytics-input">
@@ -64,15 +64,15 @@
         </div>
         <div class="analytics-actions">
           <button class="btn btn-primary" type="submit">Filtrar</button>
-          <a class="btn btn-secondary analytics-centered-link analytics-link" href="{{ url_for('tempo_por_funcionario') }}">Limpar</a>
+          <a class="btn btn-secondary analytics-centered-link analytics-link" href="{{ url_for('admin.tempo_por_funcionario') }}">Limpar</a>
         </div>
       </form>
       {% if aviso_periodo %}
         <div class="alert alert-warning analytics-warning">{{ aviso_periodo }}</div>
       {% endif %}
       <div class="analytics-actions">
-        <a class="btn btn-secondary analytics-link" href="{{ url_for('tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, export='csv') }}">Exportar CSV</a>
-        <a class="btn btn-secondary analytics-link" href="{{ url_for('tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, export='xlsx') }}">Exportar XLSX</a>
+        <a class="btn btn-secondary analytics-link" href="{{ url_for('admin.tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, export='csv') }}">Exportar CSV</a>
+        <a class="btn btn-secondary analytics-link" href="{{ url_for('admin.tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, export='xlsx') }}">Exportar XLSX</a>
       </div>
     </div>
 
@@ -114,8 +114,8 @@
         <div class="analytics-pager">
           {% set prev_page = page - 1 %}
           {% set next_page = page + 1 %}
-          <a class="btn btn-primary {{ 'analytics-disabled' if page <= 1 }}" href="{{ url_for('tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, page=prev_page) }}">← Anterior</a>
-          <a class="btn btn-primary {{ 'analytics-disabled' if (page * per_page) >= (total_registros or 0) }}" href="{{ url_for('tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, page=next_page) }}">Próxima →</a>
+          <a class="btn btn-primary {{ 'analytics-disabled' if page <= 1 }}" href="{{ url_for('admin.tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, page=prev_page) }}">← Anterior</a>
+          <a class="btn btn-primary {{ 'analytics-disabled' if (page * per_page) >= (total_registros or 0) }}" href="{{ url_for('admin.tempo_por_funcionario', funcionario=funcionario, pedido_os=pedido_os, data_inicio=data_inicio, data_fim=data_fim, per_page=per_page, page=next_page) }}">Próxima →</a>
         </div>
       </div>
     </div>

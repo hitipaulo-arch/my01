@@ -46,7 +46,7 @@ def login():
             if next_page and next_page.startswith("/"):
                 return redirect(next_page)
             if usuario.role in ("operador", "visualizador"):
-                return redirect(url_for("producao"))
+                return redirect(url_for("producao.producao"))
             return redirect(url_for("os.homepage"))
 
         return render_page("login.html", erro="Usuário ou senha inválidos.")
