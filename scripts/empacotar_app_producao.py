@@ -191,7 +191,7 @@ def verificar(raiz: Path, python: str = sys.executable) -> tuple[bool, str]:
         copia = Path(tmp) / NOME_PACOTE
         shutil.copytree(raiz, copia)
         processo = subprocess.run(
-            [python, "-m", "pytest", "tests/test_producao_web.py", "-q"],
+            [python, "-m", "pytest", "tests/test_producao_web.py", "--tb=short"],
             cwd=str(copia),
             capture_output=True,
             text=True,
