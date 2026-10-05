@@ -56,10 +56,14 @@
         </div>
 
         <div class="p-flow-tempos">
+            {% if setor.nao_aplica %}
+            <span>∅ Não se aplica a esta OP</span>
+            {% else %}
             {% if setor.iniciado_em %}<span>▶️ Iniciado {{ setor.iniciado_em|hora_curta }}</span>{% endif %}
             {% if setor.concluido_em %}<span>✅ Concluído {{ setor.concluido_em|hora_curta }}</span>{% endif %}
-            {% if setor.atualizado_por %}<span>✍️ {{ setor.atualizado_por }}{% if setor.atualizado_em %} em {{ setor.atualizado_em|hora_curta }}{% endif %}</span>{% endif %}
             {% if not setor.iniciado_em and not setor.concluido_em %}<span class="p-mini">ainda não iniciado</span>{% endif %}
+            {% endif %}
+            {% if setor.atualizado_por %}<span>✍️ {{ setor.atualizado_por }}{% if setor.atualizado_em %} em {{ setor.atualizado_em|hora_curta }}{% endif %}</span>{% endif %}
         </div>
 
         {% if setor.observacao_setor %}
@@ -79,6 +83,9 @@
                         data-p-valor="Em andamento">◐ Em andamento</button>
                 <button type="submit" class="p-btn p-btn-sm {% if setor.status == 'Concluído' %}p-btn-success{% else %}p-btn-outline{% endif %}"
                         data-p-valor="Concluído">● Concluído</button>
+                <button type="submit" class="p-btn p-btn-sm {% if setor.status == 'Não se aplica' %}p-btn-nao-aplica{% else %}p-btn-outline{% endif %}"
+                        data-p-valor="Não se aplica"
+                        title="A peça não passa por este setor">∅ Não se aplica</button>
             </div>
             <input type="text" class="p-input p-input-sm" name="observacao" maxlength="280"
                    placeholder="Observação do setor (opcional)">

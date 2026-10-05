@@ -3,11 +3,16 @@
 Aplicativo **independente** do sistema de OS, feito para o chão de fábrica acompanhar
 cada ordem de produção (OP) pelos setores:
 
-**Corte → Dobra → Montagem Primária → Solda → Acabamento → Silicone e Limpeza → Embalagem**
+**Corte → Corte Painel → CNC → Policorte → Vidros → Portas → Pass-through →
+Dobra → Montagem Primária → Solda → Acabamento → Silicone e Limpeza → Embalagem**
 
 Cada setor entra com o **seu próprio PIN**, vê a fila dele e marca o seu status
-(Não iniciado / Em andamento / Concluído) com **data/hora automática**. A gestão
-vê o painel geral, cadastra OPs e define os PINs.
+(**Não iniciado / Em andamento / Concluído / Não se aplica**) com **data/hora
+automática**. A gestão vê o painel geral, cadastra OPs e define os PINs.
+
+> **“Não se aplica”** existe para a peça que não passa por um setor (ex.: sem
+> vidro). O setor deixa de segurar a OP sem registrar trabalho que não houve, e a
+> decisão fica no histórico com quem marcou e quando.
 
 > ⚠️ **Ainda não removi o "Controle de Produção" do sistema antigo.** O app novo
 > está pronto e rodando em paralelo (você pediu para não tirar nada antes de
@@ -62,13 +67,17 @@ em `PRODUCAO_PORT`). São processos distintos: reiniciar um não afeta o outro.
 | **Setor inicia** | Ao marcar *Em andamento*, o app grava `Iniciado em` com data/hora e quem marcou. |
 | **Setor conclui** | Grava `Concluído em`; a OP avança para o próximo setor da ordem. |
 | **OP completa** | Quando os 7 setores concluem, a OP vira **Concluída** e recebe a data de conclusão. |
+| **Setor não se aplica** | Marca *Não se aplica* (ex.: peça sem vidro): sai da fila sem criar carimbo de trabalho e não trava a conclusão da OP. |
 | **Correção** | Dá para voltar um setor para *Não iniciado* (limpa os carimbos e registra a correção no histórico). |
 
 **Status da OP** é sempre calculado dos setores — não é digitado:
 
 * ninguém começou → **Aguardando**
 * algum começou → **Em andamento**
-* todos concluíram → **Concluída**
+* todos **resolvidos** (Concluído ou Não se aplica) → **Concluída**
+
+A barra de progresso conta setores resolvidos: com 13 etapas, uma peça que pula
+CNC, Vidros e Portas chega a 100% sem essas três etapas "concluídas".
 
 ---
 
@@ -145,9 +154,26 @@ desenvolvimento — **não use em produção**.
 | `PRODUCAO_PORT` | Porta do app | `5001` |
 | `PRODUCAO_SESSAO_MINUTOS` | Duração da sessão no celular | `720` (12 h) |
 | `PRODUCAO_COOKIE_SECURE` | Exige HTTPS no cookie (ligue em produção com HTTPS) | `false` |
+| `PRODUCAO_COOKIE_SAMESITE` | `Lax` no servidor do cliente; `None` se o app for aberto dentro de outra página | `Lax` |
+| `PRODUCAO_COOKIE_PARTITIONED` | Cookie particionado (`Partitioned`) — necessário em iframe com bloqueio de cookie de terceiros | `false` |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Caminho do `credentials.json` | `./credentials.json` |
 
 `/healthz` responde o estado do app e do armazenamento (útil para monitoração).
+
+### Abrir o app dentro de outra página (iframe/preview)
+
+O padrão `SameSite=Lax` é o correto para o servidor do cliente. Se o app for
+embutido em outra página (como acontece em pré-visualizações), o navegador **não
+envia** o cookie no POST do login e aparece `CSRF session token is missing`.
+Nesse caso ligue:
+
+```bash
+export PRODUCAO_COOKIE_SAMESITE=None
+export PRODUCAO_COOKIE_SECURE=true      # SameSite=None exige HTTPS
+export PRODUCAO_COOKIE_PARTITIONED=true # funciona mesmo com cookies de terceiros bloqueados
+```
+
+Em produção normal (domínio próprio, acesso direto) deixe tudo no padrão.
 
 ---
 
@@ -157,7 +183,7 @@ desenvolvimento — **não use em produção**.
 pytest tests/test_producao_web.py -v
 ```
 
-81 testes cobrem o fluxo de setores (ordem, status calculado, progresso), o
+100 testes cobrem o fluxo de setores (ordem, status calculado, progresso), o
 armazenamento local, o login por setor, as permissões (cada setor só mexe no
 próprio status), o cadastro/edição/exclusão de OP, o painel, o histórico, a
 instalação (manifest, service worker, ícones) e o **isolamento** — há teste que
@@ -181,7 +207,8 @@ templates/producao/                 10 telas (login, fila, ficha da OP, painel, 
 static/producao/                    app.css, app.js, service worker, manifest, ícones
 scripts/gerar_icones_producao.py    regera os ícones do app
 scripts/verificar_planilha_producao.py  confere/configura a planilha
-tests/test_producao_web.py          81 testes
+scripts/migrar_setores_producao.py  completa os setores novos nas OPs antigas
+tests/test_producao_web.py          100 testes
 ```
 
 ### Mudar o fluxo de setores
@@ -192,14 +219,46 @@ Acrescentar, renomear ou reordenar setores é editar **uma tupla** em
 ```python
 SETORES = (
     Setor("corte", "Corte", "🪚"),
+    Setor("corte_painel", "Corte Painel", "🧱"),
+    Setor("cnc", "CNC", "🖥️"),
+    Setor("policorte", "Policorte", "⚙️"),
+    Setor("vidros", "Vidros", "🪟"),
+    Setor("portas", "Portas", "🚪"),
+    Setor("pass_through", "Pass-through", "🔁"),
     Setor("dobra", "Dobra", "📐"),
-    ...
+    Setor("montagem_primaria", "Montagem Primária", "🔧"),
+    Setor("solda", "Solda", "🔥"),
+    Setor("acabamento", "Acabamento", "🎨"),
+    Setor("silicone_limpeza", "Silicone e Limpeza", "🧴"),
+    Setor("embalagem", "Embalagem", "📦"),
 )
 ```
 
-O armazenamento, as telas, o painel, o login e os testes leem tudo daí. OPs já
-existentes ganham a linha do setor novo automaticamente na próxima leitura (a
-OP aparece com ele como *Não iniciado*).
+O armazenamento, as telas, o painel, o login e os testes leem tudo daí — e a
+**chave** do setor (`corte_painel`) é o que aparece nas URLs: mantenha-a estável
+ao renomear o rótulo.
+
+#### OPs que já existiam quando o fluxo ganha setor
+
+Uma OP antiga não tem linha para o setor novo. O painel avisa
+(⚠️ *“N OP(s) sem os setores novos do fluxo”*) e o comando abaixo completa a
+planilha:
+
+```bash
+PRODUCAO_SPREADSHEET_ID="..." python scripts/migrar_setores_producao.py
+# banco local de desenvolvimento:
+python scripts/migrar_setores_producao.py --local
+```
+
+Regra da migração, para não reabrir trabalho antigo:
+
+| Situação da OP | Setor novo entra como |
+|---|---|
+| Em andamento / Aguardando | **Não iniciado** (vai aparecer na fila do setor) |
+| Já concluída | **Não se aplica** (continua concluída) |
+
+O comando é idempotente: rodar duas vezes não duplica linha nenhuma. No banco
+local o app se completa sozinho na primeira leitura.
 
 ---
 

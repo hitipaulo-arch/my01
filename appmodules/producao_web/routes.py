@@ -196,7 +196,7 @@ def lista():
         def pendente(op):
             for detalhe in op["setores"]:
                 if detalhe["nome"] == setor_usuario:
-                    return not detalhe["concluido"]
+                    return not detalhe["resolvido"]
             return False
 
         selecionadas = [op for op in ops if pendente(op)] if recorte in ("", "fila") else ops
@@ -233,24 +233,32 @@ def painel():
     por_setor: list[dict] = []
     for setor in fluxo.SETORES:
         pendentes = [
-            op for op in ops if _status_no_setor(op, setor.nome) != fluxo.CONCLUIDO
+            op for op in ops if not fluxo.resolvido(_status_no_setor(op, setor.nome))
         ]
         em_andamento = [
             op for op in ops if _status_no_setor(op, setor.nome) == fluxo.EM_ANDAMENTO
         ]
         concluidos = [op for op in ops if _status_no_setor(op, setor.nome) == fluxo.CONCLUIDO]
+        nao_aplica = [op for op in ops if _status_no_setor(op, setor.nome) == fluxo.NAO_SE_APLICA]
         por_setor.append(
             {
                 "setor": setor,
                 "pendentes": len(pendentes),
                 "em_andamento": len(em_andamento),
                 "concluidos": len(concluidos),
+                "nao_aplica": len(nao_aplica),
                 "atrasados": sum(1 for op in pendentes if _atrasada(op, hoje)),
             }
         )
 
     atrasadas = [op for op in ops if op["status_geral"] != fluxo.OP_CONCLUIDA and _atrasada(op, hoje)]
     concluidas = [op for op in ops if op["status_geral"] == fluxo.OP_CONCLUIDA]
+
+    pendencias = []
+    try:
+        pendencias = storage().setores_faltantes()
+    except Exception as erro:  # não impede o painel de abrir
+        logger.warning("Não foi possível conferir os setores das OPs: %s", erro)
 
     return _render(
         "painel.html",
@@ -259,6 +267,7 @@ def painel():
         atrasadas=atrasadas,
         concluidas=concluidas,
         hoje=hoje,
+        op_sem_setores=sorted({linha["op_id"] for linha in pendencias}),
     )
 
 

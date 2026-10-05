@@ -64,8 +64,13 @@ class ProducaoConfig:
             "DEBUG": _booleano("PRODUCAO_DEBUG", False),
             # Segurança de sessão/CSRF
             "SESSION_COOKIE_HTTPONLY": True,
-            "SESSION_COOKIE_SAMESITE": "Lax",
+            # "Lax" é o certo no servidor do cliente. Use "None" (com Secure e
+            # Partitioned) quando o app for aberto dentro de outra página — é o
+            # caso dos previews em iframe: sem isso o navegador não manda o
+            # cookie da sessão no POST do login e o CSRF falha.
+            "SESSION_COOKIE_SAMESITE": (os.getenv("PRODUCAO_COOKIE_SAMESITE") or "Lax").strip(),
             "SESSION_COOKIE_SECURE": _booleano("PRODUCAO_COOKIE_SECURE", False),
+            "SESSION_COOKIE_PARTITIONED": _booleano("PRODUCAO_COOKIE_PARTITIONED", False),
             "WTF_CSRF_ENABLED": True,
             "WTF_CSRF_TIME_LIMIT": None,
             "MAX_CONTENT_LENGTH": 4 * 1024 * 1024,

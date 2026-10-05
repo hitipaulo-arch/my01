@@ -307,6 +307,73 @@ class ProducaoStorage(ABC):
     ) -> bool:
         raise NotImplementedError
 
+    # ── fluxo de setores: OPs antigas quando o fluxo ganha setor novo ────────
+    def _ops_cru(self) -> list[dict[str, Any]]:
+        """Leitura sem efeitos colaterais (para conferir o que falta)."""
+
+        return self.listar_ops()
+
+    def _setores_cru(self) -> list[dict[str, Any]]:
+        """Leitura sem efeitos colaterais (para conferir o que falta)."""
+
+        return self.listar_setores()
+
+    def setores_faltantes(self) -> list[dict[str, str]]:
+        """OPs sem linha para algum setor do fluxo atual.
+
+        Acontece quando o fluxo ganha um setor depois que já existiam OPs. Nesse
+        caso a OP aparece com o setor novo como ``Não iniciado`` — e, se já
+        estava concluída, voltaria a "Em andamento" indevidamente. Por isso as
+        linhas novas de uma OP concluída nascem como ``Não se aplica``.
+        """
+
+        existentes: dict[str, set[str]] = {}
+        for linha in self._setores_cru():
+            existentes.setdefault(str(linha.get("op_id", "")), set()).add(
+                str(linha.get("setor", ""))
+            )
+
+        faltantes: list[dict[str, str]] = []
+        for op in self._ops_cru():
+            atuais = existentes.get(op["id"], set())
+            status_padrao = fluxo.NAO_SE_APLICA if op.get("concluida_em") else fluxo.NAO_INICIADO
+            for setor in fluxo.SETORES:
+                if setor.nome not in atuais:
+                    faltantes.append(
+                        {"op_id": op["id"], "setor": setor.nome, "status": status_padrao}
+                    )
+        return faltantes
+
+    def garantir_setores(self) -> dict[str, Any]:
+        """Cria as linhas de setor que faltam (planilha que já tinha OPs).
+
+        Não cria dado fictício: a OP ganha apenas as etapas que o app passou a
+        acompanhar, marcadas como ``Não iniciado`` (ou ``Não se aplica`` quando a
+        OP já estava concluída — para não reabrir trabalho antigo).
+        """
+
+        faltantes = self.setores_faltantes()
+        if not faltantes:
+            return {"linhas_criadas": 0, "ops_afetadas": 0, "detalhes": []}
+
+        gravadas = self.criar_linhas_setor(faltantes)
+        afetadas = {linha["op_id"] for linha in faltantes}
+        logger.info(
+            "[produção] Fluxo novo: %s linha(s) de setor criadas em %s OP(s)",
+            gravadas,
+            len(afetadas),
+        )
+        return {
+            "linhas_criadas": gravadas,
+            "ops_afetadas": len(afetadas),
+            "detalhes": faltantes,
+        }
+
+    def criar_linhas_setor(self, linhas: Iterable[Mapping[str, Any]]) -> int:
+        """Grava linhas de setor novas. Cada backend implementa do seu jeito."""
+
+        raise NotImplementedError
+
     # ── conveniências usadas pelas telas ─────────────────────────────────────
     def ops_com_fluxo(self) -> list[dict[str, Any]]:
         """OPs com status calculado, progresso, setor atual e setores detalhados."""
@@ -394,11 +461,85 @@ class LocalStorage(ProducaoStorage):
             os.replace(temporario, self.caminho)
 
     # ── leitura ─────────────────────────────────────────────────────────────
+    def _garantir_setores_local(self) -> None:
+        """No banco local a conferência é barata: completa sozinho na leitura."""
+
+        with self._trava:
+            base = self._ler()
+            existentes: dict[str, set[str]] = {}
+            for linha in base["setores"]:
+                existentes.setdefault(str(linha.get("op_id", "")), set()).add(
+                    str(linha.get("setor", ""))
+                )
+            criadas = 0
+            for op in base["ops"]:
+                atuais = existentes.get(op["id"], set())
+                status_padrao = (
+                    fluxo.NAO_SE_APLICA if op.get("concluida_em") else fluxo.NAO_INICIADO
+                )
+                for setor in fluxo.SETORES:
+                    if setor.nome in atuais:
+                        continue
+                    base["setores"].append(
+                        {
+                            "op_id": op["id"],
+                            "setor": setor.nome,
+                            "status": status_padrao,
+                            "iniciado_em": "",
+                            "concluido_em": "",
+                            "atualizado_em": "",
+                            "atualizado_por": "",
+                            "observacao": "",
+                        }
+                    )
+                    criadas += 1
+            if criadas:
+                self._escrever(base)
+                logger.info("[produção] Banco local completado com %s setor(es)", criadas)
+
     def listar_ops(self) -> list[dict[str, Any]]:
+        self._garantir_setores_local()
         return [dict(op) for op in self._ler()["ops"]]
 
     def listar_setores(self) -> list[dict[str, Any]]:
+        self._garantir_setores_local()
         return [dict(linha) for linha in self._ler()["setores"]]
+
+    def _ops_cru(self) -> list[dict[str, Any]]:
+        return [dict(op) for op in self._ler()["ops"]]
+
+    def _setores_cru(self) -> list[dict[str, Any]]:
+        return [dict(linha) for linha in self._ler()["setores"]]
+
+    def criar_linhas_setor(self, linhas: Iterable[Mapping[str, Any]]) -> int:
+        criadas = 0
+        with self._trava:
+            base = self._ler()
+            existentes = {
+                (str(item.get("op_id", "")), str(item.get("setor", "")))
+                for item in base["setores"]
+            }
+            for linha in linhas:
+                chave = (_texto(linha.get("op_id")), _texto(linha.get("setor")))
+                if chave in existentes:
+                    continue  # idempotente: nunca duplica setor de uma OP
+                existentes.add(chave)
+                base["setores"].append(
+                    {
+                        "op_id": _texto(linha.get("op_id")),
+                        "setor": _texto(linha.get("setor")),
+                        "status": _texto(linha.get("status")) or fluxo.NAO_INICIADO,
+                        "iniciado_em": "",
+                        "concluido_em": "",
+                        "atualizado_em": "",
+                        "atualizado_por": "",
+                        "observacao": "",
+                    }
+                )
+                criadas += 1
+            if criadas:
+                self._escrever(base)
+        return criadas
 
     def listar_historico(self, op_id: str | None = None) -> list[dict[str, Any]]:
         registros = [dict(linha) for linha in self._ler()["historico"]]
@@ -538,7 +679,7 @@ class LocalStorage(ProducaoStorage):
                 if status == fluxo.CONCLUIDO:
                     linha["iniciado_em"] = linha.get("iniciado_em") or momento
                     linha["concluido_em"] = momento
-                if status == fluxo.NAO_INICIADO:
+                if status in (fluxo.NAO_INICIADO, fluxo.NAO_SE_APLICA):
                     linha["iniciado_em"] = ""
                     linha["concluido_em"] = ""
 
@@ -816,7 +957,7 @@ class GoogleSheetsStorage(ProducaoStorage):
             if status == fluxo.CONCLUIDO:
                 registro["iniciado_em"] = registro["iniciado_em"] or momento
                 registro["concluido_em"] = momento
-            if status == fluxo.NAO_INICIADO:
+            if status in (fluxo.NAO_INICIADO, fluxo.NAO_SE_APLICA):
                 registro["iniciado_em"] = ""
                 registro["concluido_em"] = ""
 
@@ -842,6 +983,21 @@ class GoogleSheetsStorage(ProducaoStorage):
             self._sincronizar_conclusao(alvo_op, momento)
             return True
         return False
+
+    def criar_linhas_setor(self, linhas: Iterable[Mapping[str, Any]]) -> int:
+        self._conectar()
+        registros = [
+            {
+                "op_id": _texto(linha.get("op_id")),
+                "setor": _texto(linha.get("setor")),
+                "status": _texto(linha.get("status")) or fluxo.NAO_INICIADO,
+            }
+            for linha in linhas
+        ]
+        if not registros:
+            return 0
+        self._abas[ABA_SETORES].append_rows([setor_para_linha(r) for r in registros])
+        return len(registros)
 
     def _sincronizar_conclusao(self, op_id: str, momento: str) -> None:
         """Escreve/limpa a data de conclusão da OP conforme os setores."""

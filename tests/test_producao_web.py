@@ -51,6 +51,12 @@ class SetoresTests(unittest.TestCase):
             fluxo.nomes(),
             (
                 "Corte",
+                "Corte Painel",
+                "CNC",
+                "Policorte",
+                "Vidros",
+                "Portas",
+                "Pass-through",
                 "Dobra",
                 "Montagem Primária",
                 "Solda",
@@ -59,6 +65,22 @@ class SetoresTests(unittest.TestCase):
                 "Embalagem",
             ),
         )
+
+    def test_novos_setores_tem_chave_estavel(self):
+        """A chave (usada nas URLs) não pode mudar sem migrar a planilha."""
+
+        esperado = {
+            "corte": "Corte",
+            "corte_painel": "Corte Painel",
+            "cnc": "CNC",
+            "policorte": "Policorte",
+            "vidros": "Vidros",
+            "portas": "Portas",
+            "pass_through": "Pass-through",
+        }
+        for chave, nome in esperado.items():
+            with self.subTest(chave=chave):
+                self.assertEqual(fluxo.por_chave(chave).nome, nome)
 
     def test_estrutura_do_setor(self):
         for setor in fluxo.SETORES:
@@ -79,18 +101,25 @@ class SetoresTests(unittest.TestCase):
         self.assertEqual(fluxo.normalizar_status("concluido"), fluxo.CONCLUIDO)
         self.assertEqual(fluxo.normalizar_status("CONCLUÍDO"), fluxo.CONCLUIDO)
         self.assertEqual(fluxo.normalizar_status("em andamento"), fluxo.EM_ANDAMENTO)
+        self.assertEqual(fluxo.normalizar_status("nao se aplica"), fluxo.NAO_SE_APLICA)
+        self.assertEqual(fluxo.normalizar_status("N/A"), fluxo.NAO_SE_APLICA)
         self.assertEqual(fluxo.normalizar_status(""), fluxo.NAO_INICIADO)
         self.assertEqual(fluxo.normalizar_status("qualquer coisa"), fluxo.NAO_INICIADO)
-        self.assertTrue(fluxo.e_status_valido(fluxo.CONCLUIDO))
+        for status in fluxo.STATUS_SETOR:
+            with self.subTest(status=status):
+                self.assertTrue(fluxo.e_status_valido(status))
         self.assertFalse(fluxo.e_status_valido("Pronto"))
+        self.assertEqual(len(fluxo.STATUS_SETOR), 4)
 
     def test_status_da_op_segue_os_setores(self):
-        def com(*concluidos, andamento=()):
+        def com(*concluidos, andamento=(), nao_aplica=()):
             mapa = {nome: fluxo.NAO_INICIADO for nome in fluxo.nomes()}
             for nome in concluidos:
                 mapa[nome] = fluxo.CONCLUIDO
             for nome in andamento:
                 mapa[nome] = fluxo.EM_ANDAMENTO
+            for nome in nao_aplica:
+                mapa[nome] = fluxo.NAO_SE_APLICA
             return mapa
 
         self.assertEqual(fluxo.status_da_op(com()), fluxo.OP_AGUARDANDO)
@@ -100,17 +129,48 @@ class SetoresTests(unittest.TestCase):
         self.assertEqual(
             fluxo.status_da_op(com(*fluxo.nomes())), fluxo.OP_CONCLUIDA
         )
+        # "Não se aplica" é resolvido: uma OP sem vidro nem silicone pode concluir
+        self.assertEqual(
+            fluxo.status_da_op(
+                com("Corte", "Dobra", nao_aplica=("Vidros", "Silicone e Limpeza", "Embalagem"))
+            ),
+            fluxo.OP_EM_ANDAMENTO,
+            "ainda faltam setores de verdade",
+        )
+        self.assertEqual(
+            fluxo.status_da_op(
+                com(*fluxo.nomes(), nao_aplica=("Vidros",))  # tipo: todos + n/a não muda
+            ),
+            fluxo.OP_CONCLUIDA,
+        )
+        self.assertEqual(
+            fluxo.resolvido(fluxo.NAO_SE_APLICA) and fluxo.resolvido(fluxo.CONCLUIDO),
+            True,
+        )
+        self.assertFalse(fluxo.resolvido(fluxo.EM_ANDAMENTO))
+        self.assertFalse(fluxo.resolvido(fluxo.NAO_INICIADO))
 
-    def test_progresso_conta_setores_concluidos(self):
+    def test_progresso_conta_setores_resolvidos(self):
         self.assertEqual(fluxo.progresso({}), 0)
         todos = {nome: fluxo.CONCLUIDO for nome in fluxo.nomes()}
         self.assertEqual(fluxo.progresso(todos), 100)
         parcial = {"Corte": fluxo.CONCLUIDO, "Dobra": fluxo.CONCLUIDO}
         self.assertEqual(fluxo.progresso(parcial), round(2 / len(fluxo.SETORES) * 100))
+        com_na = {"Corte": fluxo.CONCLUIDO, "Vidros": fluxo.NAO_SE_APLICA}
+        self.assertEqual(fluxo.progresso(com_na), round(2 / len(fluxo.SETORES) * 100))
+        so_na = {nome: fluxo.NAO_SE_APLICA for nome in fluxo.nomes()}
+        self.assertEqual(fluxo.progresso(so_na), 100)
 
-    def test_proximo_setor_e_o_primeiro_nao_concluido(self):
+    def test_proximo_setor_e_o_primeiro_nao_resolvido(self):
         mapa = {"Corte": fluxo.CONCLUIDO, "Dobra": fluxo.EM_ANDAMENTO}
-        self.assertEqual(fluxo.proximo_setor(mapa)["nome"], "Dobra")
+        self.assertEqual(fluxo.proximo_setor(mapa)["nome"], "Corte Painel")
+        self.assertEqual(
+            fluxo.proximo_setor({"Corte": fluxo.CONCLUIDO, "Corte Painel": fluxo.NAO_SE_APLICA})[
+                "nome"
+            ],
+            "CNC",
+            "setor não aplicável não pode ser 'o próximo'",
+        )
         self.assertIsNone(fluxo.proximo_setor({nome: fluxo.CONCLUIDO for nome in fluxo.nomes()}))
 
     def test_setores_desconhecidos_na_planilha_sao_reportados(self):
@@ -119,11 +179,20 @@ class SetoresTests(unittest.TestCase):
 
     def test_setores_em_ordem_monta_as_linhas_da_tela(self):
         linhas = fluxo.setores_em_ordem({"Solda": fluxo.EM_ANDAMENTO})
-        self.assertEqual([linha["ordem"] for linha in linhas], list(range(1, 8)))
+        self.assertEqual(
+            [linha["ordem"] for linha in linhas], list(range(1, len(fluxo.SETORES) + 1))
+        )
         solda = [linha for linha in linhas if linha["nome"] == "Solda"][0]
         self.assertEqual(solda["status"], fluxo.EM_ANDAMENTO)
         self.assertFalse(solda["concluido"])
+        self.assertFalse(solda["resolvido"])
+        self.assertFalse(solda["nao_aplica"])
         self.assertEqual(linhas[0]["nome"], "Corte")
+
+        nao_aplica = fluxo.setores_em_ordem({"Vidros": fluxo.NAO_SE_APLICA})[4]
+        self.assertTrue(nao_aplica["nao_aplica"])
+        self.assertTrue(nao_aplica["resolvido"])
+        self.assertFalse(nao_aplica["concluido"])
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -278,9 +347,16 @@ class LocalStorageTests(unittest.TestCase):
         self.storage.atualizar_status_setor(op["id"], "Corte", fluxo.CONCLUIDO, "Corte")
         fluida = self.storage.ops_com_fluxo()[0]
         self.assertEqual(fluida["status_geral"], fluxo.OP_EM_ANDAMENTO)
-        self.assertEqual(fluida["setor_atual"]["nome"], "Dobra")
+        self.assertEqual(fluida["setor_atual"]["nome"], "Corte Painel")
         self.assertEqual(fluida["setores"][0]["concluido"], True)
         self.assertTrue(fluida["setores"][0]["concluido_em"])
+
+        # Setor marcado como "não se aplica" sai da frente sem contar como concluído.
+        self.storage.atualizar_status_setor(op["id"], "Corte Painel", fluxo.NAO_SE_APLICA, "Gestão")
+        fluida = self.storage.ops_com_fluxo()[0]
+        self.assertEqual(fluida["setor_atual"]["nome"], "CNC")
+        self.assertFalse(fluida["setores"][1]["concluido"])
+        self.assertTrue(fluida["setores"][1]["nao_aplica"])
 
     def test_editar_op_mantem_o_id_e_o_historico(self):
         op = self.criar()
@@ -883,3 +959,292 @@ class ConexaoGoogleTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class NaoSeAplicaTests(AppProducaoTestCase):
+    """O status "Não se aplica" destrava a OP sem marcar trabalho que não houve."""
+
+    def setUp(self):
+        super().setUp()
+        self.entrar("gestao")
+        self.op = self.criar_op()
+
+    def test_status_gravado_sem_carimbo_de_trabalho(self):
+        resposta = self.marcar(self.op, "vidros", "Não se aplica")
+        self.assertEqual(resposta.status_code, 200)
+
+        registro = [r for r in self.storage.setores_da_op(self.op) if r["setor"] == "Vidros"][0]
+        self.assertEqual(registro["status"], fluxo.NAO_SE_APLICA)
+        self.assertEqual(registro["iniciado_em"], "", "não houve trabalho a cronometrar")
+        self.assertEqual(registro["concluido_em"], "")
+        self.assertTrue(registro["atualizado_em"], "mas fica registrado quem decidiu e quando")
+        self.assertEqual(registro["atualizado_por"], "Gestão")
+
+    def test_mudanca_fica_no_historico(self):
+        self.marcar(self.op, "portas", "Não se aplica", "peça sem porta")
+        historico = self.storage.listar_historico(self.op)
+        self.assertEqual(len(historico), 1)
+        self.assertEqual(historico[0]["status_novo"], fluxo.NAO_SE_APLICA)
+        self.assertEqual(historico[0]["observacao"], "peça sem porta")
+
+    def test_voltar_atras_de_nao_se_aplica(self):
+        self.marcar(self.op, "vidros", "Não se aplica")
+        self.marcar(self.op, "vidros", "Em andamento")
+        registro = [r for r in self.storage.setores_da_op(self.op) if r["setor"] == "Vidros"][0]
+        self.assertEqual(registro["status"], fluxo.EM_ANDAMENTO)
+        self.assertTrue(registro["iniciado_em"], "ao voltar a valer, o carimbo é criado")
+
+    def test_op_conclui_com_setores_nao_aplicaveis(self):
+        """Cenário real: peça que não passa por Vidros, Portas e Pass-through."""
+
+        for setor in fluxo.SETORES:
+            status = (
+                "Não se aplica"
+                if setor.nome in ("Vidros", "Portas", "Pass-through", "CNC")
+                else "Concluído"
+            )
+            self.assertEqual(self.marcar(self.op, setor.chave, status).status_code, 200)
+
+        fluida = self.storage.ops_com_fluxo()[0]
+        self.assertEqual(fluida["status_geral"], fluxo.OP_CONCLUIDA)
+        self.assertEqual(fluida["progresso"], 100)
+        self.assertTrue(self.storage.obter_op(self.op)["concluida_em"])
+
+    def test_setor_nao_aplicavel_sai_da_fila_do_setor(self):
+        self.marcar(self.op, "vidros", "Não se aplica")
+        self.client.get("/sair")
+        self.client.post(
+            "/acessos",
+            data={
+                "csrf_token": self.csrf("/login"),
+                "perfil": "vidros",
+                "pin": "2468",
+                "ativo": "sim",
+            },
+        ) if False else None
+
+        # A gestão cadastra o PIN e entra como o setor de Vidros.
+        self.entrar("gestao")
+        self.client.post(
+            "/acessos",
+            data={
+                "csrf_token": self.csrf("/acessos"),
+                "perfil": "vidros",
+                "pin": "2468",
+                "ativo": "sim",
+            },
+        )
+        self.client.get("/sair")
+        self.client.post("/login", data={"csrf_token": self.csrf(), "perfil": "vidros", "pin": "2468"})
+        html = self.client.get("/").get_data(as_text=True)
+        self.assertNotIn("Peça teste", html)
+        self.assertIn("Nenhuma OP nesta lista", html)
+
+    def test_op_detalhe_mostra_os_quatro_status(self):
+        html = self.client.get(f"/op/{self.op}").get_data(as_text=True)
+        for rotulo in ("Não iniciado", "Em andamento", "Concluído", "Não se aplica"):
+            with self.subTest(rotulo=rotulo):
+                self.assertIn(rotulo, html)
+        self.assertIn('data-p-valor="Não se aplica"', html)
+
+        # Ao marcar, o botão do status atual fica destacado
+        self.marcar(self.op, "vidros", "Não se aplica")
+        html = self.client.get(f"/op/{self.op}").get_data(as_text=True)
+        self.assertIn("p-btn-nao-aplica", html)
+        self.assertIn("∅ Não se aplica a esta OP", html)
+
+    def test_fila_do_setor_tem_atalho_de_nao_se_aplica(self):
+        self.entrar("gestao")
+        self.client.post(
+            "/acessos",
+            data={
+                "csrf_token": self.csrf("/acessos"),
+                "perfil": "vidros",
+                "pin": "2468",
+                "ativo": "sim",
+            },
+        )
+        self.client.get("/sair")
+        self.client.post("/login", data={"csrf_token": self.csrf(), "perfil": "vidros", "pin": "2468"})
+        html = self.client.get("/").get_data(as_text=True)
+        self.assertIn("Não se aplica", html)
+        self.assertIn("∅ N/A", html)
+
+
+class MigracaoSetoresTests(AppProducaoTestCase):
+    """Fluxo que ganha setor novo não pode reabrir OP concluída."""
+
+    def setUp(self):
+        super().setUp()
+        self.entrar("gestao")
+        self.op = self.criar_op()
+
+    def _apagar_setores(self, nomes):
+        """Simula uma planilha criada quando o fluxo tinha menos setores."""
+
+        caminho = Path(self.app.config["LOCAL_DB_PATH"])
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+        dados["setores"] = [linha for linha in dados["setores"] if linha["setor"] not in nomes]
+        caminho.write_text(json.dumps(dados), encoding="utf-8")
+        self.storage = LocalStorage(caminho)
+
+    def test_setores_faltantes_sao_detectados(self):
+        self._apagar_setores({"CNC", "Vidros"})
+        faltantes = self.storage.setores_faltantes()
+        self.assertEqual({linha["setor"] for linha in faltantes}, {"CNC", "Vidros"})
+        self.assertTrue(all(linha["op_id"] == self.op for linha in faltantes))
+
+    def test_banco_local_se_completa_sozinho(self):
+        self._apagar_setores({"CNC", "Vidros", "Pass-through"})
+        # Qualquer leitura já completa (banco local)
+        registros = self.storage.setores_da_op(self.op)
+        self.assertEqual(len(registros), len(fluxo.SETORES))
+        self.assertEqual({linha["setor"] for linha in registros}, set(fluxo.nomes()))
+        self.assertEqual(
+            [linha["status"] for linha in registros if linha["setor"] == "CNC"],
+            [fluxo.NAO_INICIADO],
+        )
+
+    def test_op_concluida_recebe_setor_novo_como_nao_se_aplica(self):
+        for setor in fluxo.SETORES:
+            self.marcar(self.op, setor.chave, "Concluído")
+        self.assertTrue(self.storage.obter_op(self.op)["concluida_em"])
+
+        self._apagar_setores({"Policorte"})
+        # Recarrega: a linha nova entra como "Não se aplica" e a OP segue concluída
+        fluida = self.storage.ops_com_fluxo()[0]
+        policorte = [d for d in fluida["setores"] if d["nome"] == "Policorte"][0]
+        self.assertEqual(policorte["status"], fluxo.NAO_SE_APLICA)
+        self.assertEqual(fluida["status_geral"], fluxo.OP_CONCLUIDA)
+        self.assertEqual(fluida["progresso"], 100)
+
+    def test_garantir_setores_nao_duplica_linha(self):
+        self._apagar_setores({"Vidros", "Portas"})
+        resultado = self.storage.garantir_setores()
+        self.assertEqual(resultado["linhas_criadas"], 2)
+        self.assertEqual(resultado["ops_afetadas"], 1)
+
+        registros = self.storage.setores_da_op(self.op)
+        self.assertEqual(len(registros), len(fluxo.SETORES), "nada de linha repetida")
+        self.assertEqual(len({r["setor"] for r in registros}), len(fluxo.SETORES))
+
+        # Rodar de novo não faz nada
+        self.assertEqual(self.storage.garantir_setores()["linhas_criadas"], 0)
+
+    def test_script_de_migracao_roda_no_modo_local(self):
+        import subprocess
+        import sys as _sys
+
+        caminho = Path(self.app.config["LOCAL_DB_PATH"])
+        caminho.parent.mkdir(parents=True, exist_ok=True)
+        self._apagar_setores({"Vidros"})
+
+        ambiente = {**os.environ, "PRODUCAO_STORAGE": "local", "PRODUCAO_LOCAL_DB": str(caminho)}
+        resultado = subprocess.run(
+            [_sys.executable, str(ROOT / "scripts" / "migrar_setores_producao.py"), "--local"],
+            capture_output=True,
+            text=True,
+            env=ambiente,
+            cwd=ROOT,
+        )
+        self.assertEqual(resultado.returncode, 0, resultado.stderr[-400:])
+        self.assertIn("setores", resultado.stdout)
+        self.assertIn("Fluxo atual: 13 setores", resultado.stdout)
+
+
+class StatusNaPlanilhaTests(unittest.TestCase):
+    """A coluna Status da aba Setores aceita os quatro valores."""
+
+    def test_ida_e_volta_dos_quatro_status(self):
+        from appmodules.producao_web.storage import linha_para_setor, setor_para_linha
+
+        for status in fluxo.STATUS_SETOR:
+            with self.subTest(status=status):
+                registro = {"op_id": "OP-0001", "setor": "CNC", "status": status}
+                self.assertEqual(linha_para_setor(setor_para_linha(registro))["status"], status)
+
+    def test_status_desconhecido_na_planilha_vira_nao_iniciado(self):
+        from appmodules.producao_web.storage import linha_para_setor
+
+        self.assertEqual(linha_para_setor(["OP-1", "CNC", "Pausado"])["status"], "Pausado")
+        # quem normaliza é o fluxo, não a conversão de linha
+        self.assertEqual(fluxo.normalizar_status("Pausado"), fluxo.NAO_INICIADO)
+
+
+class ConfigCookieTests(unittest.TestCase):
+    """Cookies de sessão: o padrão serve o cliente; o modo iframe é possível.
+
+    Sem isso, abrir o app dentro de outra página (preview/iframe) falha no login
+    com "CSRF session token is missing": o navegador não envia cookie Lax em POST
+    de outro site.
+    """
+
+    CHAVES = (
+        "PRODUCAO_SECRET_KEY",
+        "PRODUCAO_COOKIE_SAMESITE",
+        "PRODUCAO_COOKIE_SECURE",
+        "PRODUCAO_COOKIE_PARTITIONED",
+    )
+
+    def setUp(self):
+        self.originais = {chave: os.environ.get(chave) for chave in self.CHAVES}
+        os.environ["PRODUCAO_SECRET_KEY"] = "teste"
+
+    def tearDown(self):
+        for chave, valor in self.originais.items():
+            if valor is None:
+                os.environ.pop(chave, None)
+            else:
+                os.environ[chave] = valor
+
+    def test_padrao_do_servidor_do_cliente(self):
+        for chave in self.CHAVES[1:]:
+            os.environ.pop(chave, None)
+        from appmodules.producao_web.config import ProducaoConfig
+
+        config = ProducaoConfig.carregar()
+        self.assertEqual(config["SESSION_COOKIE_SAMESITE"], "Lax")
+        self.assertFalse(config["SESSION_COOKIE_SECURE"])
+        self.assertFalse(config["SESSION_COOKIE_PARTITIONED"])
+
+    def test_modo_iframe_configuravel(self):
+        os.environ["PRODUCAO_COOKIE_SAMESITE"] = "None"
+        os.environ["PRODUCAO_COOKIE_SECURE"] = "true"
+        os.environ["PRODUCAO_COOKIE_PARTITIONED"] = "true"
+        from appmodules.producao_web.config import ProducaoConfig
+
+        config = ProducaoConfig.carregar()
+        self.assertEqual(config["SESSION_COOKIE_SAMESITE"], "None")
+        self.assertTrue(config["SESSION_COOKIE_SECURE"])
+        self.assertTrue(config["SESSION_COOKIE_PARTITIONED"])
+
+    def test_atributos_chegam_no_cookie_do_login(self):
+        app = criar_para_testes(
+            {
+                "SESSION_COOKIE_SAMESITE": "None",
+                "SESSION_COOKIE_SECURE": True,
+                "SESSION_COOKIE_PARTITIONED": True,
+            }
+        )
+        cookie = app.test_client().get("/login").headers.get("Set-Cookie", "")
+        self.assertIn("SameSite=None", cookie)
+        self.assertIn("Secure", cookie)
+        self.assertIn("Partitioned", cookie)
+        self.assertIn("HttpOnly", cookie)
+
+    def test_login_completo_preserva_a_sessao(self):
+        """Login por PIN e acesso à área interna usando o cookie devolvido."""
+
+        client = self.app_cliente()
+        token = client.get("/login").get_data(as_text=True)
+        token = re.search(r'name="csrf_token" value="([^"]+)"', token).group(1)
+        resposta = client.post(
+            "/login", data={"csrf_token": token, "perfil": "gestao", "pin": "1234"}
+        )
+        self.assertEqual(resposta.status_code, 302)
+        with client.session_transaction() as sessao:
+            self.assertEqual(sessao["producao_usuario"]["nome"], fluxo.GESTAO_NOME)
+
+    def app_cliente(self):
+        app = criar_para_testes({"ADMIN_PIN": "1234"})
+        return app.test_client()

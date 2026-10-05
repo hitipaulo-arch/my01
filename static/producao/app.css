@@ -215,10 +215,11 @@ body.p-app {
     white-space: nowrap;
 }
 
-.st-pendente  { background: #e2e8f0; color: #475569; }
-.st-andamento { background: #fef3c7; color: #b45309; }
-.st-concluido { background: #dcfce7; color: #15803d; }
-.st-atraso    { background: #fee2e2; color: #b91c1c; }
+.st-pendente   { background: #e2e8f0; color: #475569; }
+.st-andamento  { background: #fef3c7; color: #b45309; }
+.st-concluido  { background: #dcfce7; color: #15803d; }
+.st-nao-aplica { background: #ede9fe; color: #5b21b6; }
+.st-atraso     { background: #fee2e2; color: #b91c1c; }
 
 /* --------------------------------------------------------------- progresso */
 .p-progresso {
@@ -272,6 +273,7 @@ body.p-app {
 
 .p-btn-success { background: #15803d; color: #fff; }
 .p-btn-danger  { background: #b91c1c; color: #fff; }
+.p-btn-nao-aplica { background: #6d28d9; color: #fff; }
 
 .p-btn-outline {
     border-color: var(--p-borda);
@@ -500,9 +502,10 @@ body.p-app {
     box-shadow: var(--p-sombra);
 }
 
-.p-flow-item.st-pendente  { border-left-color: var(--p-pendente); }
-.p-flow-item.st-andamento { border-left-color: var(--p-andamento); background: #fffdf5; }
-.p-flow-item.st-concluido { border-left-color: var(--p-concluido); background: #f8fffa; }
+.p-flow-item.st-pendente   { border-left-color: var(--p-pendente); }
+.p-flow-item.st-andamento  { border-left-color: var(--p-andamento); background: #fffdf5; }
+.p-flow-item.st-concluido  { border-left-color: var(--p-concluido); background: #f8fffa; }
+.p-flow-item.st-nao-aplica { border-left-color: #7c3aed; background: #faf8ff; }
 
 .p-flow-topo { display: flex; align-items: center; gap: 10px; }
 .p-flow-icone { font-size: 1.35rem; }
@@ -526,7 +529,8 @@ body.p-app {
 
 .p-flow-form { margin-top: 10px; }
 .p-flow-botoes { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
-.p-flow-botoes .p-btn { flex: 1 1 30%; }
+/* quatro status → grade 2x2, com alvo grande para o uso no chão de fábrica */
+.p-flow-botoes .p-btn { flex: 1 1 44%; }
 
 /* ------------------------------------------------------------- histórico/OP */
 .p-historico {

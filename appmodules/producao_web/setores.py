@@ -4,9 +4,19 @@ O app dedicado acompanha cada ordem de produção (OP) pelos setores da fábrica
 Cada setor tem seu próprio status, com data/hora — assim é possível saber em que
 ponto a peça está e quando cada etapa começou e terminou.
 
+Status possíveis de cada setor:
+
+* ``Não iniciado`` — o setor ainda não começou;
+* ``Em andamento`` — começou (grava a data/hora de início);
+* ``Concluído`` — terminou (grava a data/hora de conclusão);
+* ``Não se aplica`` — a peça não passa por esse setor (ex.: peça sem vidro).
+  Conta como **resolvido**: não trava a conclusão da OP.
+
 Para mudar o fluxo (acrescentar, renomear ou reordenar setores) basta editar a
 tupla ``SETORES`` abaixo: o armazenamento, as telas, o painel e os testes leem
 tudo daqui, e as linhas de setor são criadas automaticamente ao abrir uma OP.
+OPs antigas são completadas por ``garantir_setores()`` (veja
+``scripts/migrar_setores_producao.py``).
 """
 
 from __future__ import annotations
@@ -21,8 +31,12 @@ from typing import Iterable, Mapping, Sequence
 NAO_INICIADO = "Não iniciado"
 EM_ANDAMENTO = "Em andamento"
 CONCLUIDO = "Concluído"
+NAO_SE_APLICA = "Não se aplica"
 
-STATUS_SETOR: tuple[str, ...] = (NAO_INICIADO, EM_ANDAMENTO, CONCLUIDO)
+STATUS_SETOR: tuple[str, ...] = (NAO_INICIADO, EM_ANDAMENTO, CONCLUIDO, NAO_SE_APLICA)
+
+#: Status que contam como "resolvido" (não seguram a OP).
+STATUS_RESOLVIDOS: frozenset[str] = frozenset({CONCLUIDO, NAO_SE_APLICA})
 
 #: Status calculado da OP inteira (não é digitado: vem dos setores)
 OP_AGUARDANDO = "Aguardando"
@@ -42,6 +56,12 @@ class Setor:
 #: Ordem real do fluxo na fábrica — usada para saber "próximo setor".
 SETORES: tuple[Setor, ...] = (
     Setor("corte", "Corte", "🪚"),
+    Setor("corte_painel", "Corte Painel", "🧱"),
+    Setor("cnc", "CNC", "🖥️"),
+    Setor("policorte", "Policorte", "⚙️"),
+    Setor("vidros", "Vidros", "🪟"),
+    Setor("portas", "Portas", "🚪"),
+    Setor("pass_through", "Pass-through", "🔁"),
     Setor("dobra", "Dobra", "📐"),
     Setor("montagem_primaria", "Montagem Primária", "🔧"),
     Setor("solda", "Solda", "🔥"),
@@ -96,16 +116,18 @@ def por_nome(nome: str) -> Setor | None:
 
 
 def normalizar_status(valor: str) -> str:
-    """Converte qualquer variação em um dos três status válidos."""
+    """Converte qualquer variação em um dos status válidos."""
 
     alvo = comparavel(valor)
     for status in STATUS_SETOR:
         if comparavel(status) == alvo:
             return status
-    if alvo in ("concluida", "concluído", "finalizado", "ok", "pronto"):
+    if alvo in ("concluida", "finalizado", "ok", "pronto"):
         return CONCLUIDO
-    if alvo in ("andamento", "iniciado", "fazendo", "em produção"):
+    if alvo in ("andamento", "iniciado", "fazendo", "em producao"):
         return EM_ANDAMENTO
+    if alvo in ("nao se aplica", "n/a", "na", "nao aplicavel", "sem aplicacao", "pula"):
+        return NAO_SE_APLICA
     return NAO_INICIADO
 
 
@@ -113,6 +135,12 @@ def e_status_valido(valor: str) -> bool:
     """Confere o status exatamente como o app envia (``STATUS_SETOR``)."""
 
     return str(valor or "").strip() in STATUS_SETOR
+
+
+def resolvido(status: str) -> bool:
+    """Um setor resolvido não segura mais a OP (concluído ou não se aplica)."""
+
+    return normalizar_status(status) in STATUS_RESOLVIDOS
 
 
 def setores_em_ordem(status_por_setor: Mapping[str, str]) -> list[dict]:
@@ -129,17 +157,19 @@ def setores_em_ordem(status_por_setor: Mapping[str, str]) -> list[dict]:
                 "icone": setor.icone,
                 "status": status,
                 "concluido": status == CONCLUIDO,
+                "nao_aplica": status == NAO_SE_APLICA,
+                "resolvido": status in STATUS_RESOLVIDOS,
             }
         )
     return linhas
 
 
 def proximo_setor(status_por_setor: Mapping[str, str]) -> dict | None:
-    """Primeiro setor ainda não concluído — onde a peça está agora."""
+    """Primeiro setor ainda não resolvido — onde a peça está agora."""
 
     for setor in SETORES:
         status = normalizar_status(status_por_setor.get(setor.nome, NAO_INICIADO))
-        if status != CONCLUIDO:
+        if status not in STATUS_RESOLVIDOS:
             return {"chave": setor.chave, "nome": setor.nome, "icone": setor.icone, "status": status}
     return None
 
@@ -147,13 +177,15 @@ def proximo_setor(status_por_setor: Mapping[str, str]) -> dict | None:
 def status_da_op(status_por_setor: Mapping[str, str]) -> str:
     """Status geral da OP, calculado a partir dos setores.
 
-    * todos concluídos → ``Concluída``
+    * todos resolvidos (concluídos ou "não se aplica") → ``Concluída``
     * algum já começou → ``Em andamento``
     * ninguém começou → ``Aguardando``
     """
 
-    statuses = [normalizar_status(status_por_setor.get(setor.nome, NAO_INICIADO)) for setor in SETORES]
-    if statuses and all(status == CONCLUIDO for status in statuses):
+    statuses = [
+        normalizar_status(status_por_setor.get(setor.nome, NAO_INICIADO)) for setor in SETORES
+    ]
+    if statuses and all(status in STATUS_RESOLVIDOS for status in statuses):
         return OP_CONCLUIDA
     if any(status != NAO_INICIADO for status in statuses):
         return OP_EM_ANDAMENTO
@@ -161,17 +193,17 @@ def status_da_op(status_por_setor: Mapping[str, str]) -> str:
 
 
 def progresso(status_por_setor: Mapping[str, str]) -> int:
-    """Percentual de setores concluídos (0–100), para a barra de progresso."""
+    """Percentual de setores resolvidos (0–100), para a barra de progresso."""
 
     total = len(SETORES)
     if not total:
         return 0
-    concluidos = sum(
+    resolvidos = sum(
         1
         for setor in SETORES
-        if normalizar_status(status_por_setor.get(setor.nome, NAO_INICIADO)) == CONCLUIDO
+        if normalizar_status(status_por_setor.get(setor.nome, NAO_INICIADO)) in STATUS_RESOLVIDOS
     )
-    return round((concluidos / total) * 100)
+    return round((resolvidos / total) * 100)
 
 
 def resumir_setores(linhas_setor: Sequence[Mapping[str, object]]) -> dict[str, str]:
@@ -189,10 +221,10 @@ def resumir_setores(linhas_setor: Sequence[Mapping[str, object]]) -> dict[str, s
 def nomes_desconhecidos(linhas_setor: Iterable[Mapping[str, object]]) -> set[str]:
     """Setores gravados na planilha que não existem mais no fluxo do código."""
 
-    conhecidos = {setor.nome.casefold() for setor in SETORES}
+    conhecidos = {comparavel(setor.nome) for setor in SETORES}
     return {
         str(linha.get("setor", "")).strip()
         for linha in linhas_setor
         if str(linha.get("setor", "")).strip()
-        and str(linha.get("setor", "")).strip().casefold() not in conhecidos
+        and comparavel(str(linha.get("setor", ""))) not in conhecidos
     }

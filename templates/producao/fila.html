@@ -69,7 +69,7 @@
 
         {% if setor_usuario %}
             {% set meu = op.setores | selectattr('nome', 'equalto', setor_usuario) | first %}
-            {% if meu and not meu.concluido %}
+            {% if meu and not meu.resolvido %}
             <div class="p-acoes-rapidas">
                 {% if meu.status != 'Em andamento' %}
                 <form method="POST" action="{{ url_for('producao.atualizar_setor', op_id=op.id, chave_setor=meu.chave) }}"
@@ -85,6 +85,18 @@
                     <input type="hidden" name="status" value="Concluído"/>
                     <button type="submit" class="p-btn p-btn-success p-btn-sm">✅ Concluir</button>
                 </form>
+                <form method="POST" action="{{ url_for('producao.atualizar_setor', op_id=op.id, chave_setor=meu.chave) }}"
+                      data-p-quick data-p-status="Não se aplica">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="status" value="Não se aplica"/>
+                    <button type="submit" class="p-btn p-btn-outline p-btn-sm"
+                            title="A peça não passa por este setor">∅ N/A</button>
+                </form>
+                <a class="p-btn p-btn-ghost p-btn-sm" href="{{ url_for('producao.detalhe', op_id=op.id) }}">Abrir</a>
+            </div>
+            {% elif meu and meu.nao_aplica %}
+            <div class="p-acoes-rapidas">
+                <span class="p-ok-setor">∅ Não se aplica ao seu setor</span>
                 <a class="p-btn p-btn-ghost p-btn-sm" href="{{ url_for('producao.detalhe', op_id=op.id) }}">Abrir</a>
             </div>
             {% else %}

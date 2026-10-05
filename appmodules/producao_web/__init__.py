@@ -100,6 +100,15 @@ def _montar_app(config: dict[str, Any]) -> Flask:
     return app
 
 
+def _banco_temporario() -> str:
+    """Caminho de banco local exclusivo para cada app criado em teste."""
+
+    import tempfile
+    from pathlib import Path
+
+    return str(Path(tempfile.mkdtemp(prefix="producao-testes-")) / "producao.json")
+
+
 def criar_para_testes(configuracao: dict[str, Any] | None = None) -> Flask:
     """Cria o app para os testes, sem exigir configuração de ambiente.
 
@@ -116,6 +125,7 @@ def criar_para_testes(configuracao: dict[str, Any] | None = None) -> Flask:
         "DEBUG": False,
         "SPREADSHEET_ID": "",
         "CREDENCIAIS": "credentials.json",
+        "LOCAL_DB_PATH": _banco_temporario(),
         "ESCOPOS": [
             "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/drive.file",
@@ -141,6 +151,7 @@ def _registrar_filtros(app: Flask) -> None:
             fluxo.NAO_INICIADO: "st-pendente",
             fluxo.EM_ANDAMENTO: "st-andamento",
             fluxo.CONCLUIDO: "st-concluido",
+            fluxo.NAO_SE_APLICA: "st-nao-aplica",
             fluxo.OP_AGUARDANDO: "st-pendente",
             fluxo.OP_EM_ANDAMENTO: "st-andamento",
             fluxo.OP_CONCLUIDA: "st-concluido",
@@ -153,6 +164,7 @@ def _registrar_filtros(app: Flask) -> None:
             fluxo.NAO_INICIADO: "○",
             fluxo.EM_ANDAMENTO: "◐",
             fluxo.CONCLUIDO: "●",
+            fluxo.NAO_SE_APLICA: "∅",
         }
         return mapa.get(str(status or "").strip(), "○")
 

@@ -4,6 +4,15 @@
 {% block appbar_sub %}{{ ops|length }} OP(s) · {{ hoje.strftime('%d/%m/%Y') }}{% endblock %}
 
 {% block content %}
+{% if op_sem_setores %}
+<div class="p-aviso">
+    <strong>⚠️ {{ op_sem_setores|length }} OP(s) sem os setores novos do fluxo:</strong>
+    {{ op_sem_setores|join(', ') }}.
+    Rode <code>python scripts/migrar_setores_producao.py</code> para completar a planilha —
+    cada OP recebe as etapas que faltam (as já concluídas ficam como “Não se aplica”).
+</div>
+{% endif %}
+
 {% set total = ops|length %}
 {% set em_andamento = ops|selectattr('status_geral', 'equalto', 'Em andamento')|list|length %}
 {% set concluidas = concluidas|length %}
@@ -40,7 +49,10 @@
         <span class="p-setor-numeros">
             {{ linha.pendentes }} pendente(s) · {{ linha.em_andamento }} em andamento
         </span>
-        <span class="p-setor-numeros p-mini">{{ linha.concluidos }} peça(s) já passaram por aqui</span>
+        <span class="p-setor-numeros p-mini">
+            {{ linha.concluidos }} peça(s) já passaram por aqui
+            {%- if linha.nao_aplica %} · {{ linha.nao_aplica }} não se aplica{% endif %}
+        </span>
         {% if linha.atrasados %}
         <span class="p-selo st-atraso">⚠️ {{ linha.atrasados }} com prazo vencido</span>
         {% endif %}
