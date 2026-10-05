@@ -92,6 +92,9 @@ class CacheConfig:
     # TTL padrão (5 minutos) usado pelo Flask-Caching quando nenhum TTL
     # específico é informado em cache.set().
     CACHE_DEFAULT_TIMEOUT: int = int(os.getenv('CACHE_TTL_SECONDS', 300))
+    OS_CACHE_TTL_SECONDS: int = int(os.getenv('OS_CACHE_TTL_SECONDS', 120))
+    PRODUCAO_CACHE_TTL_SECONDS: int = int(os.getenv('PRODUCAO_CACHE_TTL_SECONDS', 30))
+    USUARIOS_CACHE_TTL_SECONDS: int = int(os.getenv('USUARIOS_CACHE_TTL_SECONDS', 300))
 
     # Configurações do Redis (ativas quando CACHE_TYPE == 'RedisCache')
     CACHE_REDIS_HOST: str = os.getenv('REDIS_HOST', 'localhost')
