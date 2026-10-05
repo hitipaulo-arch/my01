@@ -21,6 +21,25 @@ sessão e CSRF da versão web.
 **📖 Veja [APP_MOBILE.md](APP_MOBILE.md) para o guia completo (arquitetura,
 instalação no Android/iPhone e testes).**
 
+## 🏭 App de Produção (por setor)
+
+A fábrica tem um **app separado** para acompanhar as ordens de produção pelos
+setores — **Corte → Dobra → Montagem Primária → Solda → Acabamento →
+Silicone e Limpeza → Embalagem**:
+
+| | Sistema de OS | App de Produção |
+|---|---|---|
+| Endereço | `/` e `/m/` | **porta 5001** (`producao_app.py`) |
+| Login | usuário e senha | **PIN por setor** |
+| Dados | planilha de OS | **planilha própria** (`PRODUCAO_SPREADSHEET_ID`) |
+
+Cada setor entra com o próprio PIN e marca o seu status (Não iniciado / Em
+andamento / Concluído) **com data e hora**, sem mexer no trabalho dos outros.
+A gestão vê o painel com a carga de cada setor e os atrasos.
+
+**📖 Veja [APP_PRODUCAO.md](APP_PRODUCAO.md) para o guia completo (criar a
+planilha, subir o app, cadastrar os PINs e o QR code de instalação).**
+
 ## 🚀 Funcionalidades
 
 - ✅ Abertura de OS via formulário web
