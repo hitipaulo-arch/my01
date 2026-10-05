@@ -37,7 +37,7 @@ from flask import (
 from werkzeug.security import generate_password_hash
 
 from appmodules.producao_web import auth, setores as fluxo
-from appmodules.utils.formatters import format_codigo_code, format_mtc_code
+from appmodules.producao_web.formatters import format_codigo_code, format_mtc_code
 
 logger = logging.getLogger(__name__)
 

@@ -157,7 +157,7 @@ desenvolvimento — **não use em produção**.
 pytest tests/test_producao_web.py -v
 ```
 
-75 testes cobrem o fluxo de setores (ordem, status calculado, progresso), o
+81 testes cobrem o fluxo de setores (ordem, status calculado, progresso), o
 armazenamento local, o login por setor, as permissões (cada setor só mexe no
 próprio status), o cadastro/edição/exclusão de OP, o painel, o histórico, a
 instalação (manifest, service worker, ícones) e o **isolamento** — há teste que
@@ -175,12 +175,13 @@ appmodules/producao_web/
   storage.py                        planilha dedicada + backend local
   auth.py                           login por setor (PIN, permissões)
   routes.py                         telas e ações
+  formatters.py                     máscaras de código, MTC e prazo
   config.py                         variáveis de ambiente do app
 templates/producao/                 10 telas (login, fila, ficha da OP, painel, acessos…)
 static/producao/                    app.css, app.js, service worker, manifest, ícones
 scripts/gerar_icones_producao.py    regera os ícones do app
 scripts/verificar_planilha_producao.py  confere/configura a planilha
-tests/test_producao_web.py          75 testes
+tests/test_producao_web.py          81 testes
 ```
 
 ### Mudar o fluxo de setores

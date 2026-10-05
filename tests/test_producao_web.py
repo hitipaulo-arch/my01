@@ -737,6 +737,41 @@ class InstalacaoTests(AppProducaoTestCase):
         self.assertEqual(dados["storage"], "local")
 
 
+class FormatadoresTests(unittest.TestCase):
+    """As máscaras do app seguem as mesmas regras do sistema de OS."""
+
+    def test_codigo_com_digitos_recebe_hifens(self):
+        from appmodules.producao_web.formatters import format_codigo_code
+
+        self.assertEqual(format_codigo_code("1234567"), "12-34-567")
+        self.assertEqual(format_codigo_code("12"), "12")
+        self.assertEqual(format_codigo_code("1234"), "12-34")
+        self.assertEqual(format_codigo_code(""), "")
+        self.assertEqual(format_codigo_code("12-34-567"), "12-34-567")
+        self.assertEqual(format_codigo_code("1234567890"), "12-34-56789")
+
+    def test_codigo_com_letras_e_preservado(self):
+        from appmodules.producao_web.formatters import format_codigo_code
+
+        self.assertEqual(format_codigo_code("AB-12"), "AB-12")
+        self.assertEqual(format_codigo_code("  xpto  "), "xpto")
+
+    def test_mtc_limita_a_quatro_digitos(self):
+        from appmodules.producao_web.formatters import format_mtc_code
+
+        self.assertEqual(format_mtc_code("123456"), "1234")
+        self.assertEqual(format_mtc_code("12"), "12")
+        self.assertEqual(format_mtc_code("ab"), "")
+        self.assertEqual(format_mtc_code(""), "")
+
+    def test_prazo_formatado_como_data(self):
+        from appmodules.producao_web.formatters import formatar_data
+
+        self.assertEqual(formatar_data("31122026"), "31/12/2026")
+        self.assertEqual(formatar_data("31"), "31")
+        self.assertEqual(formatar_data("3112"), "31/12")
+
+
 class IsolamentoTests(unittest.TestCase):
     """O app de produção não compartilha nada com o sistema de OS."""
 
@@ -754,10 +789,25 @@ class IsolamentoTests(unittest.TestCase):
                 self.assertNotIn("SheetsService", conteudo)
                 self.assertNotIn("appmodules.services", conteudo)
 
+    def test_app_de_producao_so_importa_o_proprio_pacote(self):
+        """Nenhum ``from appmodules...`` que não seja do próprio app.
+
+        Isso é o que permite copiar a pasta e rodar o app de produção sozinho.
+        """
+
+        for arquivo in sorted((ROOT / "appmodules" / "producao_web").rglob("*.py")):
+            for linha in arquivo.read_text(encoding="utf-8").splitlines():
+                if "import appmodules" in linha:
+                    with self.subTest(arquivo=arquivo.name, linha=linha.strip()):
+                        self.assertIn("appmodules.producao_web", linha)
+
     def test_templates_sao_separados(self):
         """As telas do app de produção nunca são as mesmas do sistema/app de OS."""
 
         self.assertTrue((ROOT / "templates" / "producao").is_dir())
+        if not (ROOT / "templates" / "mobile").is_dir():
+            self.skipTest("sistema de OS não está presente nesta cópia")
+
         for arquivo in sorted((ROOT / "templates" / "producao").glob("*.html")):
             if arquivo.name.startswith("_"):
                 continue  # _base.html é o próprio layout
@@ -771,11 +821,35 @@ class IsolamentoTests(unittest.TestCase):
                     )
                 self.assertIn("producao/_base.html", arquivo.read_text(encoding="utf-8"))
 
-    def test_cada_app_registra_o_proprio_segredo(self):
+    def test_segredo_do_app_de_producao_nao_vem_do_sistema_de_os(self):
+        """``PRODUCAO_SECRET_KEY`` tem prioridade sobre ``SECRET_KEY``."""
+
+        from appmodules.producao_web.config import ProducaoConfig
+
+        original = {chave: os.environ.get(chave) for chave in ("PRODUCAO_SECRET_KEY", "SECRET_KEY")}
+        try:
+            os.environ["PRODUCAO_SECRET_KEY"] = "segredo-da-producao"
+            os.environ["SECRET_KEY"] = "segredo-do-sistema-de-os"
+            self.assertEqual(ProducaoConfig.carregar()["SECRET_KEY"], "segredo-da-producao")
+
+            del os.environ["PRODUCAO_SECRET_KEY"]
+            self.assertEqual(ProducaoConfig.carregar()["SECRET_KEY"], "segredo-do-sistema-de-os")
+
+            del os.environ["SECRET_KEY"]
+            with self.assertRaises(ValueError):
+                ProducaoConfig.carregar()
+        finally:
+            for chave, valor in original.items():
+                if valor is None:
+                    os.environ.pop(chave, None)
+                else:
+                    os.environ[chave] = valor
+
+    def test_app_registrado_usa_o_segredo_do_ambiente(self):
         import producao_app
 
-        self.assertEqual(producao_app.app.config["SECRET_KEY"], "test-producao-secret")
-        self.assertNotEqual(producao_app.app.config["SECRET_KEY"], os.environ["SECRET_KEY"])
+        esperado = os.environ.get("PRODUCAO_SECRET_KEY") or os.environ["SECRET_KEY"]
+        self.assertEqual(producao_app.app.config["SECRET_KEY"], esperado)
 
 
 class ConexaoGoogleTests(unittest.TestCase):
