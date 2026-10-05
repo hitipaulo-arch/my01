@@ -1,0 +1,53 @@
+{# Cadastro de usuário — mesma rota auth.cadastro e mesmas regras do backend #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Cadastro · Gestão OS{% endblock %}
+{% block appbar_title %}📝 Cadastro{% endblock %}
+{% block appbar_sub %}Crie sua conta no sistema{% endblock %}
+
+{% block content %}
+{% if erro %}
+<div class="m-alert m-alert-danger"><div>{{ erro }}</div></div>
+{% endif %}
+
+<div class="m-card">
+    <div class="m-page-head mb-3">
+        <h1>Nova conta</h1>
+        <p>Preencha os dados para criar seu acesso ao sistema.</p>
+    </div>
+
+    <form class="m-form" method="POST" action="{{ url_for('auth.cadastro') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div class="m-field m-field-required">
+            <label class="m-label" for="username">Usuário</label>
+            <input type="text" class="form-control" id="username" name="username"
+                   minlength="3" autocapitalize="none" autocomplete="username" required>
+            <small>Mínimo de 3 caracteres.</small>
+        </div>
+        <div class="m-field m-field-required">
+            <label class="m-label" for="password">Senha</label>
+            <input type="password" class="form-control" id="password" name="password"
+                   minlength="12" autocomplete="new-password" required>
+            <small>A senha precisa ter pelo menos 12 caracteres (regra do sistema).</small>
+        </div>
+        <div class="m-field m-field-required">
+            <label class="m-label" for="confirm_password">Confirmar senha</label>
+            <input type="password" class="form-control" id="confirm_password" name="confirm_password"
+                   minlength="12" autocomplete="new-password" required>
+        </div>
+        <button type="submit" class="m-btn m-btn-primary m-btn-block">Cadastrar</button>
+    </form>
+
+    <p class="m-item-sub mt-3 mb-0">
+        Já tem conta? <a href="{{ url_for('auth.login') }}">Fazer login</a>
+    </p>
+</div>
+
+<div class="m-alert m-alert-warning">
+    <div>
+        <strong>Atenção</strong>
+        Novos usuários cadastrados por esta tela entram com acesso completo de administrador,
+        igual à versão web.
+    </div>
+</div>
+{% endblock %}

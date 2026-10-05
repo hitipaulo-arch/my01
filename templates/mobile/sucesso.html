@@ -1,0 +1,64 @@
+{# Confirmação da abertura de OS (mesmos dados do sucesso.html web) #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}OS aberta com sucesso{% endblock %}
+{% block appbar_title %}✅ OS registrada{% endblock %}
+{% block appbar_sub %}Guarde o número do pedido{% endblock %}
+
+{% block content %}
+<div class="m-card">
+    <div class="m-state">
+        <span class="m-state-icon">🎉</span>
+        <h2>Obrigado, {{ nome }}!</h2>
+        <p>Seu requerimento foi enviado com sucesso e a equipe já foi notificada.</p>
+
+        <div class="m-kpi m-kpi-success" style="text-align: center;">
+            <div class="m-kpi-label">Número do seu pedido</div>
+            <div class="m-kpi-value">#{{ os_numero }}</div>
+            <span class="m-kpi-hint">Use este número para consultar o andamento.</span>
+        </div>
+
+        <div class="m-btn-row mt-3">
+            <a class="m-btn m-btn-primary" href="{{ url_for('os.consultar_pedido', numero_pedido=os_numero) }}">
+                🔍 Consultar status
+            </a>
+            <a class="m-btn m-btn-secondary" href="{{ url_for('mobile.nova_os') }}">
+                📝 Nova OS
+            </a>
+        </div>
+        <button type="button" class="m-btn m-btn-outline m-btn-block mt-2" id="btnCopiarPedido">
+            📋 Copiar número do pedido
+        </button>
+    </div>
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">Próximos passos</h2>
+    <ul class="m-item-sub" style="padding-left: 18px; line-height: 1.7;">
+        <li>Acompanhe o status em <strong>Consultar OS</strong>.</li>
+        <li>Você recebe um aviso no WhatsApp quando a OS for finalizada.</li>
+        <li>Precisa anexar um documento? Use <strong>Enviar arquivo</strong>.</li>
+    </ul>
+    <div class="m-btn-row mt-3">
+        <a class="m-btn m-btn-secondary" href="{{ url_for('os.os_abertas') }}">🟢 OS abertas</a>
+        <a class="m-btn m-btn-secondary" href="{{ url_for('os.upload_documento') }}">📎 Enviar arquivo</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        var btn = document.getElementById("btnCopiarPedido");
+        if (!btn) return;
+        var numero = "#{{ os_numero }}";
+        btn.addEventListener("click", function () {
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(numero).then(function () {
+                    window.mShowToast("Pedido " + numero + " copiado!", "success");
+                });
+            }
+        });
+    })();
+</script>
+{% endblock %}

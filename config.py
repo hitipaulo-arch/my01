@@ -31,6 +31,19 @@ class SheetsConfig:
 
 
 # --- CONFIGURAÇÕES DO FLASK ---
+def _samesite_do_ambiente() -> str | None:
+    """``FLASK_COOKIE_SAMESITE`` → valor aceito pelo Flask.
+
+    Padrão ``Lax`` (correto para produção). Aceita ``None``/``null``/vazio para
+    o caso de o sistema ser aberto dentro de outra página (iframe/preview).
+    """
+
+    valor = os.getenv('FLASK_COOKIE_SAMESITE', 'Lax').strip()
+    if valor.lower() in ('', 'none', 'null'):
+        return None
+    return valor
+
+
 class FlaskConfig:
     """Configurações do Flask."""
     SECRET_KEY: str = os.getenv('SECRET_KEY', '')
@@ -58,9 +71,16 @@ class FlaskConfig:
         )
 
     # Cookies de sessão
-    SESSION_COOKIE_SECURE: bool = os.getenv('FLASK_ENV') == 'production'
+    # Padrões corretos para produção com domínio próprio. As variáveis abaixo
+    # existem para casos especiais (app aberto dentro de outra página/preview),
+    # onde o navegador não envia cookie ``SameSite=Lax`` no POST do login.
+    SESSION_COOKIE_SECURE: bool = (
+        os.getenv('FLASK_COOKIE_SECURE', '').lower() == 'true'
+        or os.getenv('FLASK_ENV') == 'production'
+    )
     SESSION_COOKIE_HTTPONLY: bool = True
-    SESSION_COOKIE_SAMESITE: str = 'Lax'
+    SESSION_COOKIE_SAMESITE = _samesite_do_ambiente()
+    SESSION_COOKIE_PARTITIONED: bool = os.getenv('FLASK_COOKIE_PARTITIONED', '').lower() == 'true'
     
     # CSRF
     WTF_CSRF_ENABLED: bool = True
@@ -145,6 +165,28 @@ class LoggingConfig:
     FORMAT: str = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 
 
+# --- INTEGRAÇÃO COM O APP DE PRODUÇÃO (por setor) ---
+class ProducaoAppConfig:
+    """Atalhos para o app dedicado de produção.
+
+    O app de produção é um programa separado (producao_app.py), normalmente na
+    porta 5001. Aqui ficam só os dados do atalho exibido no site:
+
+    * ``PRODUCAO_APP_URL`` — endereço completo do app. Se ficar vazio, o
+      endereço é deduzido do próprio acesso (mesma máquina/domínio, na porta
+      abaixo). Em produção, informe o endereço real;
+    * ``PRODUCAO_APP_PORT`` — porta usada quando o endereço não é informado;
+    * ``PRODUCAO_APP_INTEGRADO=0`` — esconde o atalho (ex.: app ainda não
+      publicado).
+    """
+
+    PRODUCAO_APP_URL: str = os.getenv('PRODUCAO_APP_URL', '').strip()
+    PRODUCAO_APP_PORT: int = int(os.getenv('PRODUCAO_APP_PORT', '5001') or 5001)
+    PRODUCAO_APP_INTEGRADO: bool = os.getenv('PRODUCAO_APP_INTEGRADO', '1').strip().lower() not in (
+        '0', 'false', 'nao', 'não', 'no', 'off'
+    )
+
+
 # --- CONFIGURAÇÕES GERAIS ---
 class Config:
     """Configuração geral do sistema (agregador)."""
@@ -153,6 +195,7 @@ class Config:
     CACHE = CacheConfig
     VALIDATION = ValidationConfig
     LOGGING = LoggingConfig
+    PRODUCAO_APP = ProducaoAppConfig
 
 # Adicionando configuracao para limiter_config
 limiter_config = {

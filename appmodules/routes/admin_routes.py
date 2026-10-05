@@ -2,10 +2,12 @@
 
 import logging
 
-from flask import Blueprint, Response, current_app, render_template, request, session
+from flask import Blueprint, Response, current_app, request, session
 
+from appmodules.mobile import render_page
 from appmodules.logic import gerar_dados_relatorio
 from appmodules.models.usuario import Role
+from appmodules.services import MetricsService
 from appmodules.services.ai_service import (
     build_admin_ai_context as default_build_admin_ai_context,
     get_ai_model_candidates as default_get_ai_model_candidates,
@@ -246,7 +248,7 @@ def usuarios_admin():
                     tipo_mensagem = "danger"
     usuarios = user_service.get_todos_usuarios() if user_service else []
     usuarios_dict = {user.username: user.to_dict() for user in usuarios}
-    return render_template(
+    return render_page(
         "usuarios.html", usuarios=usuarios_dict, mensagem=mensagem, tipo_mensagem=tipo_mensagem
     )
 
@@ -271,18 +273,143 @@ def relatorios():
                     "Content-Disposition": f'attachment; filename="{nome_arquivo}"'
                 },
             )
-        return render_template("relatorios.html", **dados_relatorio)
+        return render_page("relatorios.html", **dados_relatorio)
     except (RuntimeError, ValueError, TypeError, OSError) as exc:
         logger.exception("Erro ao carregar relatórios")
-        return render_template("erro.html", mensagem=f"Erro ao carregar relatórios: {exc}"), 500
+        return render_page("erro.html", mensagem=f"Erro ao carregar relatórios: {exc}"), 500
 
 
 @admin_bp.route("/tempo-por-funcionario")
 @admin_required
 def tempo_por_funcionario():
-    """Página com tempo de trabalho por funcionário."""
-    return render_template(
-        "tempo_por_funcionario.html", dados=[], chart_data={}, total_registros=0
+    """Página com tempo de trabalho por funcionário (controle de horário)."""
+    sheets_service = current_app.config.get("sheets_service")
+
+    funcionario = request.args.get("funcionario", "").strip()
+    pedido_os = request.args.get("pedido_os", "").strip()
+    data_inicio = request.args.get("data_inicio", "").strip()
+    data_fim = request.args.get("data_fim", "").strip()
+    export = request.args.get("export", "").strip().lower()
+
+    try:
+        per_page = min(max(int(request.args.get("per_page", 20)), 5), 100)
+    except (TypeError, ValueError):
+        per_page = 20
+    try:
+        page = max(int(request.args.get("page", 1)), 1)
+    except (TypeError, ValueError):
+        page = 1
+
+    registros = []
+    os_list = []
+    if sheets_service:
+        try:
+            if sheets_service.is_available()[0]:
+                registros = sheets_service.get_time_records() or []
+                os_list = sheets_service.get_all_os(use_cache=True) or []
+        except Exception as exc:
+            logger.error(f"Erro ao carregar dados de tempo por funcionário: {exc}")
+
+    metrics = MetricsService()
+    resultado = metrics.calcular_tempo_por_funcionario(
+        registros,
+        os_list=os_list,
+        filtros={
+            "funcionario": funcionario,
+            "pedido_os": pedido_os,
+            "data_inicio": data_inicio,
+            "data_fim": data_fim,
+        },
+    )
+
+    todos = resultado["dados"]
+    total = resultado["total_registros"]
+
+    if export == "csv":
+        import csv
+        import io as _io
+
+        buffer = _io.StringIO()
+        buffer.write("\ufeff")  # BOM p/ Excel reconhecer UTF-8
+        writer = csv.writer(buffer, delimiter=";")
+        writer.writerow(["Funcionário", "Pedido/OS", "Tempo", "Horas", "Urgência"])
+        for d in todos:
+            writer.writerow(
+                [
+                    d["funcionario"],
+                    d["pedido_os"],
+                    d["tempo"],
+                    f"{d['horas']:.2f}".replace(".", ","),
+                    d["urgencia"],
+                ]
+            )
+        nome_arquivo = "tempo_por_funcionario.csv"
+        return Response(
+            buffer.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={nome_arquivo}"},
+        )
+
+    if export == "xlsx":
+        try:
+            import io as _io
+
+            from openpyxl import Workbook
+            from openpyxl.styles import Font
+
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Tempo por Funcionário"
+            ws.append(["Funcionário", "Pedido/OS", "Tempo", "Horas", "Urgência"])
+            for cell in ws[1]:
+                cell.font = Font(bold=True)
+            for d in todos:
+                ws.append(
+                    [d["funcionario"], d["pedido_os"], d["tempo"], d["horas"], d["urgencia"]]
+                )
+            nome_arquivo = "tempo_por_funcionario.xlsx"
+            buffer = _io.BytesIO()
+            wb.save(buffer)
+            buffer.seek(0)
+            return Response(
+                buffer.getvalue(),
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={"Content-Disposition": f"attachment; filename={nome_arquivo}"},
+            )
+        except Exception as exc:
+            logger.warning(f"Exportação XLSX indisponível (openpyxl ausente?): {exc}")
+            resultado["aviso_periodo"] = (
+                "Exportação XLSX indisponível neste ambiente (openpyxl não instalado). "
+                "Use a exportação CSV."
+            )
+            export = ""
+
+    if export and export not in ("csv", "xlsx"):
+        resultado["aviso_periodo"] = "Formato de exportação não reconhecido."
+        export = ""
+
+    inicio = (page - 1) * per_page
+    pagina = todos[inicio : inicio + per_page]
+
+    # Normaliza datas p/ os campos <input type="date"> (YYYY-MM-DD)
+    def _iso(data_txt: str) -> str:
+        t = MetricsService._parse_data_hora(data_txt.replace("-", "/"), "")
+        return t.strftime("%Y-%m-%d") if t else data_txt
+
+    return render_page(
+        "tempo_por_funcionario.html",
+        dados=pagina,
+        total_registros=total,
+        chart_data=resultado["chart_data"],
+        aviso_periodo=resultado["aviso_periodo"],
+        funcionario=funcionario,
+        pedido_os=pedido_os,
+        data_inicio=data_inicio,
+        data_fim=data_fim,
+        data_inicio_iso=_iso(data_inicio),
+        data_fim_iso=_iso(data_fim),
+        per_page=per_page,
+        page=page,
     )
 
 
@@ -298,7 +425,7 @@ def admin_ia():
         action = request.form.get("action", "send")
         if action == "clear_history":
             session["admin_ai_history"] = []
-            return render_template("admin_ai.html", pergunta="", resposta="", erro=None, history=[])
+            return render_page("admin_ai.html", pergunta="", resposta="", erro=None, history=[])
         if action == "summary":
             pergunta = (
                 "Resumo executivo do dia. Analise a produção, itens em aberto, "
@@ -354,4 +481,4 @@ def admin_ia():
                     )
                 else:
                     erro = f"Erro ao consultar a IA: {exc}"
-    return render_template("admin_ai.html", pergunta=pergunta, resposta=resposta, erro=erro, history=history)
+    return render_page("admin_ai.html", pergunta=pergunta, resposta=resposta, erro=erro, history=history)

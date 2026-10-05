@@ -1,0 +1,58 @@
+{# Instruções de instalação do PWA na tela inicial #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Instalar app{% endblock %}
+{% block appbar_title %}Instalar o aplicativo{% endblock %}
+{% block appbar_sub %}Android, iPhone e computador{% endblock %}
+
+{% block content %}
+<div class="m-card">
+    <div class="m-state">
+        <span class="m-state-icon">📲</span>
+        <h2>Tenha o sistema na tela inicial</h2>
+        <p>
+            O app usa o mesmo endereço, o mesmo login e as mesmas informações do sistema web —
+            só que em tela cheia, com ícone próprio e abertura mais rápida.
+        </p>
+        <button type="button" class="m-btn m-btn-primary m-btn-block" data-m-install>Instalar agora</button>
+    </div>
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">🤖 Android (Chrome)</h2>
+    <ol class="m-item-sub" style="padding-left: 18px; line-height: 1.7;">
+        <li>Toque no menu <strong>⋮</strong> do navegador.</li>
+        <li>Escolha <strong>Instalar aplicativo</strong> ou <strong>Adicionar à tela inicial</strong>.</li>
+        <li>Confirme em <strong>Instalar</strong>.</li>
+    </ol>
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">🍎 iPhone / iPad (Safari)</h2>
+    <ol class="m-item-sub" style="padding-left: 18px; line-height: 1.7;">
+        <li>Toque em <strong>Compartilhar</strong> (quadrado com a seta).</li>
+        <li>Escolha <strong>Adicionar à Tela de Início</strong>.</li>
+        <li>Confirme em <strong>Adicionar</strong>.</li>
+    </ol>
+    <p class="m-item-sub">No iOS a instalação precisa ser feita pelo Safari (Chrome/Firefox no iOS não oferecem o atalho).</p>
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">💻 Computador (Chrome / Edge)</h2>
+    <ol class="m-item-sub" style="padding-left: 18px; line-height: 1.7;">
+        <li>Clique no ícone de <strong>instalação</strong> na barra de endereços.</li>
+        <li>Ou use o menu <strong>⋮</strong> → <strong>Instalar Gestão OS</strong>.</li>
+    </ol>
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">✅ O que já funciona offline</h2>
+    <ul class="m-item-sub" style="padding-left: 18px; line-height: 1.7;">
+        <li>Abertura do app com as telas básicas em cache.</li>
+        <li>Página de aviso quando estiver sem internet.</li>
+        <li>Consulta e cadastro continuam exigindo conexão com o Google Sheets.</li>
+    </ul>
+</div>
+
+<a class="m-btn m-btn-secondary m-btn-block" href="{{ url_for('os.homepage') }}">Voltar ao início</a>
+{% endblock %}

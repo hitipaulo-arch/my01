@@ -3,8 +3,9 @@
 import logging
 from datetime import datetime, timezone
 
-from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, request, session, url_for
 
+from appmodules.mobile import render_page
 from appmodules.extensions import cache
 from appmodules.models.usuario import Role
 from appmodules.utils import admin_required, login_required, render_route_error
@@ -57,7 +58,7 @@ def producao():
     """Página de cadastro e acompanhamento de produção."""
     sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return render_template("producao.html", itens=[], mensagem="Serviço de planilhas indisponível", read_only=True, tipo_mensagem="danger"), 503
+        return render_page("producao.html", itens=[], mensagem="Serviço de planilhas indisponível", read_only=True, tipo_mensagem="danger"), 503
     read_only = _get_current_user_role() != Role.ADMIN.value
     if request.method == "POST":
         if read_only:
@@ -98,10 +99,10 @@ def producao():
     try:
         itens = sheets_service.get_all_producao(use_cache=True)
         itens_ordenados = sorted(itens, key=lambda item: item.get("row_id", 0), reverse=True)
-        return render_template("producao.html", itens=itens_ordenados, read_only=read_only)
+        return render_page("producao.html", itens=itens_ordenados, read_only=read_only)
     except (RuntimeError, ValueError, TypeError, OSError) as exc:
         logger.exception("Erro ao carregar produção")
-        return render_template("erro.html", mensagem=f"Erro ao processar dados: {exc}"), 500
+        return render_page("erro.html", mensagem=f"Erro ao processar dados: {exc}"), 500
 
 
 @producao_bp.route("/producao/atualizar/<int:row_id>", methods=["POST"])
@@ -189,7 +190,7 @@ def producao_abertas():
     """Página que mostra as OPs de produção que não estão concluídas ou bloqueadas."""
     sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return render_template("producao_abertas.html", itens=[], mensagem="Serviço de planilhas indisponível", tipo_mensagem="danger"), 503
+        return render_page("producao_abertas.html", itens=[], mensagem="Serviço de planilhas indisponível", tipo_mensagem="danger"), 503
     try:
         itens = sheets_service.get_all_producao(use_cache=True)
         status_excluidos = {"concluído", "concluido", "bloqueado", "bloqueada", "cancelado", "cancelada"}
@@ -199,7 +200,7 @@ def producao_abertas():
         itens_concluidos = sum(1 for item in itens if str(item.get("Status", "")).strip().lower() in {"concluído", "concluido"})
         taxa_conclusao = round((itens_concluidos / total_itens * 100), 1) if total_itens > 0 else 0
         itens_ordenados = sorted(itens_abertos, key=lambda item: item.get("row_id", 0), reverse=True)
-        return render_template("producao_abertas.html", itens=itens_ordenados, total_ops_abertas=len(itens_abertos), itens_bloqueados=itens_bloqueados, taxa_conclusao=taxa_conclusao)
+        return render_page("producao_abertas.html", itens=itens_ordenados, total_ops_abertas=len(itens_abertos), itens_bloqueados=itens_bloqueados, taxa_conclusao=taxa_conclusao)
     except (RuntimeError, ValueError, TypeError, OSError, AttributeError, KeyError) as exc:
         return render_route_error(exc, user_message="Erro ao carregar dados de produção em aberto.")
 
@@ -210,5 +211,5 @@ def dashboard_producao():
     """Exibe o painel visual de produção."""
     sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return render_template("dashboard_producao.html", mensagem_erro="Serviço indisponível"), 503
-    return render_template("dashboard_producao.html")
+        return render_page("dashboard_producao.html", mensagem_erro="Serviço indisponível"), 503
+    return render_page("dashboard_producao.html")

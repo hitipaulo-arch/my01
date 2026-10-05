@@ -1,0 +1,48 @@
+{# Login — mesma rota auth.login e mesmas mensagens #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Entrar · Gestão OS{% endblock %}
+{% block appbar_title %}🔐 Entrar{% endblock %}
+{% block appbar_sub %}Sistema de Gestão de OS{% endblock %}
+{% block body_class %}m-auth{% endblock %}
+
+{% block content %}
+{% if erro %}
+<div class="m-alert m-alert-danger"><div>{{ erro }}</div></div>
+{% endif %}
+
+<div class="m-card">
+    <div class="m-page-head mb-3">
+        <h1>Acesse sua conta</h1>
+        <p>Informe usuário e senha cadastrados pela equipe.</p>
+    </div>
+
+    <form class="m-form" method="POST" action="{{ url_for('auth.login') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div class="m-field m-field-required">
+            <label class="m-label" for="username">Usuário</label>
+            <input type="text" class="form-control" id="username" name="username"
+                   autocapitalize="none" autocomplete="username" required>
+        </div>
+        <div class="m-field m-field-required">
+            <label class="m-label" for="password">Senha</label>
+            <input type="password" class="form-control" id="password" name="password"
+                   autocomplete="current-password" required>
+        </div>
+        <button type="submit" class="m-btn m-btn-primary m-btn-block">Entrar</button>
+    </form>
+
+    <p class="m-item-sub mt-3 mb-0">
+        Não tem conta? <a href="{{ url_for('auth.cadastro') }}">Cadastre-se</a>
+    </p>
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">Sem login também dá para usar</h2>
+    <div class="m-btn-row">
+        <a class="m-btn m-btn-secondary" href="{{ url_for('mobile.nova_os') }}">📝 Abrir OS</a>
+        <a class="m-btn m-btn-secondary" href="{{ url_for('os.os_abertas') }}">🟢 OS abertas</a>
+        <a class="m-btn m-btn-secondary" href="{{ url_for('os.consultar_pedido') }}">🔍 Consultar</a>
+    </div>
+</div>
+{% endblock %}

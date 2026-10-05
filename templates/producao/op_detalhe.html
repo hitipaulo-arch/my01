@@ -1,0 +1,124 @@
+{% extends "producao/_base.html" %}
+{% block title %}{{ op.id }} · {{ op.nome_item }}{% endblock %}
+{% block appbar_title %}{{ op.id }}{% endblock %}
+{% block appbar_sub %}{{ op.nome_item }}{% endblock %}
+
+{% block content %}
+<div class="p-card">
+    <div class="p-card-topo">
+        <span class="p-selo {{ op.status_geral|classe_status }}">{{ op.status_geral }}</span>
+        {% if op.concluida_em %}<span class="p-mini">concluída em {{ op.concluida_em|hora_curta }}</span>{% endif %}
+    </div>
+
+    <h1 class="p-titulo-op">{{ op.nome_item }}</h1>
+
+    <div class="p-progresso">
+        <div class="p-progresso-barra" style="width: {{ op.progresso }}%" data-p-barra></div>
+    </div>
+    <div class="p-progresso-legenda">
+        <span>{{ op.progresso }}% concluído</span>
+        {% if op.setor_atual %}
+        <span>Agora: <strong>{{ op.setor_atual.icone }} {{ op.setor_atual.nome }}</strong></span>
+        {% else %}
+        <span>✅ Todos os setores concluídos</span>
+        {% endif %}
+    </div>
+
+    <dl class="p-dados">
+        <div><dt>Código</dt><dd>{{ op.codigo or '—' }}</dd></div>
+        <div><dt>MTC</dt><dd>{{ op.mtc or '—' }}</dd></div>
+        <div><dt>Quantidade</dt><dd>{{ op.quantidade }} un.</dd></div>
+        <div><dt>Cliente / OS</dt><dd>{{ op.cliente or '—' }}</dd></div>
+        <div><dt>Prazo</dt><dd class="{% if op.prazo_vencido %}p-atraso{% endif %}">{{ op.prazo or '—' }}</dd></div>
+        <div><dt>Material</dt><dd>{{ op.material or '—' }}</dd></div>
+        <div><dt>Criada em</dt><dd>{{ op.criado_em or '—' }}{% if op.criado_por %} · {{ op.criado_por }}{% endif %}</dd></div>
+    </dl>
+
+    {% if op.observacao %}
+    <p class="p-observacao"><strong>Observação:</strong> {{ op.observacao }}</p>
+    {% endif %}
+</div>
+
+<div class="p-section-title">
+    <h2>🧭 Status por setor</h2>
+    <span>{{ op.setores|selectattr('concluido')|list|length }}/{{ op.setores|length }} concluídos</span>
+</div>
+
+<div class="p-flow">
+    {% for setor in op.setores %}
+    <div class="p-flow-item {{ setor.status|classe_status }}" data-setor="{{ setor.chave }}">
+        <div class="p-flow-topo">
+            <span class="p-flow-icone">{{ setor.icone }}</span>
+            <div class="p-flow-nome">
+                <strong>{{ loop.index }}. {{ setor.nome }}</strong>
+                <span class="p-selo {{ setor.status|classe_status }}">{{ setor.status|icone_status }} {{ setor.status }}</span>
+            </div>
+        </div>
+
+        <div class="p-flow-tempos">
+            {% if setor.nao_aplica %}
+            <span>∅ Não se aplica a esta OP</span>
+            {% else %}
+            {% if setor.iniciado_em %}<span>▶️ Iniciado {{ setor.iniciado_em|hora_curta }}</span>{% endif %}
+            {% if setor.concluido_em %}<span>✅ Concluído {{ setor.concluido_em|hora_curta }}</span>{% endif %}
+            {% if not setor.iniciado_em and not setor.concluido_em %}<span class="p-mini">ainda não iniciado</span>{% endif %}
+            {% endif %}
+            {% if setor.atualizado_por %}<span>✍️ {{ setor.atualizado_por }}{% if setor.atualizado_em %} em {{ setor.atualizado_em|hora_curta }}{% endif %}</span>{% endif %}
+        </div>
+
+        {% if setor.observacao_setor %}
+        <p class="p-observacao-setor">💬 {{ setor.observacao_setor }}</p>
+        {% endif %}
+
+        {% if setor.editavel %}
+        <form class="p-flow-form" method="POST"
+              action="{{ url_for('producao.atualizar_setor', op_id=op.id, chave_setor=setor.chave) }}"
+              data-p-quick data-p-status="{{ setor.status }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="status" value="{{ setor.status }}"/>
+            <div class="p-flow-botoes">
+                <button type="submit" class="p-btn p-btn-sm {% if setor.status == 'Não iniciado' %}p-btn-primary{% else %}p-btn-outline{% endif %}"
+                        data-p-valor="Não iniciado">○ Não iniciado</button>
+                <button type="submit" class="p-btn p-btn-sm {% if setor.status == 'Em andamento' %}p-btn-primary{% else %}p-btn-outline{% endif %}"
+                        data-p-valor="Em andamento">◐ Em andamento</button>
+                <button type="submit" class="p-btn p-btn-sm {% if setor.status == 'Concluído' %}p-btn-success{% else %}p-btn-outline{% endif %}"
+                        data-p-valor="Concluído">● Concluído</button>
+                <button type="submit" class="p-btn p-btn-sm {% if setor.status == 'Não se aplica' %}p-btn-nao-aplica{% else %}p-btn-outline{% endif %}"
+                        data-p-valor="Não se aplica"
+                        title="A peça não passa por este setor">∅ Não se aplica</button>
+            </div>
+            <input type="text" class="p-input p-input-sm" name="observacao" maxlength="280"
+                   placeholder="Observação do setor (opcional)">
+        </form>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+
+{% if historico %}
+<details class="p-historico">
+    <summary>🕘 Histórico de alterações ({{ historico|length }})</summary>
+    <ul class="p-timeline">
+        {% for linha in historico %}
+        <li>
+            <span class="p-timeline-data">{{ linha.data_hora|hora_curta }}</span>
+            <span><strong>{{ linha.setor }}</strong>: {{ linha.status_anterior }} → {{ linha.status_novo }}</span>
+            <span class="p-mini">por {{ linha.quem }}</span>
+            {% if linha.observacao %}<span class="p-mini">💬 {{ linha.observacao }}</span>{% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+</details>
+{% endif %}
+
+{% if e_gestao %}
+<div class="p-acoes-op">
+    <a class="p-btn p-btn-outline" href="{{ url_for('producao.editar_op', op_id=op.id) }}">✏️ Editar dados</a>
+    <form method="POST" action="{{ url_for('producao.excluir_op', op_id=op.id) }}"
+          data-p-confirm="Excluir a OP {{ op.id }} e todo o histórico dela?">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <button type="submit" class="p-btn p-btn-danger">🗑️ Excluir OP</button>
+    </form>
+</div>
+{% endif %}
+{% endblock %}

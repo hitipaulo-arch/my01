@@ -1,0 +1,26 @@
+{
+  "id": "/",
+  "name": "Controle de Produção — por setor",
+  "short_name": "Produção",
+  "description": "Ordens de produção acompanhadas por setor: Corte, Dobra, Montagem Primária, Solda, Acabamento, Silicone e Limpeza e Embalagem. Cada setor marca o próprio status pelo celular.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#5d6bd6",
+  "theme_color": "#5d6bd6",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    { "src": "/static/producao/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/producao/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/producao/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Minha fila", "short_name": "Fila", "url": "/", "icons": [{ "src": "/static/producao/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Nova OP", "short_name": "Nova OP", "url": "/op/nova", "icons": [{ "src": "/static/producao/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Painel da produção", "short_name": "Painel", "url": "/painel", "icons": [{ "src": "/static/producao/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

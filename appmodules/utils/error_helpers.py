@@ -2,7 +2,7 @@
 
 import logging
 import os
-from flask import render_template
+from appmodules.mobile import render_page
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ def render_service_unavailable(template_name: str = "erro.html"):
         Tuple (response, status_code) pronta para retornar de uma rota Flask.
     """
     logger.warning("Serviço essencial indisponível ao renderizar %s", template_name)
-    return render_template(
+    return render_page(
         template_name,
         mensagem="Serviço temporariamente indisponível. Tente novamente em instantes.",
         tipo_mensagem="warning",
@@ -65,4 +65,4 @@ def render_route_error(
     if extra_context:
         for key, value in extra_context.items():
             context.setdefault(key, value)
-    return render_template(template_name, **context), 500
+    return render_page(template_name, **context), 500

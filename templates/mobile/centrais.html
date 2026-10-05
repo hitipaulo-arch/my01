@@ -1,0 +1,322 @@
+{# Controle de Centrais — cadastro, edição, exclusão e programação de portas #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Centrais{% endblock %}
+{% block appbar_title %}📡 Centrais{% endblock %}
+{% block appbar_sub %}{{ centrais|length }} central(is) cadastrada(s){% endblock %}
+
+{% block content %}
+{% if mensagem %}
+<div class="m-alert m-alert-{{ tipo_mensagem or 'info' }}"><div>{{ mensagem }}</div></div>
+{% endif %}
+
+{% set ns = namespace(prontas=0, teste=0, utilizadas=0) %}
+{% for c in centrais %}
+    {% if c['Status'] == 'Pronta para Uso' %}{% set ns.prontas = ns.prontas + 1 %}
+    {% elif c['Status'] == 'Em Teste' %}{% set ns.teste = ns.teste + 1 %}
+    {% elif c['Status'] == 'Utilizada' %}{% set ns.utilizadas = ns.utilizadas + 1 %}{% endif %}
+{% endfor %}
+
+<div class="m-kpi-grid m-kpi-grid-3">
+    <div class="m-kpi m-kpi-success">
+        <div class="m-kpi-label">Prontas</div>
+        <div class="m-kpi-value">{{ ns.prontas }}</div>
+    </div>
+    <div class="m-kpi m-kpi-warning">
+        <div class="m-kpi-label">Em teste</div>
+        <div class="m-kpi-value">{{ ns.teste }}</div>
+    </div>
+    <div class="m-kpi m-kpi-info">
+        <div class="m-kpi-label">Utilizadas</div>
+        <div class="m-kpi-value">{{ ns.utilizadas }}</div>
+    </div>
+</div>
+
+<details class="m-card">
+    <summary style="font-weight: 700; cursor: pointer;">➕ Cadastrar nova central</summary>
+    <form class="m-form mt-3" method="POST" action="{{ url_for('centrais.centrais') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <div class="m-grid-2">
+            <div class="m-field m-field-required">
+                <label class="m-label" for="num_portas">Número de portas</label>
+                <input type="number" class="form-control" id="num_portas" name="num_portas" min="1" max="64"
+                       inputmode="numeric" required>
+            </div>
+            <div class="m-field m-field-required">
+                <label class="m-label" for="codigo_serie">Código de série</label>
+                <input type="text" class="form-control" id="codigo_serie" name="codigo_serie" required>
+            </div>
+        </div>
+        <div class="m-field m-field-required">
+            <label class="m-label" for="status">Status</label>
+            <select class="form-select" id="status" name="status" required>
+                <option value="Pronta para Uso">Pronta para Uso</option>
+                <option value="Em Teste">Em Teste</option>
+                <option value="Utilizada">Utilizada</option>
+            </select>
+        </div>
+        <div class="m-field">
+            <label class="m-label" for="obra">Obra utilizada</label>
+            <input type="text" class="form-control" id="obra" name="obra">
+        </div>
+        <button type="submit" class="m-btn m-btn-success m-btn-block">💾 Cadastrar central</button>
+    </form>
+</details>
+
+<div class="m-search">
+    <input type="text" class="form-control" placeholder="Filtrar por série, status, obra…"
+           data-m-filter="#listaCentrais .m-item" aria-label="Filtrar centrais">
+</div>
+
+<div class="m-list" id="listaCentrais">
+    {% for central in centrais %}
+    {% set resumo = central.get('Programação Resumo', '') %}
+    <div class="m-item"
+         data-central="{{ {'row_id': central.row_id, 'status': central['Status'], 'obra': central.get('Obra Utilizada', ''), 'serie': central['Código de Série'], 'portas': central.get('Número de Portas', 0), 'programacao': central.get('Programação', '')} | tojson | forceescape }}">
+        <div class="m-item-head">
+            <div>
+                <span class="m-item-id">#{{ loop.index }} · {{ central['Número de Portas'] }} PORTAS</span>
+                <h2 class="m-item-title">{{ central['Código de Série'] }}</h2>
+                <p class="m-item-sub">{{ central.get('Data Cadastro', '') }}</p>
+            </div>
+            <div class="m-badges">
+                <span class="m-badge
+                    {% if central['Status'] == 'Pronta para Uso' %}m-badge-success
+                    {% elif central['Status'] == 'Em Teste' %}m-badge-warning
+                    {% else %}m-badge-info{% endif %}">
+                    {{ central['Status'] }}
+                </span>
+            </div>
+        </div>
+
+        <div class="m-item-body">
+            <div class="m-item-field">
+                <span>Obra utilizada</span>
+                <span>{{ central.get('Obra Utilizada', '-') or '-' }}</span>
+            </div>
+            <div class="m-item-field">
+                <span>Programação</span>
+                <span>{{ resumo if resumo else 'não programada' }}</span>
+            </div>
+        </div>
+
+        <div class="m-item-actions">
+            <button type="button" class="m-btn m-btn-primary m-btn-sm" data-m-programar>⚙️ Programação</button>
+            <button type="button" class="m-btn m-btn-warning m-btn-sm" data-m-editar-central>✏️ Editar</button>
+            <button type="button" class="m-btn m-btn-danger m-btn-sm" data-m-excluir-central>🗑️ Excluir</button>
+        </div>
+    </div>
+    {% else %}
+    <div class="m-card m-empty">
+        <span class="m-empty-icon">📡</span>
+        Nenhuma central cadastrada ainda.
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<div class="modal fade" id="modalCentral" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content m-sheet">
+            <div class="modal-header">
+                <h5 class="modal-title" id="modalCentralTitulo">Central</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formCentralEdicao">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" id="central-row-id">
+                    <div class="m-field">
+                        <label class="m-label" for="central-status">Status</label>
+                        <select class="form-select" id="central-status" name="status" required>
+                            <option value="Pronta para Uso">Pronta para Uso</option>
+                            <option value="Em Teste">Em Teste</option>
+                            <option value="Utilizada">Utilizada</option>
+                        </select>
+                    </div>
+                    <div class="m-field">
+                        <label class="m-label" for="central-obra">Obra utilizada</label>
+                        <input type="text" class="form-control" id="central-obra" name="obra">
+                    </div>
+                </form>
+                <div id="matrizWrap" style="display: none;">
+                    <p class="m-hint mb-2">
+                        Toque nas células para marcar com <strong>X</strong> a porta fechada para cada porta aberta.
+                        A primeira coluna são as <strong>portas abertas</strong>; a primeira linha, as <strong>portas fechadas</strong>.
+                    </p>
+                    <div class="m-matrix-wrap">
+                        <table class="m-matrix" id="matrizCentral"></table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="m-btn m-btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="m-btn m-btn-primary" id="btnSalvarCentral">💾 Salvar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        var modalEl = document.getElementById("modalCentral");
+        var modal = new bootstrap.Modal(modalEl);
+        var modo = "editar";
+        var centralAtual = {};
+        var selecoes = [];
+
+        function abrir(dados, novoModo) {
+            centralAtual = dados;
+            modo = novoModo;
+            document.getElementById("central-row-id").value = dados.row_id;
+            document.getElementById("central-status").value = dados.status || "Pronta para Uso";
+            document.getElementById("central-obra").value = dados.obra || "";
+            document.getElementById("modalCentralTitulo").textContent =
+                (novoModo === "programar" ? "⚙️ Programação — " : "✏️ Editar — ") + (dados.serie || "");
+            document.getElementById("formCentralEdicao").style.display = novoModo === "programar" ? "none" : "block";
+            document.getElementById("matrizWrap").style.display = novoModo === "programar" ? "block" : "none";
+            if (novoModo === "programar") {
+                montarMatriz(parseInt(dados.portas || 0, 10), dados.programacao || "");
+            }
+            modal.show();
+        }
+
+        function normalizar(valor, portas) {
+            var linhas = [];
+            for (var i = 0; i < portas; i++) linhas.push([]);
+            if (!valor) return linhas;
+            try {
+                var parsed = JSON.parse(valor);
+                var origem = Array.isArray(parsed) ? parsed : (parsed && parsed.selecoes) || [];
+                origem.forEach(function (linha, idx) {
+                    if (idx >= portas) return;
+                    if (Array.isArray(linha)) {
+                        if (linha.every(function (v) { return /^-?\d+(\.\d+)?$/.test(String(v).trim()); })) {
+                            linha.forEach(function (v) {
+                                var n = parseInt(v, 10) - 1;
+                                if (n >= 0 && n < portas && linhas[idx].indexOf(n) === -1) linhas[idx].push(n);
+                            });
+                        } else {
+                            linha.forEach(function (v, col) {
+                                if (String(v || "").trim().toUpperCase() === "X" && col < portas) linhas[idx].push(col);
+                            });
+                        }
+                    } else if (/^-?\d+(\.\d+)?$/.test(String(linha).trim())) {
+                        var n2 = parseInt(linha, 10) - 1;
+                        if (n2 >= 0 && n2 < portas) linhas[idx].push(n2);
+                    }
+                });
+            } catch (e) { /* programação vazia ou inválida */ }
+            return linhas;
+        }
+
+        function montarMatriz(portas, programacao) {
+            selecoes = normalizar(programacao, portas);
+            var tabela = document.getElementById("matrizCentral");
+            var html = "<thead><tr><th>ab \\ fe</th>";
+            for (var c = 1; c <= portas; c++) html += "<th>" + c + "</th>";
+            html += "</tr></thead><tbody>";
+            for (var l = 0; l < portas; l++) {
+                html += "<tr><th>" + (l + 1) + "</th>";
+                for (var col = 0; col < portas; col++) {
+                    var ativo = selecoes[l] && selecoes[l].indexOf(col) > -1;
+                    html += '<td><button type="button" class="m-matrix-cell ' + (ativo ? "m-matrix-cell-on" : "") +
+                            '" data-l="' + l + '" data-c="' + col + '">' + (ativo ? "X" : "") + "</button></td>";
+                }
+                html += "</tr>";
+            }
+            html += "</tbody>";
+            tabela.innerHTML = html;
+
+            tabela.querySelectorAll(".m-matrix-cell").forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                    var l = parseInt(btn.getAttribute("data-l"), 10);
+                    var c = parseInt(btn.getAttribute("data-c"), 10);
+                    if (!selecoes[l]) selecoes[l] = [];
+                    var pos = selecoes[l].indexOf(c);
+                    if (pos === -1) {
+                        selecoes[l].push(c);
+                        btn.classList.add("m-matrix-cell-on");
+                        btn.textContent = "X";
+                    } else {
+                        selecoes[l].splice(pos, 1);
+                        btn.classList.remove("m-matrix-cell-on");
+                        btn.textContent = "";
+                    }
+                });
+            });
+        }
+
+        document.querySelectorAll("#listaCentrais [data-m-editar-central]").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var dados = JSON.parse(btn.closest(".m-item").getAttribute("data-central") || "{}");
+                abrir(dados, "editar");
+            });
+        });
+
+        document.querySelectorAll("#listaCentrais [data-m-programar]").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var card = btn.closest(".m-item");
+                var dados = JSON.parse(card.getAttribute("data-central") || "{}");
+                abrir(dados, "programar");
+            });
+        });
+
+        document.querySelectorAll("#listaCentrais [data-m-excluir-central]").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var dados = JSON.parse(btn.closest(".m-item").getAttribute("data-central") || "{}");
+                if (!window.confirm("Excluir a central " + (dados.serie || "") + "? Esta ação não pode ser desfeita.")) return;
+                var formData = new FormData();
+                formData.append("csrf_token", "{{ csrf_token() }}");
+                fetch("{{ url_for('centrais.deletar_central', row_id=0) }}".replace(/0$/, dados.row_id), {
+                    method: "POST",
+                    body: formData,
+                    headers: { "X-Requested-With": "XMLHttpRequest" }
+                }).then(function (r) { return r.json(); }).then(function (resposta) {
+                    if (resposta.success) {
+                        window.mShowToast("Central excluída.", "success");
+                        setTimeout(function () { window.location.reload(); }, 600);
+                    } else {
+                        window.mShowToast("Erro: " + resposta.message, "danger");
+                    }
+                }).catch(function (e) { window.mShowToast("Erro ao excluir: " + e, "danger"); });
+            });
+        });
+
+        document.getElementById("btnSalvarCentral").addEventListener("click", function () {
+            var rowId = document.getElementById("central-row-id").value;
+            var formData = new FormData();
+            formData.append("csrf_token", "{{ csrf_token() }}");
+
+            if (modo === "programar") {
+                formData.append("programacao", JSON.stringify({ selecoes: selecoes }));
+                fetch("{{ url_for('centrais.atualizar_programacao_central', row_id=0) }}".replace(/0$/, rowId), {
+                    method: "POST", body: formData, headers: { "X-Requested-With": "XMLHttpRequest" }
+                }).then(function (r) { return r.json(); }).then(function (resposta) {
+                    if (resposta.success) {
+                        window.mShowToast("Programação salva!", "success");
+                        setTimeout(function () { window.location.reload(); }, 600);
+                    } else {
+                        window.mShowToast("Erro: " + resposta.message, "danger");
+                    }
+                }).catch(function (e) { window.mShowToast("Erro: " + e, "danger"); });
+                return;
+            }
+
+            formData.append("status", document.getElementById("central-status").value);
+            formData.append("obra", document.getElementById("central-obra").value);
+            fetch("{{ url_for('centrais.atualizar_central', row_id=0) }}".replace(/0$/, rowId), {
+                method: "POST", body: formData, headers: { "X-Requested-With": "XMLHttpRequest" }
+            }).then(function (r) { return r.json(); }).then(function (resposta) {
+                if (resposta.success) {
+                    window.mShowToast("Central atualizada!", "success");
+                    setTimeout(function () { window.location.reload(); }, 600);
+                } else {
+                    window.mShowToast("Erro: " + resposta.message, "danger");
+                }
+            }).catch(function (e) { window.mShowToast("Erro: " + e, "danger"); });
+        });
+    })();
+</script>
+{% endblock %}

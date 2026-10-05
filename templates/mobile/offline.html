@@ -1,0 +1,30 @@
+{# Página servida pelo service worker quando o aparelho está sem internet #}
+{% extends "mobile/_base.html" %}
+
+{% block title %}Sem conexão{% endblock %}
+{% block appbar_title %}Sem conexão{% endblock %}
+{% block appbar_sub %}Verifique sua internet{% endblock %}
+
+{% block content %}
+<div class="m-card">
+    <div class="m-state">
+        <span class="m-state-icon">📴</span>
+        <h2>Você está offline</h2>
+        <p>
+            O aplicativo não conseguiu falar com o servidor. As informações de OS, produção
+            e centrais ficam no Google Sheets e precisam de conexão.
+        </p>
+        <button type="button" class="m-btn m-btn-primary m-btn-block" data-m-reload>
+            🔄 Tentar novamente
+        </button>
+    </div>
+</div>
+
+<div class="m-card">
+    <h2 class="m-kpi-label">Enquanto isso</h2>
+    <ul class="m-item-sub" style="padding-left: 18px; line-height: 1.7;">
+        <li>Confirme se o Wi-Fi ou os dados móveis estão ativos.</li>
+        <li>Ao voltar a conexão, o app recarrega sozinho ao tentar novamente.</li>
+    </ul>
+</div>
+{% endblock %}

@@ -3,8 +3,9 @@
 import logging
 from datetime import datetime, timezone
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, redirect, request, url_for
 
+from appmodules.mobile import render_page
 from appmodules.models.usuario import Role
 from appmodules.routes.producao_routes import _get_current_user_role, _validate_item_form_data
 from appmodules.utils import login_required
@@ -23,7 +24,7 @@ def itens():
     """Exibe e cadastra itens com alerta automático de compra."""
     sheets_service = current_app.config.get("sheets_service")
     if not sheets_service:
-        return render_template("compras.html", itens=[], read_only=True), 503
+        return render_page("compras.html", itens=[], read_only=True), 503
     read_only = _get_current_user_role() != Role.ADMIN.value
     val_cfg = Config.VALIDATION
     min_nome, max_nome = val_cfg.MIN_NOME_ITEM_LENGTH, val_cfg.MAX_NOME_ITEM_LENGTH
@@ -95,10 +96,10 @@ def itens():
             (itens_alerta if item_compra["quantidade"] <= item_compra["threshold"] else itens_normais).append(item_compra)
         itens_alerta.sort(key=lambda item: item.get("quantidade", 0))
         itens_normais.sort(key=lambda item: item.get("quantidade", 0), reverse=True)
-        return render_template("compras.html", itens_alerta=itens_alerta, itens_normais=itens_normais, read_only=read_only, stats={"total_itens": len(itens_alerta) + len(itens_normais), "total_alerta": len(itens_alerta), "total_normais": len(itens_normais), "total_estoque": sum(item.get("quantidade", 0) for item in itens_alerta + itens_normais), "threshold_default": threshold_default})
+        return render_page("compras.html", itens_alerta=itens_alerta, itens_normais=itens_normais, read_only=read_only, stats={"total_itens": len(itens_alerta) + len(itens_normais), "total_alerta": len(itens_alerta), "total_normais": len(itens_normais), "total_estoque": sum(item.get("quantidade", 0) for item in itens_alerta + itens_normais), "threshold_default": threshold_default})
     except (RuntimeError, ValueError, TypeError, OSError) as exc:
         logger.exception("Erro ao carregar compras")
-        return render_template("erro.html", mensagem=f"Erro ao processar dados: {exc}"), 500
+        return render_page("erro.html", mensagem=f"Erro ao processar dados: {exc}"), 500
 
 
 def _extract_and_format_item_form(form_data, item_original):
@@ -141,7 +142,7 @@ def editar_item(row_id):
             logger.exception("Erro ao editar item")
             flash(f"Erro ao editar item: {exc}", "danger")
             return redirect(url_for("compras.editar_item", row_id=row_id))
-    return render_template("editar_item.html", item=item, row_id=row_id)
+    return render_page("editar_item.html", item=item, row_id=row_id)
 
 
 @compras_bp.route("/itens/<int:row_id>/excluir", methods=["POST"])

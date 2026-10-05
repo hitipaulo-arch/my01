@@ -1,0 +1,19 @@
+{% extends "producao/_base.html" %}
+{% block title %}Aviso · {{ app_nome }}{% endblock %}
+{% block appbar_title %}Aviso{% endblock %}
+{% block appbar_sub %}Algo precisa de atenção{% endblock %}
+
+{% block content %}
+<div class="p-card p-vazio">
+    <span class="p-vazio-icon">⚠️</span>
+    <p>{{ mensagem or "Não foi possível concluir a operação." }}</p>
+    {% if e_gestao %}
+    <p class="text-muted">
+        Confira se a planilha da produção está compartilhada com a conta de serviço e se
+        <code>PRODUCAO_SPREADSHEET_ID</code> aponta para ela.
+    </p>
+    {% endif %}
+    <button type="button" class="p-btn p-btn-primary" data-p-reload>🔄 Tentar novamente</button>
+    <a class="p-btn p-btn-outline" href="{{ url_for('producao.home') }}">Ir para o início</a>
+</div>
+{% endblock %}

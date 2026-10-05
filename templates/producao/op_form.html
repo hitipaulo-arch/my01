@@ -1,0 +1,65 @@
+{% extends "producao/_base.html" %}
+{% set editando = (modo == "editar") %}
+{% block title %}{{ 'Editar' if editando else 'Nova' }} OP · {{ app_nome }}{% endblock %}
+{% block appbar_title %}{{ 'Editar OP' if editando else 'Nova OP' }}{% endblock %}
+{% block appbar_sub %}{{ op.id if editando else 'Cadastro da ordem de produção' }}{% endblock %}
+
+{% block content %}
+<form class="p-form" method="POST"
+      action="{{ url_for('producao.editar_op', op_id=op.id) if editando else url_for('producao.nova_op') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+    <div class="p-field p-field-obrigatorio">
+        <label class="p-label" for="campoNome">Nome do item / peça</label>
+        <input type="text" class="p-input" id="campoNome" name="nome_item" required
+               value="{{ op.nome_item or '' }}" placeholder="Ex.: Porta de alumínio 900x2100">
+    </div>
+
+    <div class="p-grid-2">
+        <div class="p-field p-field-obrigatorio">
+            <label class="p-label" for="campoCodigo">Código</label>
+            <input type="text" class="p-input js-codigo-code" id="campoCodigo" name="codigo" required
+                   inputmode="numeric" value="{{ op.codigo or '' }}" placeholder="00-00-000">
+        </div>
+        <div class="p-field">
+            <label class="p-label" for="campoMtc">MTC do projeto</label>
+            <input type="text" class="p-input js-mtc-code" id="campoMtc" name="mtc" maxlength="4"
+                   inputmode="numeric" value="{{ op.mtc or '' }}" placeholder="0000">
+        </div>
+        <div class="p-field p-field-obrigatorio">
+            <label class="p-label" for="campoQtd">Quantidade</label>
+            <input type="number" class="p-input" id="campoQtd" name="quantidade" min="0" step="1"
+                   value="{{ op.quantidade if op.quantidade is not none else 1 }}">
+        </div>
+        <div class="p-field">
+            <label class="p-label" for="campoPrazo">Prazo de entrega</label>
+            <input type="text" class="p-input" id="campoPrazo" name="prazo"
+                   value="{{ op.prazo or '' }}" placeholder="dd/mm/aaaa">
+        </div>
+    </div>
+
+    <div class="p-field">
+        <label class="p-label" for="campoCliente">Cliente / OS de origem</label>
+        <input type="text" class="p-input" id="campoCliente" name="cliente"
+               value="{{ op.cliente or '' }}" placeholder="Ex.: OS 101 · João da Silva">
+    </div>
+
+    <div class="p-field">
+        <label class="p-label" for="campoMaterial">Material / cor</label>
+        <input type="text" class="p-input" id="campoMaterial" name="material"
+               value="{{ op.material or '' }}" placeholder="Ex.: Inox 304 escovado">
+    </div>
+
+    <div class="p-field">
+        <label class="p-label" for="campoObs">Observação para a fábrica</label>
+        <textarea class="p-input" id="campoObs" name="observacao" rows="3"
+                  placeholder="Detalhes que os setores precisam saber">{{ op.observacao or '' }}</textarea>
+    </div>
+
+    <button type="submit" class="p-btn p-btn-primary p-btn-block">
+        {{ '💾 Salvar alterações' if editando else '➕ Criar OP com os ' ~ fluxo_setores|length ~ ' setores' }}
+    </button>
+    <a class="p-btn p-btn-outline p-btn-block"
+       href="{{ url_for('producao.detalhe', op_id=op.id) if editando else url_for('producao.home') }}">Cancelar</a>
+</form>
+{% endblock %}

@@ -2,6 +2,51 @@
 
 Sistema web para gerenciamento de Ordens de Serviço integrado com Google Sheets.
 
+## 📱 Aplicativo para celular (PWA)
+
+O mesmo sistema também funciona como **aplicativo instalável no celular**, com a
+mesma aparência, os mesmos dados e o mesmo login:
+
+| | Web | App |
+|---|---|---|
+| Endereço | `/` | **`/m/`** |
+| Instalação | — | *Adicionar à tela inicial* (ícone, splash e modo offline) |
+
+Todas as telas foram adaptadas para o celular (Início, Nova OS, OS Abertas,
+Consultar, Gerenciar, Produção, OPs Abertas, Dashboard, Itens/Compras, Centrais,
+Ferramentas, Relatórios, Tempo por Funcionário, Usuários, IA Admin e Login), sem
+duplicar regra de negócio — as telas mobile usam exatamente as mesmas rotas,
+sessão e CSRF da versão web.
+
+**📖 Veja [APP_MOBILE.md](APP_MOBILE.md) para o guia completo (arquitetura,
+instalação no Android/iPhone e testes).**
+
+## 🏭 App de Produção (por setor)
+
+A fábrica tem um **app separado** para acompanhar as ordens de produção pelos
+**13 setores** — **Corte → Corte Painel → CNC → Policorte → Vidros → Portas →
+Pass-through → Dobra → Montagem Primária → Solda → Acabamento → Silicone e
+Limpeza → Embalagem**:
+
+| | Sistema de OS | App de Produção |
+|---|---|---|
+| Endereço | `/` e `/m/` | **porta 5001** (`producao_app.py`) |
+| Login | usuário e senha | **PIN por setor** |
+| Dados | planilha de OS | **planilha própria** (`PRODUCAO_SPREADSHEET_ID`) |
+
+Cada setor entra com o próprio PIN e marca o seu status (Não iniciado / Em
+andamento / Concluído / **Não se aplica**) **com data e hora**, sem mexer no
+trabalho dos outros. A gestão vê o painel com a carga de cada setor e os atrasos.
+
+**O app está ligado ao sistema antigo por um atalho:** o menu (web e app em
+`/m`) e as telas antigas de produção mostram o botão **🏭 Produção por Setor**,
+que abre o app em outra aba. É só um link — os dois programas seguem separados
+(login e banco próprios). Ajuste com `PRODUCAO_APP_URL` (endereço completo),
+`PRODUCAO_APP_PORT` (padrão `5001`) ou `PRODUCAO_APP_INTEGRADO=0` (esconde).
+
+**📖 Veja [APP_PRODUCAO.md](APP_PRODUCAO.md) para o guia completo (criar a
+planilha, subir o app, cadastrar os PINs e o QR code de instalação).**
+
 ## 🚀 Funcionalidades
 
 - ✅ Abertura de OS via formulário web
@@ -92,7 +137,11 @@ Acesse: http://localhost:5000
 
 ```
 projeto_flask/
-├── app.py                 # Aplicação principal
+├── app.py                 # Entrada (cria a app via appmodules.create_app)
+├── appmodules/            # Factory, blueprints (routes/), serviços e camada mobile
+│   ├── __init__.py       # create_app(): extensões, blueprints, serviços e PWA
+│   ├── routes/           # os, producao, compras, admin, ferramentas, auth, centrais
+│   └── mobile/           # app em /m (middleware, context processors, rotas próprias)
 ├── templates/             # Templates HTML
 │   ├── index.html        # Formulário de abertura
 │   ├── gerenciar.html    # Gerenciamento de OS
@@ -131,6 +180,9 @@ projeto_flask/
 | `CACHE_TYPE` | Backend do cache (`RedisCache` ou `SimpleCache`) | Auto-detectado via `REDIS_URL` |
 | `OS_CACHE_TTL_SECONDS` | TTL do cache de OS no SheetsService (segundos) | 120 |
 | `PRODUCAO_CACHE_TTL_SECONDS` | TTL do cache de produção (segundos) | 30 |
+| `PRODUCAO_APP_URL` | Endereço do app de produção exibido no atalho (vazio = deduzido) | - |
+| `PRODUCAO_APP_PORT` | Porta do app de produção no atalho | 5001 |
+| `PRODUCAO_APP_INTEGRADO` | `0` esconde o atalho do app de produção | 1 |
 | `USUARIOS_CACHE_TTL_SECONDS` | TTL do cache de usuários (segundos) | 300 |
 | `REDIS_URL` | URL completa do Redis (ex.: `redis://:senha@host:6379/0`) | - |
 | `REDIS_HOST` | Host do Redis (se `REDIS_URL` não definido) | localhost |

@@ -1,0 +1,127 @@
+{% extends "producao/_base.html" %}
+{% block title %}Ordens de produção · {{ app_nome }}{% endblock %}
+{% block appbar_title %}{% if setor_usuario %}{{ setor_usuario }}{% else %}Todas as OPs{% endif %}{% endblock %}
+{% block appbar_sub %}
+{% if setor_usuario %}Ordens na fila do seu setor{% else %}Ordens de produção em andamento{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="p-cards-resumo">
+    <div class="p-resumo">
+        <span class="p-resumo-numero" id="contadorOps">{{ total }}</span>
+        <span class="p-resumo-rotulo">OP(s) na lista</span>
+    </div>
+    {% if setor_usuario %}
+    <div class="p-resumo">
+        <span class="p-resumo-numero">{{ ops|selectattr('status_geral', 'equalto', 'Em andamento')|list|length }}</span>
+        <span class="p-resumo-rotulo">em andamento</span>
+    </div>
+    {% endif %}
+</div>
+
+<div class="p-chips">
+    {% set opcoes = [("fila", "Minha fila"), ("andamento", "Em andamento"), ("aguardando", "Aguardando"), ("concluidas", "Concluídas"), ("todas", "Todas")] %}
+    {% for valor, rotulo in opcoes %}
+    {% if setor_usuario or valor != "fila" %}
+    <a class="p-chip {% if recorte == valor %}p-chip-ativo{% endif %}"
+       href="{{ url_for('producao.lista', recorte=valor) }}">{{ rotulo }}</a>
+    {% endif %}
+    {% endfor %}
+</div>
+
+<div class="p-search">
+    <input type="text" class="p-input" placeholder="Buscar por OP, item, código, MTC, cliente…"
+           data-p-filter="#listaOps .p-card" aria-label="Buscar ordem de produção">
+</div>
+
+<div class="p-list" id="listaOps">
+    {% for op in ops %}
+    <div class="p-card {% if op.prazo_vencido is defined and op.prazo_vencido %}p-card-atrasada{% endif %}"
+         data-op="{{ op.id }}"
+         data-status-setor="{{ op.status_setor_usuario or '' }}">
+        <div class="p-card-topo">
+            <span class="p-op-id">{{ op.id }}</span>
+            <span class="p-selo {{ op.status_geral|classe_status }}">{{ op.status_geral }}</span>
+        </div>
+
+        <a class="p-card-titulo" href="{{ url_for('producao.detalhe', op_id=op.id) }}">{{ op.nome_item }}</a>
+
+        <div class="p-card-meta">
+            <span>🔖 {{ op.codigo }}</span>
+            {% if op.mtc %}<span>🧾 MTC {{ op.mtc }}</span>{% endif %}
+            <span>🔢 {{ op.quantidade }} un.</span>
+            {% if op.cliente %}<span>📄 {{ op.cliente }}</span>{% endif %}
+            {% if op.prazo %}<span class="{% if op.prazo_vencido %}p-atraso{% endif %}">📅 {{ op.prazo }}</span>{% endif %}
+        </div>
+
+        <div class="p-progresso" title="{{ op.progresso }}% dos setores concluídos">
+            <div class="p-progresso-barra" style="width: {{ op.progresso }}%" data-p-barra></div>
+        </div>
+
+        <div class="p-progresso-legenda">
+            <span>{{ op.progresso }}% concluído</span>
+            {% if op.setor_atual %}
+            <span>Agora: <strong>{{ op.setor_atual.icone }} {{ op.setor_atual.nome }}</strong></span>
+            {% else %}
+            <span>✅ Todos os setores concluídos</span>
+            {% endif %}
+        </div>
+
+        {% if setor_usuario %}
+            {% set meu = op.setores | selectattr('nome', 'equalto', setor_usuario) | first %}
+            {% if meu and not meu.resolvido %}
+            <div class="p-acoes-rapidas">
+                {% if meu.status != 'Em andamento' %}
+                <form method="POST" action="{{ url_for('producao.atualizar_setor', op_id=op.id, chave_setor=meu.chave) }}"
+                      data-p-quick data-p-status="Em andamento">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="status" value="Em andamento"/>
+                    <button type="submit" class="p-btn p-btn-outline p-btn-sm">▶️ Iniciar</button>
+                </form>
+                {% endif %}
+                <form method="POST" action="{{ url_for('producao.atualizar_setor', op_id=op.id, chave_setor=meu.chave) }}"
+                      data-p-quick data-p-status="Concluído">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="status" value="Concluído"/>
+                    <button type="submit" class="p-btn p-btn-success p-btn-sm">✅ Concluir</button>
+                </form>
+                <form method="POST" action="{{ url_for('producao.atualizar_setor', op_id=op.id, chave_setor=meu.chave) }}"
+                      data-p-quick data-p-status="Não se aplica">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    <input type="hidden" name="status" value="Não se aplica"/>
+                    <button type="submit" class="p-btn p-btn-outline p-btn-sm"
+                            title="A peça não passa por este setor">∅ N/A</button>
+                </form>
+                <a class="p-btn p-btn-ghost p-btn-sm" href="{{ url_for('producao.detalhe', op_id=op.id) }}">Abrir</a>
+            </div>
+            {% elif meu and meu.nao_aplica %}
+            <div class="p-acoes-rapidas">
+                <span class="p-ok-setor">∅ Não se aplica ao seu setor</span>
+                <a class="p-btn p-btn-ghost p-btn-sm" href="{{ url_for('producao.detalhe', op_id=op.id) }}">Abrir</a>
+            </div>
+            {% else %}
+            <div class="p-acoes-rapidas">
+                <span class="p-ok-setor">✔️ Seu setor concluiu</span>
+                <a class="p-btn p-btn-ghost p-btn-sm" href="{{ url_for('producao.detalhe', op_id=op.id) }}">Abrir</a>
+            </div>
+            {% endif %}
+        {% else %}
+        <div class="p-acoes-rapidas">
+            <a class="p-btn p-btn-ghost p-btn-sm" href="{{ url_for('producao.detalhe', op_id=op.id) }}">Abrir ficha</a>
+            <a class="p-btn p-btn-ghost p-btn-sm" href="{{ url_for('producao.editar_op', op_id=op.id) }}">Editar</a>
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
+    <div class="p-card p-vazio">
+        <span class="p-vazio-icon">📭</span>
+        <p>Nenhuma OP nesta lista.</p>
+        {% if e_gestao %}
+        <a class="p-btn p-btn-primary" href="{{ url_for('producao.nova_op') }}">➕ Criar a primeira OP</a>
+        {% else %}
+        <p class="text-muted">Quando a gestão liberar uma ordem para o seu setor, ela aparece aqui.</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
