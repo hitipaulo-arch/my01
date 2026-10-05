@@ -219,8 +219,8 @@ Acrescentar, renomear ou reordenar setores é editar **uma tupla** em
 ```python
 SETORES = (
     Setor("corte", "Corte", "🪚"),
-    Setor("corte_painel", "Corte Painel", "🧱"),
-    Setor("cnc", "CNC", "🖥️"),
+    Setor("corte_painel", "Corte Painel", "🪵"),
+    Setor("cnc", "CNC", "🤖"),
     Setor("policorte", "Policorte", "⚙️"),
     Setor("vidros", "Vidros", "🪟"),
     Setor("portas", "Portas", "🚪"),
@@ -237,6 +237,26 @@ SETORES = (
 O armazenamento, as telas, o painel, o login e os testes leem tudo daí — e a
 **chave** do setor (`corte_painel`) é o que aparece nas URLs: mantenha-a estável
 ao renomear o rótulo.
+
+O **ícone** é só exibição (tela de acesso, fila, ficha da OP e painel) e precisa
+ser único entre os setores — há teste garantindo, porque é o que o pessoal
+reconhece de relance no celular. Trocar o ícone é editar esse terceiro campo:
+
+| Setor | Ícone |
+|---|---|
+| Corte | 🪚 |
+| Corte Painel | 🪵 |
+| CNC | 🤖 |
+| Policorte | ⚙️ |
+| Vidros | 🪟 |
+| Portas | 🚪 |
+| Pass-through | 🔁 |
+| Dobra | 📐 |
+| Montagem Primária | 🔧 |
+| Solda | 🔥 |
+| Acabamento | 🎨 |
+| Silicone e Limpeza | 🧴 |
+| Embalagem | 📦 |
 
 #### OPs que já existiam quando o fluxo ganha setor
 

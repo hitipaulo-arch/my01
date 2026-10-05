@@ -90,6 +90,24 @@ class SetoresTests(unittest.TestCase):
                 self.assertTrue(setor.icone.strip())
         self.assertEqual(len({s.chave for s in fluxo.SETORES}), len(fluxo.SETORES))
 
+    def test_icones_sao_unicos_e_reconheciveis(self):
+        """Cada posto de trabalho tem um ícone só dele.
+
+        O ícone é o que o pessoal reconhece de relance no celular: repetir dois
+        (ou usar algo genérico) faz o setor parecer outro.
+        """
+
+        icones = [setor.icone for setor in fluxo.SETORES]
+        repetidos = {icone for icone in icones if icones.count(icone) > 1}
+        self.assertEqual(repetidos, set(), f"ícones repetidos entre setores: {repetidos}")
+
+        for setor in fluxo.SETORES:
+            with self.subTest(setor=setor.chave):
+                # um emoji por setor (sem texto solto) e sem espaços
+                self.assertTrue(setor.icone == setor.icone.strip())
+                self.assertFalse(any(c.isalnum() for c in setor.icone))
+                self.assertGreaterEqual(len(setor.icone), 1)
+
     def test_busca_por_chave_e_por_nome(self):
         self.assertEqual(fluxo.por_chave("solda").nome, "Solda")
         self.assertEqual(fluxo.por_nome("silicone e limpeza").chave, "silicone_limpeza")

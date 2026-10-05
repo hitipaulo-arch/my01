@@ -46,7 +46,12 @@ OP_CONCLUIDA = "Concluída"
 
 @dataclass(frozen=True)
 class Setor:
-    """Um setor do fluxo de fabricação."""
+    """Um setor do fluxo de fabricação.
+
+    O ``icone`` é só exibição (aparece na tela de acesso, na fila, na ficha da
+    OP e no painel). Precisa ser **único** entre os setores, para o pessoal
+    reconhecer o posto de relance no celular — há teste garantindo isso.
+    """
 
     chave: str
     nome: str
@@ -56,8 +61,8 @@ class Setor:
 #: Ordem real do fluxo na fábrica — usada para saber "próximo setor".
 SETORES: tuple[Setor, ...] = (
     Setor("corte", "Corte", "🪚"),
-    Setor("corte_painel", "Corte Painel", "🧱"),
-    Setor("cnc", "CNC", "🖥️"),
+    Setor("corte_painel", "Corte Painel", "🪵"),
+    Setor("cnc", "CNC", "🤖"),
     Setor("policorte", "Policorte", "⚙️"),
     Setor("vidros", "Vidros", "🪟"),
     Setor("portas", "Portas", "🚪"),
