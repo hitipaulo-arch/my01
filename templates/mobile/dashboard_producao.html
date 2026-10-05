@@ -10,6 +10,18 @@
 {% endblock %}
 
 {% block content %}
+{% if producao_app and producao_app.mostrar %}
+<a class="m-card m-app-prod" href="{{ producao_app.url }}" target="_blank" rel="noopener">
+    <span class="m-tile-icon">🏭</span>
+    <span class="flex-grow-1">
+        <strong class="d-block">Produção por Setor — app novo</strong>
+        <span class="m-item-sub d-block">
+            Acompanha cada OP pelos 13 setores, com PIN por setor e data/hora de cada etapa.
+        </span>
+    </span>
+    <span class="m-item-id">↗</span>
+</a>
+{% endif %}
 {% if mensagem_erro %}
 <div class="m-alert m-alert-danger"><div>{{ mensagem_erro }}</div></div>
 {% endif %}

@@ -177,10 +177,51 @@ Em produção normal (domínio próprio, acesso direto) deixe tudo no padrão.
 
 ---
 
+## 🔗 Atalho no sistema antigo (integração)
+
+O app de produção continua sendo um **programa separado** — login, sessão e
+planilha próprios — e agora aparece como **atalho dentro do sistema de OS**,
+tanto na versão web quanto no app do celular (`/m`):
+
+| Onde | O que aparecer |
+|---|---|
+| Menu do sistema (web, gestão e operador) | botão **🏭 Produção por Setor** |
+| Telas antigas de produção (web e `/m`) | cartão com o endereço e o botão "Abrir app" |
+| Menu **Mais** do app do celular | seção **🏭 App de produção** |
+
+O atalho é só um **link**: abre em outra aba, o usuário faz login lá (PIN do
+setor) e nada de dado, sessão ou regra é compartilhado entre os dois programas.
+Há teste automático que falha se algum arquivo do sistema de OS importar o app
+de produção.
+
+### De onde vem o endereço
+
+O sistema de OS descobre o endereço do app em camadas:
+
+1. **`PRODUCAO_APP_URL`** — endereço completo (tem prioridade). Use quando os
+   dois estiverem em endereços diferentes, ex.:
+   `PRODUCAO_APP_URL=https://producao.minhaempresa.com`
+2. Se não estiver definido, o endereço é **deduzido do próprio acesso**: mesma
+   máquina/domínio, na porta `PRODUCAO_APP_PORT` (padrão `5001`). Funciona
+   inclusive em publicações com a porta no nome do host
+   (`5000-abc.exemplo.com` → `5001-abc.exemplo.com`).
+3. **`PRODUCAO_APP_INTEGRADO=0`** esconde o atalho de todas as telas — útil
+   enquanto o app ainda não estiver publicado.
+
+| Variável | Para quê | Padrão |
+|---|---|---|
+| `PRODUCAO_APP_URL` | Endereço completo do app (vence a dedução) | — (deduzido) |
+| `PRODUCAO_APP_PORT` | Porta usada quando o endereço não é informado | `5001` |
+| `PRODUCAO_APP_INTEGRADO` | `0` esconde o atalho do sistema antigo | `1` |
+
+Os testes aparecem em `tests/test_integracao_producao.py` (23 testes).
+
+---
+
 ## 🧪 Testes
 
 ```bash
-pytest tests/test_producao_web.py -v
+pytest tests/test_producao_web.py tests/test_integracao_producao.py -v
 ```
 
 100 testes cobrem o fluxo de setores (ordem, status calculado, progresso), o

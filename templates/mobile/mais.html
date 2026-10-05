@@ -37,6 +37,24 @@
     {% endfor %}
 </div>
 
+{% if producao_app and producao_app.mostrar %}
+<div class="m-section-title">
+    <h2>🏭 App de produção</h2>
+    <span>por setor</span>
+</div>
+
+<a class="m-card m-app-prod" href="{{ producao_app.url }}" target="_blank" rel="noopener">
+    <span class="m-tile-icon">🏭</span>
+    <span class="flex-grow-1">
+        <strong class="d-block">{{ producao_app.rotulo }}</strong>
+        <span class="m-item-sub d-block">
+            PIN por setor e data/hora de cada etapa da OP. Login próprio, separado deste sistema.
+        </span>
+    </span>
+    <span class="m-item-id">↗</span>
+</a>
+{% endif %}
+
 <div class="m-card">
     <h2 class="m-kpi-label">Aplicativo</h2>
     <div class="m-btn-row">

@@ -60,6 +60,7 @@ Todas as telas do sistema, otimizadas para o dedo:
 | Login / Cadastro | `/m/login`, `/m/cadastro` | Mesa sessão e mesmas regras de senha |
 | Sem conexão | `/m/offline` | Servida pelo service worker |
 | Instalação | `/m/instalar` | Passo a passo por sistema operacional |
+| App de produção | seção no **Mais** | Atalho para o app separado de produção por setor (abre em outra aba) |
 
 O menu respeita o papel do usuário exatamente como o topo da versão web
 (`admin`, `operador`, `visualizador`, público).
@@ -168,7 +169,21 @@ As travas que evitam regressões silenciosas:
 
 ---
 
+## 🏭 Atalho para o app de produção
+
+A tela **Mais** tem a seção **🏭 App de produção**, que abre o app separado de
+produção por setor em outra aba (e o mesmo botão aparece no topo das telas de
+Produção, OPs Abertas e Dashboard, na versão web e no app). É só um link: o app
+de produção tem login (PIN por setor) e planilha próprios. O endereço é
+descoberto automaticamente na mesma máquina/domínio na porta `5001` — ajuste com
+`PRODUCAO_APP_URL`, `PRODUCAO_APP_PORT` ou esconda com `PRODUCAO_APP_INTEGRADO=0`.
+Detalhes em [APP_PRODUCAO.md](APP_PRODUCAO.md#-atalho-no-sistema-antigo-integração).
+
+---
+
 ## 🔧 Sem novas variáveis de ambiente
 
 O app usa exatamente as variáveis já documentadas no `README.md`
-(`SECRET_KEY`, `GOOGLE_SHEET_ID`, cache, notificações, …).
+(`SECRET_KEY`, `GOOGLE_SHEET_ID`, cache, notificações, …). As três variáveis
+opcionais `PRODUCAO_APP_*` só controlam o atalho acima — sem elas, o atalho
+aponta para a porta `5001` do mesmo endereço.

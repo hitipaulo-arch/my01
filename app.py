@@ -103,6 +103,7 @@ except Exception as e:
 app = Flask(__name__)
 app.config.from_object(Config.FLASK)
 app.config.from_object(Config.CACHE)
+app.config.from_object(Config.PRODUCAO_APP)
 
 app_env = os.getenv("APP_ENV", os.getenv("FLASK_ENV", "production"))
 
@@ -221,6 +222,12 @@ app.register_blueprint(mobile_bp)
 # As rotas continuam exatamente as mesmas — apenas o template muda no modo app.
 install_mobile_middleware(app)
 register_context_processors(app)
+
+# Atalhos para o app dedicado de produção (por setor) em todas as telas.
+# É só um link: o app de produção tem login, sessão e banco próprios.
+from appmodules.integracao import register_context_processors as _registrar_integracao_producao
+
+_registrar_integracao_producao(app)
 
 # Aplica rate limiting em rotas críticas de blueprints (DEPOIS do registro)
 limiter = app.config.get("limiter")

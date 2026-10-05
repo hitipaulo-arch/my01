@@ -42,6 +42,10 @@
     <a href="{{ url_for('producao') }}" class="btn btn-sm btn-outline-success me-2">🏭 Produção</a>
     <a href="{{ url_for('producao_abertas') }}" class="btn btn-sm btn-outline-info me-2">🏭 OPs Abertas</a>
     <a href="{{ url_for('dashboard_producao') }}" class="btn btn-sm btn-outline-dark me-2">📊 Dashboard</a>
+    {% if producao_app and producao_app.mostrar %}
+    <a href="{{ producao_app.url }}" target="_blank" rel="noopener"
+       class="btn btn-sm btn-success me-2" title="{{ producao_app.descricao }}">🏭 Produção por Setor</a>
+    {% endif %}
     <a href="{{ url_for('itens') }}" class="btn btn-sm btn-outline-warning me-2">📦 Itens</a>
     <a href="{{ url_for('relatorios') }}" class="btn btn-sm btn-outline-primary me-2">📈 Relatórios</a>
     <a href="{{ url_for('admin_ia') }}" class="btn btn-sm btn-outline-dark me-2">🤖 IA Admin</a>
@@ -54,6 +58,10 @@
     <a href="{{ url_for('os.consultar_pedido') }}" class="btn btn-sm btn-outline-info me-2">🔍 Consultar OS</a>
     <a href="{{ url_for('producao') }}" class="btn btn-sm btn-outline-success me-2">🏭 Produção</a>
     <a href="{{ url_for('dashboard_producao') }}" class="btn btn-sm btn-outline-dark me-2">📊 Dashboard</a>
+    {% if producao_app and producao_app.mostrar %}
+    <a href="{{ producao_app.url }}" target="_blank" rel="noopener"
+       class="btn btn-sm btn-success me-2" title="{{ producao_app.descricao }}">🏭 Produção por Setor</a>
+    {% endif %}
     <a href="{{ url_for('itens') }}" class="btn btn-sm btn-outline-warning me-2">📦 Itens</a>
     <a href="{{ mobile_prefix }}/" class="btn btn-sm btn-outline-dark me-2">📱 App</a>
     {% endif %}

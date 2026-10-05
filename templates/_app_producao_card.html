@@ -1,0 +1,45 @@
+{# ==========================================================================
+   Atalho para o app dedicado de produção (por setor)
+   --------------------------------------------------------------------------
+   Cartão incluído nas telas antigas de controle de produção (web e app) e no
+   menu mobile. O endereço vem do contexto ``producao_app`` (ver
+   appmodules/integracao/__init__.py): PRODUCAO_APP_URL ou deduzido do acesso.
+   ========================================================================== #}
+{% if producao_app and producao_app.mostrar %}
+<div class="prod-app-card" id="cardAppProducao">
+    <span class="prod-app-icone">🏭</span>
+    <div class="prod-app-texto">
+        <strong>Produção por Setor — app novo</strong>
+        <span>
+            Acompanha cada OP pelos 13 setores, com PIN por setor e data/hora de cada etapa.
+            Este controle antigo continua funcionando normalmente.
+        </span>
+        <a class="prod-app-endereco" href="{{ producao_app.url }}" target="_blank" rel="noopener">
+            {{ producao_app.url }}
+        </a>
+    </div>
+    <a class="prod-app-btn" href="{{ producao_app.url }}" target="_blank" rel="noopener">
+        Abrir app →
+    </a>
+</div>
+
+<style>
+  .prod-app-card {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    background: linear-gradient(135deg, rgba(84,104,212,0.10), rgba(122,91,194,0.10));
+    border: 1px solid rgba(84,104,212,0.28);
+    border-radius: 14px; padding: 12px 16px; margin: 0 0 18px;
+  }
+  .prod-app-icone { font-size: 1.8rem; line-height: 1; }
+  .prod-app-texto { display: flex; flex-direction: column; gap: 2px; flex: 1 1 320px; min-width: 0; }
+  .prod-app-texto strong { font-size: 1rem; }
+  .prod-app-texto span { font-size: 0.84rem; color: #475569; }
+  .prod-app-endereco { font-size: 0.76rem; color: #5468d4; word-break: break-all; }
+  .prod-app-btn {
+    background: linear-gradient(135deg, #5468d4, #7a5bc2); color: #fff;
+    text-decoration: none; font-weight: 700; padding: 10px 18px; border-radius: 12px;
+    white-space: nowrap;
+  }
+  .prod-app-btn:hover { color: #fff; filter: brightness(1.06); }
+</style>
+{% endif %}

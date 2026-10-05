@@ -1080,3 +1080,20 @@ body.m-offline .m-install-banner {
         transition: none;
     }
 }
+
+
+/* --------------------------------------------------------------------------
+   Atalho para o app dedicado de produção (por setor)
+   -------------------------------------------------------------------------- */
+.m-app-prod {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border: 1px solid rgba(84, 104, 212, 0.35);
+    background: linear-gradient(135deg, rgba(84, 104, 212, 0.10), rgba(122, 91, 194, 0.10));
+    color: inherit;
+    text-decoration: none;
+}
+
+.m-app-prod strong { font-size: 0.98rem; }
+.m-app-prod .m-item-id { color: var(--ui-accent, #5468d4); font-size: 1.1rem; }

@@ -24,8 +24,9 @@ instalação no Android/iPhone e testes).**
 ## 🏭 App de Produção (por setor)
 
 A fábrica tem um **app separado** para acompanhar as ordens de produção pelos
-setores — **Corte → Dobra → Montagem Primária → Solda → Acabamento →
-Silicone e Limpeza → Embalagem**:
+**13 setores** — **Corte → Corte Painel → CNC → Policorte → Vidros → Portas →
+Pass-through → Dobra → Montagem Primária → Solda → Acabamento → Silicone e
+Limpeza → Embalagem**:
 
 | | Sistema de OS | App de Produção |
 |---|---|---|
@@ -34,8 +35,14 @@ Silicone e Limpeza → Embalagem**:
 | Dados | planilha de OS | **planilha própria** (`PRODUCAO_SPREADSHEET_ID`) |
 
 Cada setor entra com o próprio PIN e marca o seu status (Não iniciado / Em
-andamento / Concluído) **com data e hora**, sem mexer no trabalho dos outros.
-A gestão vê o painel com a carga de cada setor e os atrasos.
+andamento / Concluído / **Não se aplica**) **com data e hora**, sem mexer no
+trabalho dos outros. A gestão vê o painel com a carga de cada setor e os atrasos.
+
+**O app está ligado ao sistema antigo por um atalho:** o menu (web e app em
+`/m`) e as telas antigas de produção mostram o botão **🏭 Produção por Setor**,
+que abre o app em outra aba. É só um link — os dois programas seguem separados
+(login e banco próprios). Ajuste com `PRODUCAO_APP_URL` (endereço completo),
+`PRODUCAO_APP_PORT` (padrão `5001`) ou `PRODUCAO_APP_INTEGRADO=0` (esconde).
 
 **📖 Veja [APP_PRODUCAO.md](APP_PRODUCAO.md) para o guia completo (criar a
 planilha, subir o app, cadastrar os PINs e o QR code de instalação).**
@@ -169,6 +176,9 @@ projeto_flask/
 | `CACHE_TYPE` | Backend do cache (`RedisCache` ou `SimpleCache`) | Auto-detectado via `REDIS_URL` |
 | `OS_CACHE_TTL_SECONDS` | TTL do cache de OS no SheetsService (segundos) | 120 |
 | `PRODUCAO_CACHE_TTL_SECONDS` | TTL do cache de produção (segundos) | 30 |
+| `PRODUCAO_APP_URL` | Endereço do app de produção exibido no atalho (vazio = deduzido) | - |
+| `PRODUCAO_APP_PORT` | Porta do app de produção no atalho | 5001 |
+| `PRODUCAO_APP_INTEGRADO` | `0` esconde o atalho do app de produção | 1 |
 | `USUARIOS_CACHE_TTL_SECONDS` | TTL do cache de usuários (segundos) | 300 |
 | `REDIS_URL` | URL completa do Redis (ex.: `redis://:senha@host:6379/0`) | - |
 | `REDIS_HOST` | Host do Redis (se `REDIS_URL` não definido) | localhost |
