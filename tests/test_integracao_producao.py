@@ -7,6 +7,7 @@ compartilhado — e há teste garantindo isso.
 
 from __future__ import annotations
 
+import html
 import os
 import re
 import sys
@@ -23,6 +24,12 @@ os.environ.setdefault("SECRET_KEY", "test-secret")
 
 import app as app_module  # noqa: E402
 from appmodules.integracao import dados, porta, url, url_derivada  # noqa: E402
+
+def _texto(resposta) -> str:
+    """HTML com as entidades resolvidas (o menu web usa &#127981; etc.)."""
+
+    return html.unescape(resposta.get_data(as_text=True))
+
 
 from test_mobile_app import (  # noqa: E402
     ITEM_EXEMPLO,
@@ -143,7 +150,7 @@ class AtalhosNoSiteTests(_IntegracaoTestCase):
 
     def test_menu_do_admin_tem_o_atalho(self):
         self.configurar(PRODUCAO_APP_URL="https://producao.minhaempresa.com")
-        html = self.login("admin").get("/").get_data(as_text=True)
+        html = _texto(self.login("admin").get("/"))
         self.assertIn("Produção por Setor", html)
         self.assertIn('href="https://producao.minhaempresa.com"', html)
         self.assertIn('target="_blank"', html)
@@ -151,7 +158,7 @@ class AtalhosNoSiteTests(_IntegracaoTestCase):
 
     def test_menu_do_operador_tem_o_atalho(self):
         self.configurar(PRODUCAO_APP_URL="https://producao.minhaempresa.com")
-        html = self.login("operador").get("/").get_data(as_text=True)
+        html = _texto(self.login("operador").get("/"))
         self.assertIn("Produção por Setor", html)
 
     def test_telas_antigas_de_producao_mostram_o_cartao(self):
@@ -171,7 +178,7 @@ class AtalhosNoSiteTests(_IntegracaoTestCase):
         self.login("admin")
         for rota in ("/", "/producao", "/producao-abertas", "/dashboard-producao"):
             with self.subTest(rota=rota):
-                html = self.client.get(rota).get_data(as_text=True)
+                html = _texto(self.client.get(rota))
                 self.assertNotIn("Produção por Setor", html)
                 self.assertNotIn("cardAppProducao", html)
 
@@ -179,11 +186,11 @@ class AtalhosNoSiteTests(_IntegracaoTestCase):
         """Visitante sem login não deve ver o atalho para o app interno."""
 
         self.configurar(PRODUCAO_APP_URL="https://producao.minhaempresa.com")
-        html = self.client.get("/os-abertas").get_data(as_text=True)
+        html = _texto(self.client.get("/os-abertas"))
         self.assertNotIn("Produção por Setor", html)
 
     def test_endereco_deduzido_aparece_no_menu(self):
-        html = self.login("admin").get("/").get_data(as_text=True)
+        html = _texto(self.login("admin").get("/"))
         self.assertIn("Produção por Setor", html)
         self.assertIn(":5001", html)
 
@@ -193,7 +200,7 @@ class AtalhosNoAppMobileTests(_IntegracaoTestCase):
 
     def test_menu_mais_tem_a_secao_do_app_de_producao(self):
         self.configurar(PRODUCAO_APP_URL="https://producao.minhaempresa.com")
-        html = self.login("admin").get("/m/mais").get_data(as_text=True)
+        html = _texto(self.login("admin").get("/m/mais"))
         self.assertIn("App de produção", html)
         self.assertIn("https://producao.minhaempresa.com", html)
         self.assertIn('rel="noopener"', html)
@@ -203,7 +210,7 @@ class AtalhosNoAppMobileTests(_IntegracaoTestCase):
         self.login("admin")
         for rota in ("/m/producao", "/m/producao-abertas", "/m/dashboard-producao"):
             with self.subTest(rota=rota):
-                html = self.client.get(rota).get_data(as_text=True)
+                html = _texto(self.client.get(rota))
                 self.assertIn("m-app-prod", html, "o cartão mobile não apareceu")
                 self.assertIn("https://producao.minhaempresa.com", html)
 
@@ -212,14 +219,14 @@ class AtalhosNoAppMobileTests(_IntegracaoTestCase):
         self.login("admin")
         for rota in ("/m/mais", "/m/producao"):
             with self.subTest(rota=rota):
-                html = self.client.get(rota).get_data(as_text=True)
+                html = _texto(self.client.get(rota))
                 self.assertNotIn("m-app-prod", html)
 
     def test_atalho_no_app_nao_sai_do_modo_app(self):
         """Os links internos continuam com /m; o atalho aponta para fora."""
 
         self.configurar(PRODUCAO_APP_URL="https://producao.minhaempresa.com")
-        html = self.login("admin").get("/m/mais").get_data(as_text=True)
+        html = _texto(self.login("admin").get("/m/mais"))
         prefixados = set(re.findall(r'href="(/m/[^"]*)"', html))
         self.assertTrue(prefixados, "o menu do app deveria manter links internos")
         self.assertIn('href="https://producao.minhaempresa.com"', html)

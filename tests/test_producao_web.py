@@ -870,11 +870,23 @@ class IsolamentoTests(unittest.TestCase):
     """O app de produção não compartilha nada com o sistema de OS."""
 
     def test_sistema_de_os_nao_importa_o_app_de_producao(self):
+        """Nenhum *import* do app de produção no sistema de OS.
+
+        Menções em comentário/docstring são permitidas (documentam o
+        isolamento); o que não pode existir é dependência de código.
+        """
+
         for arquivo in sorted((ROOT / "appmodules").rglob("*.py")):
             if "producao_web" in str(arquivo):
                 continue
-            with self.subTest(arquivo=str(arquivo.relative_to(ROOT))):
-                self.assertNotIn("producao_web", arquivo.read_text(encoding="utf-8"))
+            for linha in arquivo.read_text(encoding="utf-8").splitlines():
+                if "producao_web" not in linha:
+                    continue
+                self.assertFalse(
+                    linha.lstrip().startswith(("import ", "from ")),
+                    f"{arquivo.relative_to(ROOT)}: {linha.strip()}",
+                )
+                self.assertNotIn("import appmodules.producao_web", linha)
 
     def test_app_de_producao_nao_usa_o_servico_de_planilha_do_sistema(self):
         for arquivo in sorted((ROOT / "appmodules" / "producao_web").rglob("*.py")):
@@ -894,6 +906,42 @@ class IsolamentoTests(unittest.TestCase):
                 if "import appmodules" in linha:
                     with self.subTest(arquivo=arquivo.name, linha=linha.strip()):
                         self.assertIn("appmodules.producao_web", linha)
+
+    def test_importar_o_app_nao_exige_a_configuracao_do_sistema(self):
+        """``import appmodules.producao_web`` não pode exigir ``SECRET_KEY``.
+
+        O app de produção é um programa separado: quem copia a pasta para outra
+        máquina não tem (nem deve ter) a configuração do sistema de OS. A
+        factory do sistema vive em ``appmodules.app_factory`` e o pacote
+        ``appmodules`` não importa ``config`` no nível do módulo.
+        """
+
+        import os
+        import subprocess
+        import sys
+
+        raiz = ROOT
+        ambiente = {
+            k: v
+            for k, v in os.environ.items()
+            if k not in {"SECRET_KEY", "PRODUCAO_SECRET_KEY"}
+        }
+        ambiente["PYTHONPATH"] = str(raiz)
+        processo = subprocess.run(
+            [sys.executable, "-c", "import appmodules.producao_web; print('ok')"],
+            cwd=str(raiz),
+            env=ambiente,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(processo.returncode, 0, processo.stderr[-800:])
+        self.assertIn("ok", processo.stdout)
+
+        # E o pacote em si não pode importar a configuração do sistema.
+        init = (raiz / "appmodules" / "__init__.py").read_text(encoding="utf-8")
+        self.assertNotIn("from config import", init)
+        self.assertNotIn("import config", init)
 
     def test_templates_sao_separados(self):
         """As telas do app de produção nunca são as mesmas do sistema/app de OS."""

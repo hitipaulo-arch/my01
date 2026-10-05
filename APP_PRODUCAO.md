@@ -218,18 +218,45 @@ Os testes aparecem em `tests/test_integracao_producao.py` (23 testes).
 
 ---
 
+## 📦 Gerar o pacote independente
+
+Para levar o app para outra máquina (ou entregar pronto para o cliente), use o
+empacotador — ele monta a pasta, roda a suíte **dentro** do pacote e compacta:
+
+```bash
+python scripts/empacotar_app_producao.py                 # .zip e .tar.gz na pasta pessoal
+python scripts/empacotar_app_producao.py --destino /tmp  # escolhe onde gravar
+python scripts/empacotar_app_producao.py --pasta         # só monta a pasta, sem compactar
+python scripts/empacotar_app_producao.py --sem-testes    # pula a verificação
+```
+
+O pacote leva só o que o app de produção precisa (código, telas, PWA, scripts de
+migração, testes e um `LEIA-ME.txt` com o passo a passo). O
+`appmodules/__init__.py` do pacote é mínimo de propósito: assim o app **não**
+carrega a configuração do sistema de OS (que exige `SECRET_KEY` e as planilhas
+do gestor). Há teste garantindo isso.
+
+---
+
 ## 🧪 Testes
 
 ```bash
-pytest tests/test_producao_web.py tests/test_integracao_producao.py -v
+pytest tests/test_producao_web.py -v          # 102 testes: só o app de produção
+pytest tests/ -q                              # 203 testes: sistema + app + mobile
 ```
 
-100 testes cobrem o fluxo de setores (ordem, status calculado, progresso), o
+102 testes cobrem o fluxo de setores (ordem, status calculado, progresso), o
 armazenamento local, o login por setor, as permissões (cada setor só mexe no
 próprio status), o cadastro/edição/exclusão de OP, o painel, o histórico, a
 instalação (manifest, service worker, ícones) e o **isolamento** — há teste que
-falha se algum arquivo do sistema de OS importar o app de produção ou se os
-templates vazarem de um para o outro.
+falha se algum arquivo do sistema de OS importar o app de produção, se os
+templates vazarem de um para o outro e se o pacote passar a exigir a
+configuração do gestor (``SECRET_KEY`` etc.).
+
+O atalho dentro do sistema de OS tem testes próprios em
+``tests/test_integracao_producao.py`` (27 testes): resolução do endereço,
+cada ponto de entrada (menu web, telas antigas, app em ``/m``) e o isolamento
+entre os dois programas.
 
 ---
 
@@ -248,6 +275,7 @@ templates/producao/                 10 telas (login, fila, ficha da OP, painel, 
 static/producao/                    app.css, app.js, service worker, manifest, ícones
 scripts/gerar_icones_producao.py    regera os ícones do app
 scripts/verificar_planilha_producao.py  confere/configura a planilha
+scripts/empacotar_app_producao.py    gera o pacote independente (.zip/.tar.gz)
 scripts/migrar_setores_producao.py  completa os setores novos nas OPs antigas
 tests/test_producao_web.py          100 testes
 ```
