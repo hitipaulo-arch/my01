@@ -51,6 +51,17 @@ def _parse_dt(text):
     return None
 
 
+def _normalizar_mes(mes):
+    """Valida um mês no formato YYYY-MM e retorna o mesmo valor."""
+    if not mes:
+        return ""
+    try:
+        datetime.strptime(f"{mes}-01", "%Y-%m-%d")
+    except (TypeError, ValueError):
+        return ""
+    return mes
+
+
 def _parse_datetime_maybe_time(valor, base_dt):
     """
     Converte um valor de texto para datetime, lidando com casos onde apenas
@@ -88,6 +99,23 @@ def _safe_str(val):
     if val is None:
         return ""
     return str(val).strip().lower()
+
+
+def _formatar_tempo_conclusao(row, col_andamento, col_termino):
+    """Formata o tempo entre o início e o término de uma atividade."""
+    if not (col_andamento and col_termino):
+        return "N/A"
+    inicio = _parse_datetime_maybe_time(row.get(col_andamento, ""), row.get("_ts"))
+    termino = _parse_datetime_maybe_time(row.get(col_termino, ""), row.get("_ts"))
+    if not inicio or not termino:
+        return "N/A"
+    total_minutos = int((termino - inicio).total_seconds() / 60)
+    if total_minutos < 0:
+        return "N/A"
+    horas, minutos = divmod(total_minutos, 60)
+    if horas:
+        return f"{horas}h {minutos}min"
+    return f"{minutos}min"
 
 
 def _calcular_prioridade(rows, col_prioridade):
@@ -158,7 +186,7 @@ def _calcular_tempo_resolucao(
     return tempo_medio, media_mes_labels, media_mes_values
 
 
-def gerar_dados_relatorio(sheets_service):
+def gerar_dados_relatorio(sheets_service, mes_referencia=None):
     """
     Busca e processa dados de OS para gerar
     métricas e gráficos do relatório.
@@ -185,18 +213,32 @@ def gerar_dados_relatorio(sheets_service):
         "total_andamento": 0,
         "tempo_medio": "N/A",
         "tabela_resumo": [],
+        "atividades_mes": [],
+        "total_atividades_mes": 0,
+        "mes_relatorio": "",
     }
 
+    mes_relatorio = _normalizar_mes(mes_referencia)
+    mes_atual = datetime.now(timezone.utc).strftime("%Y-%m")
+
     if not sheets_service:
-        return {**_empty, "mensagem_erro": "Serviço de planilhas indisponível"}
+        return {**_empty, "mes_atual": mes_atual, "mensagem_erro": "Serviço de planilhas indisponível"}
 
     disponivel, erro_msg = sheets_service.is_available()
     if not disponivel:
-        return {**_empty, "mensagem_erro": erro_msg}
+        return {
+            **_empty,
+            "mes_atual": mes_atual,
+            "mensagem_erro": erro_msg,
+        }
 
     os_list = sheets_service.get_all_os()
     if not os_list:
-        return _empty
+        return {
+            **_empty,
+            "mes_atual": mes_atual,
+            "mes_relatorio": mes_relatorio,
+        }
 
     # Normalizar: garantir que cada registro tenha todas as chaves como string
     rows = []
@@ -218,8 +260,12 @@ def gerar_dados_relatorio(sheets_service):
     col_descricao = _first_col(
         rows, "Descrição", "Descrição do Problema ou Serviço Solicitado"
     )
-    col_andamento = _first_col(rows, "Horario de Andamento")
-    col_termino = _first_col(rows, "Horario de Término")
+    col_andamento = _first_col(
+        rows, "Horario de Andamento", "Horário de Andamento"
+    )
+    col_termino = _first_col(
+        rows, "Horario de Término", "Horário de Término"
+    )
 
     # Adicionar _ts (timestamp) a cada registro
     for row in rows:
@@ -237,6 +283,12 @@ def gerar_dados_relatorio(sheets_service):
                 "cancelada",
                 "cancelado",
             )
+        ]
+
+    if mes_relatorio:
+        rows = [
+            row for row in rows
+            if row.get("_ts") and row["_ts"].strftime("%Y-%m") == mes_relatorio
         ]
 
     # Métricas calculadas via sub-funções
@@ -291,19 +343,63 @@ def gerar_dados_relatorio(sheets_service):
         rows_with_ts,
         key=lambda r: r["_ts"],
         reverse=True,
-    )[:50]
-    tabela_resumo = [
-        {
+    )
+
+    def _atividade_os(row):
+        return {
             "data": row.get(col_timestamp, "") if col_timestamp else "",
             "solicitante": (
                 row.get(col_solicitante, "") if col_solicitante else ""
             ),
             "setor": row.get(col_setor, "") if col_setor else "",
             "status": row.get(col_status, "") if col_status else "",
+            "tempo_conclusao": _formatar_tempo_conclusao(
+                row, col_andamento, col_termino
+            ),
             "descricao": row.get(col_descricao, "") if col_descricao else "",
         }
-        for row in rows_sorted
-    ]
+
+    def _atividade_op(row):
+        descricao = row.get("Nome do item", "") or row.get("Descrição", "")
+        if row.get("Código"):
+            descricao = f"{descricao} ({row.get('Código')})" if descricao else row.get("Código")
+        if row.get("Observação"):
+            descricao = f"{descricao} - {row.get('Observação')}" if descricao else row.get("Observação")
+        return {
+            "data": row.get("Carimbo de data/hora", ""),
+            "solicitante": row.get("Responsável", "") or row.get("Nome do solicitante", ""),
+            "setor": row.get("Setor", "") or "Produção",
+            "status": row.get("Status", "") or "Em andamento",
+            "tempo_conclusao": "N/A",
+            "descricao": descricao,
+        }
+
+    if mes_relatorio:
+        atividades_mes = [_atividade_os(row) for row in rows_sorted]
+        producao_rows = []
+        if hasattr(sheets_service, "get_all_producao"):
+            try:
+                for item in sheets_service.get_all_producao(use_cache=True) or []:
+                    if not item:
+                        continue
+                    row = {key: "" if val is None else val for key, val in item.items()}
+                    ts = _parse_dt(row.get("Carimbo de data/hora", ""))
+                    if not ts or ts.strftime("%Y-%m") != mes_relatorio:
+                        continue
+                    producao_rows.append(_atividade_op(row))
+            except Exception:
+                producao_rows = []
+        atividades_mes.extend(producao_rows)
+        atividades_mes = sorted(
+            atividades_mes,
+            key=lambda item: _parse_dt(str(item.get("data", ""))) or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
+        tabela_resumo = atividades_mes
+    else:
+        tabela_resumo = [
+            _atividade_os(row) for row in rows_sorted[:50]
+        ]
 
     return {
         "labels_prioridade": labels_prioridade,
@@ -320,4 +416,8 @@ def gerar_dados_relatorio(sheets_service):
         "total_andamento": total_andamento,
         "tempo_medio": tempo_medio,
         "tabela_resumo": tabela_resumo,
+        "atividades_mes": tabela_resumo if mes_relatorio else [],
+        "total_atividades_mes": len(tabela_resumo) if mes_relatorio else 0,
+        "mes_relatorio": mes_relatorio,
+        "mes_atual": mes_atual,
     }

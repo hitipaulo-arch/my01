@@ -5,6 +5,7 @@ import logging
 import datetime
 import json
 import os
+import re
 import time
 from pathlib import Path
 from decimal import Decimal, InvalidOperation
@@ -353,6 +354,63 @@ class SheetsService:
         return normalized_headers
 
     @staticmethod
+    def _normalize_header_name(value: Any) -> str:
+        """Normaliza um cabeçalho para comparação sem diferenciar maiúsculas."""
+        return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
+
+    def _align_os_row_to_headers(self, row_data: list) -> list:
+        """Monta a linha da OS conforme a ordem atual dos cabeçalhos."""
+        headers = self._normalize_headers(
+            self._retry(self.sheet.row_values, 1)
+        )
+        canonical_headers = [
+            "ID",
+            "Carimbo de data/hora",
+            "Nome do solicitante",
+            "Setor",
+            "Data da Solicitação",
+            "Descrição",
+            "Equipamento/Local",
+            "Prioridade",
+            "Status da OS",
+            "Informações adicionais",
+            "Serviço realizado",
+            "Horario de Inicio",
+            "Horario de Andamento",
+            "Horario de Término",
+            "Horas trabalhadas",
+            self.WHATSAPP_HEADER,
+        ]
+        values_by_header = dict(zip(canonical_headers, row_data))
+        aliases = {
+            "Setor em que será realizado o serviço": "Setor",
+            "Descrição do Problema ou Serviço Solicitado": "Descrição",
+            "Equipamento ou Local afetado": "Equipamento/Local",
+            "Nível de prioridade": "Prioridade",
+            "WhatsApp": self.WHATSAPP_HEADER,
+            "Whatsapp do solicitante": self.WHATSAPP_HEADER,
+            "Whatsapp": self.WHATSAPP_HEADER,
+        }
+
+        values_by_normalized_header = {
+            self._normalize_header_name(header): value
+            for header, value in values_by_header.items()
+        }
+        for alias, canonical in aliases.items():
+            values_by_normalized_header[self._normalize_header_name(alias)] = (
+                values_by_normalized_header[
+                    self._normalize_header_name(canonical)
+                ]
+            )
+
+        return [
+            values_by_normalized_header.get(
+                self._normalize_header_name(header), ""
+            )
+            for header in headers
+        ]
+
+    @staticmethod
     def _normalize_os_id(value: Any) -> str:
         """Normaliza IDs da OS vindos do formulário ou da planilha.
 
@@ -464,14 +522,21 @@ class SheetsService:
             if not self.sheet:
                 return False
 
+            row_data = self._align_os_row_to_headers(row_data)
+            next_row = len(self._retry(self.sheet.get_all_values)) + 1
+            ultima_coluna = self._col_letter(len(row_data))
             self._retry(
-                self.sheet.append_row,
-                row_data,
+                self.sheet.update,
+                f"A{next_row}:{ultima_coluna}{next_row}",
+                [row_data],
                 value_input_option="RAW",
-                insert_data_option="INSERT_ROWS",
             )
             self._invalidate_os_cache()
-            logger.info(f"Nova OS adicionada (ID: {row_data[0]})")
+            logger.info(
+                "Nova OS adicionada na linha %s (ID: %s)",
+                next_row,
+                row_data[0],
+            )
             return True
         except Exception as e:
             logger.error(f"Erro ao adicionar OS: {e}")
@@ -766,6 +831,7 @@ class SheetsService:
             if not self.sheet:
                 return False
 
+            row_data = self._align_os_row_to_headers(row_data)
             # Define a faixa dinamicamente com base na quantidade de colunas.
             ultima_coluna = self._col_letter(len(row_data))
             self._retry(

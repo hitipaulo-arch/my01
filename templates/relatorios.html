@@ -17,12 +17,35 @@
             <p>Análise completa e estatísticas avançadas do sistema de OS</p>
         </div>
 
+        <div class="card mb-4">
+            <div class="card-body d-flex flex-wrap align-items-end justify-content-between gap-3">
+                <div>
+                    <h3 class="mb-1">Relatório mensal</h3>
+                    <p class="text-muted mb-0">Veja todas as atividades registradas em um mês.</p>
+                </div>
+                <form method="get" action="{{ url_for('admin.relatorios') }}" class="d-flex align-items-end gap-2">
+                    <input type="hidden" name="download" value="1">
+                    <div>
+                        <label for="mes-relatorio" class="form-label mb-1">Mês</label>
+                        <input id="mes-relatorio" name="mes" type="month" class="form-control" value="{{ mes_relatorio or mes_atual }}" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Gerar e baixar relatório</button>
+                </form>
+            </div>
+        </div>
+
 
         {% if mensagem_erro %}
         <div class="soft-alert">
             <strong>⚠️ Atenção:</strong> {{ mensagem_erro }}
         </div>
         {% else %}
+
+        {% if mes_relatorio %}
+        <div class="alert alert-info" role="status">
+            Relatório mensal de <strong>{{ mes_relatorio }}</strong>: {{ total_atividades_mes }} registro(s) no período (OS + OPs).
+        </div>
+        {% endif %}
 
         <!-- Cards de Estatísticas -->
         <div class="stats-grid">
@@ -31,6 +54,13 @@
                 <div class="stat-value">{{ total_os or 0 }}</div>
                 <div class="stat-label">Total de OS</div>
             </div>
+            {% if mes_relatorio %}
+            <div class="stat-card">
+                <div class="stat-icon">🧾</div>
+                <div class="stat-value">{{ total_atividades_mes or 0 }}</div>
+                <div class="stat-label">Registros no mês</div>
+            </div>
+            {% endif %}
             <div class="stat-card">
                 <div class="stat-icon">✅</div>
                 <div class="stat-value">{{ total_finalizadas or 0 }}</div>
@@ -75,9 +105,9 @@
         <!-- Tabela Resumo de Chamados (substitui a tabela do Dashboard) -->
         <div class="card mt-4">
             <div class="card-body">
-                <h3 class="mb-3">📋 Tabela Resumo de Chamados (Últimas 50)</h3>
+                <h3 class="mb-3">📋 {% if mes_relatorio %}Todas as atividades do mês{% else %}Tabela Resumo de Chamados (Últimas 50){% endif %}</h3>
                 <div class="table-responsive">
-                    <table class="table table-hover table-striped">
+                    <table class="table table-hover table-striped report-table">
                         <thead class="table-dark">
                             <tr>
                                 <th>Data</th>
@@ -90,20 +120,20 @@
                         <tbody>
                             {% for r in tabela_resumo %}
                             <tr>
-                                <td>{{ r.data }}</td>
-                                <td>{{ r.solicitante }}</td>
-                                <td>{{ r.setor }}</td>
+                                <td>{{ r.data or '—' }}</td>
+                                <td>{{ r.solicitante or '—' }}</td>
+                                <td>{{ r.setor or '—' }}</td>
                                 <td>
-                                    {% set status = r.status %}
+                                    {% set status = r.status or 'Sem status' %}
                                     <span class="badge 
-                                        {% if status == 'Finalizada' %} bg-success
-                                        {% elif status == 'Em Andamento' %} bg-primary
+                                        {% if status == 'Finalizada' or status == 'Finalizado' or status == 'Concluído' or status == 'Concluido' %} bg-success
+                                        {% elif status == 'Em Andamento' or status == 'Em andamento' %} bg-primary
                                         {% elif status == 'Aguardando Compra' %} bg-warning text-dark
-                                        {% elif status == 'Cancelada' %} bg-danger
+                                        {% elif status == 'Cancelada' or status == 'Cancelado' %} bg-danger
                                         {% else %} bg-secondary {% endif %}
                                     ">{{ status }}</span>
                                 </td>
-                                <td>{{ r.descricao | truncate(60) }}</td>
+                                <td class="report-description">{{ r.descricao or '—' }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>

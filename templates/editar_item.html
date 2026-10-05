@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
@@ -13,7 +13,7 @@
         {% include '_top_nav.html' %}
 
         <div class="page-header">
-            <h1>✏️ Editar Item</h1>
+            <h1>&#9999; Editar Item</h1>
             <p class="production-subtitle">Alterar informações do item selecionado.</p>
         </div>
 
@@ -30,7 +30,7 @@
 
         <div class="form-card">
             <h3 class="mb-4">Editar Item</h3>
-            <form method="POST" action="{{ url_for('editar_item', row_id=row_id) }}">
+            <form method="POST" action="{{ url_for('compras.editar_item', row_id=row_id) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                 <div class="row g-3">
                     <div class="col-md-4">
@@ -59,8 +59,8 @@
                     </div>
                 </div>
                 <div class="mt-4">
-                    <button type="submit" class="btn btn-primary">💾 Salvar alterações</button>
-                    <a href="{{ url_for('itens') }}" class="btn btn-secondary">Cancelar</a>
+                    <button type="submit" class="btn btn-primary">&#128190; Salvar alterações</button>
+                    <a href="{{ url_for('compras.itens') }}" class="btn btn-secondary">Cancelar</a>
                 </div>
             </form>
         </div>

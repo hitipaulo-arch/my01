@@ -15,9 +15,7 @@ from appmodules.utils import admin_required
 
 logger = logging.getLogger(__name__)
 
-centrais_bp = Blueprint(
-    "centrais", __name__, template_folder="../../templates", static_folder="../../static"
-)
+centrais_bp = Blueprint("centrais", __name__, template_folder="../../templates")
 
 
 @centrais_bp.route("/centrais", methods=["GET", "POST"])
