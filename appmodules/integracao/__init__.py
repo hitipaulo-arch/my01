@@ -14,7 +14,8 @@ Como o endereço é resolvido, nesta ordem:
 
    * ``http://127.0.0.1:5000`` (ou ``localhost``) → ``…:PRODUCAO_APP_PORT``;
    * publicações onde o host começa com a porta (ex.: ``5000-abc.e2b.app``) →
-     troca o prefixo pela porta do app, mantendo o domínio;
+     troca o prefixo pela porta do app, mantendo o domínio (e assumindo HTTPS,
+     que é como essas publicações são acessadas);
    * qualquer outro domínio → acrescenta ``:PRODUCAO_APP_PORT``.
 
 Para esconder o atalho (por exemplo enquanto o app não estiver publicado),
@@ -69,6 +70,19 @@ def _esquema(requisicao) -> str:
     return encaminhado or requisicao.scheme or "http"
 
 
+def _subdominio_com_porta(nome: str) -> Optional[str]:
+    """Devolve o resto do host quando ele começa com a porta (``5000-abc.ex``).
+
+    É o padrão de publicações temporárias (``5000-abc.exemplo.com``), em que
+    cada porta vira um subdomínio. Nesses casos o acesso é sempre por HTTPS.
+    """
+
+    prefixo, separador, resto = nome.partition("-")
+    if separador and prefixo.isdigit() and resto:
+        return resto
+    return None
+
+
 def url_derivada() -> Optional[str]:
     """Deduz o endereço do app de produção a partir do acesso atual."""
 
@@ -83,10 +97,14 @@ def url_derivada() -> Optional[str]:
     esquema = _esquema(request)
     destino = porta()
 
-    prefixo, separador, resto = nome.partition("-")
-    if separador and prefixo.isdigit():
-        # Publicações que põem a porta no subdomínio (5000-abc.exemplo.com):
-        # troca só o número, mantendo domínio e sufixo.
+    resto = _subdominio_com_porta(nome)
+    if resto:
+        # Publicações que põem a porta no subdomínio: troca só o número,
+        # mantendo domínio e sufixo.
+        if esquema == "http" and not request.headers.get("X-Forwarded-Proto"):
+            # Publicação é acessada por HTTPS na prática; evita gerar um link
+            # http:// a partir de uma página https://.
+            esquema = "https"
         return f"{esquema}://{destino}-{resto}"
 
     # Domínio/ip comum: o app costuma estar na mesma máquina, em outra porta.

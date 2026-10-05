@@ -94,10 +94,16 @@ class ResolucaoDoEnderecoTests(_IntegracaoTestCase):
         with app_module.app.test_request_context("/", headers={"Host": "sistema.gestaoos.com.br"}):
             self.assertEqual(url_derivada(), "http://sistema.gestaoos.com.br:5001")
 
-    def test_endereco_deduzido_de_publicacao_com_porta_no_host(self):
-        """Padrão de publicações tipo ``5000-abc.exemplo.com``."""
+    def test_publicacao_com_porta_no_host_assume_https(self):
+        """Sem cabeçalho de proxy, publicação com porta no host é HTTPS."""
 
         with app_module.app.test_request_context("/", headers={"Host": "5000-abc.exemplo.com"}):
+            self.assertEqual(url_derivada(), "https://5001-abc.exemplo.com")
+
+    def test_publicacao_respeita_http_explicito_do_proxy(self):
+        with app_module.app.test_request_context(
+            "/", headers={"Host": "5000-abc.exemplo.com", "X-Forwarded-Proto": "http"}
+        ):
             self.assertEqual(url_derivada(), "http://5001-abc.exemplo.com")
 
     def test_esquema_segue_proxy_https(self):
