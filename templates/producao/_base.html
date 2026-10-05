@@ -1,0 +1,92 @@
+{# ==========================================================================
+   Layout base do app de produção (PWA independente)
+   --------------------------------------------------------------------------
+   Reaproveita a mesma identidade visual do sistema (Bootstrap 5 +
+   static/unified.css) e acrescenta a camada do app (static/producao/app.css).
+   ========================================================================== #}
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#5d6bd6">
+    <meta name="color-scheme" content="light">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Produção">
+    <title>{% block title %}{{ app_nome }}{% endblock %}</title>
+
+    <link rel="manifest" href="{{ url_for('producao.manifest') }}">
+    <link rel="icon" type="image/png" sizes="64x64" href="{{ url_for('static', filename='producao/icons/favicon-64.png') }}">
+    <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='producao/icons/icon-192.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='producao/icons/apple-touch-icon.png') }}">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='unified.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='producao/app.css') }}">
+    {% block head_extra %}{% endblock %}
+</head>
+<body class="p-app {% block body_class %}{% endblock %}">
+
+<header class="p-appbar">
+    {% block appbar_voltar %}<a href="{{ url_for('producao.home') }}" class="p-appbar-icon" aria-label="Início">🏭</a>{% endblock %}
+    <div class="p-appbar-titles">
+        <p class="p-appbar-title">{% block appbar_title %}{{ app_nome }}{% endblock %}</p>
+        <p class="p-appbar-sub">{% block appbar_sub %}{{ app_subtitulo }}{% endblock %}</p>
+    </div>
+    <div class="p-appbar-actions">
+        {% if usuario %}
+        <span class="p-user-chip" title="Perfil conectado">
+            {% if e_gestao %}👔{% else %}🔧{% endif %} {{ usuario.nome }}
+        </span>
+        <a class="p-appbar-icon" href="{{ url_for('producao.logout') }}" title="Sair" aria-label="Sair">🚪</a>
+        {% endif %}
+    </div>
+</header>
+
+<main class="p-content">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+            <div class="p-alert p-alert-{{ category if category in ['success','danger','warning','info'] else 'info' }}" role="status">
+                {{ message }}
+            </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+
+    <footer class="p-footer">
+        <span>{{ app_nome }} · v{{ app_versao }}</span> · <span>Paulo Vieira 2025</span>
+    </footer>
+</main>
+
+<div class="p-offline-bar" id="p-offline-text" role="status">Sem conexão</div>
+
+<div class="p-install-banner" id="p-install-banner">
+    <span class="p-tile-icon">📲</span>
+    <div class="flex-grow-1">
+        <strong>Instale o app da produção</strong><br>
+        <span class="text-muted">Acesso rápido pela tela inicial do celular.</span>
+    </div>
+    <button type="button" class="p-btn p-btn-primary p-btn-sm" data-p-install>Instalar</button>
+    <button type="button" class="p-install-close" data-p-install-dismiss aria-label="Dispensar">✕</button>
+</div>
+
+{% if abas %}
+<nav class="p-tabbar" aria-label="Navegação principal">
+    {% for aba in abas %}
+    <a class="p-tab {% if request.endpoint == aba.endpoint %}p-tab-active{% endif %}" href="{{ url_for(aba.endpoint) }}">
+        <span class="p-tab-icon">{{ aba.icone }}</span>
+        <span>{{ aba.rotulo }}</span>
+    </a>
+    {% endfor %}
+</nav>
+{% endif %}
+
+<script src="{{ url_for('static', filename='producao/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

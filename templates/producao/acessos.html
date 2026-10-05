@@ -1,0 +1,53 @@
+{% extends "producao/_base.html" %}
+{% block title %}Acessos por setor · {{ app_nome }}{% endblock %}
+{% block appbar_title %}Acessos{% endblock %}
+{% block appbar_sub %}PIN de cada setor do app{% endblock %}
+
+{% block content %}
+<p class="p-aviso">
+    Cada setor entra no app escolhendo o próprio nome e digitando o PIN definido aqui.
+    Ninguém vê a produção dos outros setores para editar — a gestão vê tudo.
+    {% if not admin_pin_configurado %}
+    <br><strong>Atenção:</strong> sem um PIN de gestão cadastrado aqui e sem
+    <code>PRODUCAO_ADMIN_PIN</code> no servidor, ninguém consegue entrar como gestão.
+    {% endif %}
+</p>
+
+<div class="p-list">
+    {% for perfil in perfis %}
+    <div class="p-card">
+        <div class="p-card-topo">
+            <span class="p-op-id">{% if perfil.papel == 'gestao' %}👔{% else %}🔧{% endif %} {{ perfil.nome }}</span>
+            {% if perfil.cadastrado and perfil.ativo %}
+            <span class="p-selo st-concluido">PIN definido</span>
+            {% elif perfil.cadastrado %}
+            <span class="p-selo st-atraso">desativado</span>
+            {% else %}
+            <span class="p-selo st-pendente">sem PIN</span>
+            {% endif %}
+        </div>
+
+        <form class="p-form p-form-inline" method="POST" action="{{ url_for('producao.acessos') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="perfil" value="{{ perfil.chave }}"/>
+            <div class="p-field">
+                <label class="p-label" for="pin-{{ perfil.chave }}">
+                    {% if perfil.cadastrado %}Novo PIN (deixe vazio para manter){% else %}PIN de 4 a 8 dígitos{% endif %}
+                </label>
+                <input type="password" class="p-input" id="pin-{{ perfil.chave }}" name="pin"
+                       inputmode="numeric" maxlength="8" pattern="[0-9]{4,8}" placeholder="••••"
+                       {% if not perfil.cadastrado %}required{% endif %}>
+            </div>
+            <div class="p-field">
+                <label class="p-label" for="ativo-{{ perfil.chave }}">Situação</label>
+                <select class="p-input" id="ativo-{{ perfil.chave }}" name="ativo">
+                    <option value="sim" {% if perfil.ativo %}selected{% endif %}>Ativo</option>
+                    <option value="nao" {% if not perfil.ativo %}selected{% endif %}>Desativado</option>
+                </select>
+            </div>
+            <button type="submit" class="p-btn p-btn-primary p-btn-block">💾 Salvar</button>
+        </form>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

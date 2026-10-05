@@ -1,0 +1,82 @@
+{% extends "producao/_base.html" %}
+{% block title %}Entrar · {{ app_nome }}{% endblock %}
+{% block body_class %}p-login-page{% endblock %}
+{% block appbar_voltar %}<span class="p-appbar-icon">🏭</span>{% endblock %}
+{% block appbar_title %}Entrar{% endblock %}
+{% block appbar_sub %}Escolha o seu setor{% endblock %}
+
+{% block content %}
+<form class="p-login" method="POST" action="{{ url_for('producao.login') }}" id="formLogin">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <input type="hidden" name="proximo" value="{{ proximo or '' }}"/>
+
+    <p class="p-login-titulo">Quem está entrando?</p>
+    <div class="p-perfis">
+        {% for setor in setores %}
+        <button type="button" class="p-perfil" data-p-perfil="{{ setor.chave }}" data-p-nome="{{ setor.nome }}">
+            <span class="p-perfil-icon">{{ setor.icone }}</span>
+            <span>{{ setor.nome }}</span>
+        </button>
+        {% endfor %}
+        <button type="button" class="p-perfil p-perfil-gestao" data-p-perfil="gestao" data-p-nome="Gestão">
+            <span class="p-perfil-icon">👔</span>
+            <span>Gestão</span>
+        </button>
+    </div>
+
+    <div class="p-pin-area d-none" id="areaPin">
+        <label class="p-label" for="campoPin">PIN de <strong id="nomePerfil">—</strong></label>
+        <input type="password" class="p-input p-input-pin" id="campoPin" name="pin"
+               inputmode="numeric" autocomplete="one-time-code" maxlength="8"
+               pattern="[0-9]*" placeholder="••••" required>
+        <input type="hidden" name="perfil" id="campoPerfil" required>
+        <button type="submit" class="p-btn p-btn-primary p-btn-block">Entrar</button>
+        <button type="button" class="p-btn p-btn-outline p-btn-block" id="btnTrocarPerfil">Trocar setor</button>
+    </div>
+
+    <div class="p-login-ajuda">
+        <p><strong>Primeiro acesso?</strong> O PIN de cada setor é cadastrado pela gestão
+        na tela <em>Acessos</em>. A gestão entra com o PIN definido pelo administrador do sistema.</p>
+    </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        var area = document.getElementById("areaPin");
+        var campoPerfil = document.getElementById("campoPerfil");
+        var nomePerfil = document.getElementById("nomePerfil");
+        var campoPin = document.getElementById("campoPin");
+
+        document.querySelectorAll("[data-p-perfil]").forEach(function (botao) {
+            botao.addEventListener("click", function () {
+                document.querySelectorAll("[data-p-perfil]").forEach(function (outro) {
+                    outro.classList.remove("p-perfil-ativo");
+                });
+                botao.classList.add("p-perfil-ativo");
+                campoPerfil.value = botao.getAttribute("data-p-perfil");
+                nomePerfil.textContent = botao.getAttribute("data-p-nome");
+                area.classList.remove("d-none");
+                campoPin.value = "";
+                campoPin.focus();
+                area.scrollIntoView({ behavior: "smooth", block: "center" });
+            });
+        });
+
+        document.getElementById("btnTrocarPerfil").addEventListener("click", function () {
+            area.classList.add("d-none");
+            campoPin.value = "";
+            campoPerfil.value = "";
+            document.querySelectorAll("[data-p-perfil]").forEach(function (outro) {
+                outro.classList.remove("p-perfil-ativo");
+            });
+        });
+
+        // PIN só com números no celular
+        campoPin.addEventListener("input", function () {
+            this.value = this.value.replace(/\D/g, "").slice(0, 8);
+        });
+    })();
+</script>
+{% endblock %}

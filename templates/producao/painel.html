@@ -1,0 +1,99 @@
+{% extends "producao/_base.html" %}
+{% block title %}Painel da produção · {{ app_nome }}{% endblock %}
+{% block appbar_title %}Painel da produção{% endblock %}
+{% block appbar_sub %}{{ ops|length }} OP(s) · {{ hoje.strftime('%d/%m/%Y') }}{% endblock %}
+
+{% block content %}
+{% set total = ops|length %}
+{% set em_andamento = ops|selectattr('status_geral', 'equalto', 'Em andamento')|list|length %}
+{% set concluidas = concluidas|length %}
+{% set aguardando = ops|selectattr('status_geral', 'equalto', 'Aguardando')|list|length %}
+
+<div class="p-resumo-grid">
+    <div class="p-resumo p-resumo-card">
+        <span class="p-resumo-numero">{{ total }}</span><span class="p-resumo-rotulo">OPs no total</span>
+    </div>
+    <div class="p-resumo p-resumo-card p-resumo-andamento">
+        <span class="p-resumo-numero">{{ em_andamento }}</span><span class="p-resumo-rotulo">em andamento</span>
+    </div>
+    <div class="p-resumo p-resumo-card p-resumo-aguardando">
+        <span class="p-resumo-numero">{{ aguardando }}</span><span class="p-resumo-rotulo">aguardando início</span>
+    </div>
+    <div class="p-resumo p-resumo-card p-resumo-ok">
+        <span class="p-resumo-numero">{{ concluidas }}</span><span class="p-resumo-rotulo">concluídas</span>
+    </div>
+    <div class="p-resumo p-resumo-card {% if atrasadas %}p-resumo-atraso{% endif %}">
+        <span class="p-resumo-numero">{{ atrasadas|length }}</span><span class="p-resumo-rotulo">atrasadas</span>
+    </div>
+</div>
+
+<div class="p-section-title">
+    <h2>🏭 Carga por setor</h2>
+    <span>pendentes / em andamento</span>
+</div>
+
+<div class="p-setores-grid">
+    {% for linha in por_setor %}
+    <div class="p-setor-card {% if linha.atrasados %}p-setor-atraso{% endif %}">
+        <span class="p-setor-icone">{{ linha.setor.icone }}</span>
+        <strong>{{ linha.setor.nome }}</strong>
+        <span class="p-setor-numeros">
+            {{ linha.pendentes }} pendente(s) · {{ linha.em_andamento }} em andamento
+        </span>
+        <span class="p-setor-numeros p-mini">{{ linha.concluidos }} peça(s) já passaram por aqui</span>
+        {% if linha.atrasados %}
+        <span class="p-selo st-atraso">⚠️ {{ linha.atrasados }} com prazo vencido</span>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+
+{% if atrasadas %}
+<div class="p-section-title">
+    <h2>⚠️ Ordens com prazo vencido</h2>
+    <span>{{ atrasadas|length }}</span>
+</div>
+<div class="p-list">
+    {% for op in atrasadas %}
+    <a class="p-card p-card-atrasada p-card-link" href="{{ url_for('producao.detalhe', op_id=op.id) }}">
+        <div class="p-card-topo">
+            <span class="p-op-id">{{ op.id }}</span>
+            <span class="p-selo st-atraso">📅 {{ op.prazo }}</span>
+        </div>
+        <strong class="p-card-titulo">{{ op.nome_item }}</strong>
+        <div class="p-card-meta">
+            <span>🔖 {{ op.codigo }}</span>
+            {% if op.setor_atual %}<span>Agora: {{ op.setor_atual.icone }} {{ op.setor_atual.nome }}</span>{% endif %}
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="p-section-title">
+    <h2>📋 Todas as ordens</h2>
+    <span>{{ total }}</span>
+</div>
+<div class="p-list">
+    {% for op in ops %}
+    <a class="p-card p-card-link" href="{{ url_for('producao.detalhe', op_id=op.id) }}">
+        <div class="p-card-topo">
+            <span class="p-op-id">{{ op.id }}</span>
+            <span class="p-selo {{ op.status_geral|classe_status }}">{{ op.status_geral }}</span>
+        </div>
+        <strong class="p-card-titulo">{{ op.nome_item }}</strong>
+        <div class="p-progresso"><div class="p-progresso-barra" style="width: {{ op.progresso }}%"></div></div>
+        <div class="p-progresso-legenda">
+            <span>{{ op.progresso }}%</span>
+            {% if op.setor_atual %}<span>{{ op.setor_atual.icone }} {{ op.setor_atual.nome }}</span>{% endif %}
+        </div>
+    </a>
+    {% else %}
+    <div class="p-card p-vazio">
+        <span class="p-vazio-icon">🏭</span>
+        <p>Nenhuma OP cadastrada ainda.</p>
+        <a class="p-btn p-btn-primary" href="{{ url_for('producao.nova_op') }}">➕ Criar a primeira OP</a>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

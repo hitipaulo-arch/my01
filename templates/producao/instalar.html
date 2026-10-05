@@ -1,0 +1,50 @@
+{% extends "producao/_base.html" %}
+{% block title %}Instalar o app · {{ app_nome }}{% endblock %}
+{% block appbar_title %}Instalar o app{% endblock %}
+{% block appbar_sub %}Produção no celular do chão de fábrica{% endblock %}
+
+{% block content %}
+<div class="p-card">
+    <p class="p-intro">
+        O app de produção pode ser instalado na tela inicial do celular. Ele abre em tela cheia,
+        guarda a última tela vista quando a internet cai e não precisa de loja de aplicativos.
+    </p>
+    <button type="button" class="p-btn p-btn-primary p-btn-block" data-p-install>📲 Instalar agora</button>
+    <img class="p-qr" src="{{ url_for('producao.qr_app') }}" alt="QR code do app de produção">
+    <p class="p-mini texto-center">Aponte a câmera do celular da fábrica para este QR code.</p>
+</div>
+
+<details class="p-card" open>
+    <summary><strong>📱 Android (Chrome)</strong></summary>
+    <ol class="p-passos">
+        <li>Toque no botão <strong>Instalar agora</strong> acima; ou</li>
+        <li>toque nos <strong>três pontinhos</strong> do navegador → <strong>Instalar aplicativo</strong> /
+            <strong>Adicionar à tela inicial</strong>.</li>
+        <li>Confirme em <strong>Instalar</strong>. O ícone 🏭 aparece na tela inicial.</li>
+    </ol>
+</details>
+
+<details class="p-card">
+    <summary><strong>🍎 iPhone / iPad (Safari)</strong></summary>
+    <ol class="p-passos">
+        <li>Abra o app no <strong>Safari</strong> (precisa ser o Safari).</li>
+        <li>Toque no botão <strong>Compartilhar</strong> (quadrado com seta para cima).</li>
+        <li>Escolha <strong>Adicionar à Tela de Início</strong> e confirme em <strong>Adicionar</strong>.</li>
+    </ol>
+</details>
+
+<details class="p-card">
+    <summary><strong>💻 Computador (Chrome/Edge)</strong></summary>
+    <ol class="p-passos">
+        <li>Clique no ícone de <strong>instalação</strong> na barra de endereço; ou</li>
+        <li>menu do navegador → <strong>Instalar Controle de Produção</strong>.</li>
+    </ol>
+</details>
+
+<div class="p-card">
+    <strong>🔑 Como entrar</strong>
+    <p>Escolha o seu setor na tela de acesso e digite o PIN. Cada setor vê a fila dele e marca
+    apenas o próprio status — Corte, Dobra, Montagem Primária, Solda, Acabamento,
+    Silicone e Limpeza e Embalagem.</p>
+</div>
+{% endblock %}

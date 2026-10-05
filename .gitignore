@@ -67,3 +67,6 @@ send_whatsapp_test.py
 show_report.py
 run_all_tests.py
 test_twilio_mapping.py
+
+# Exceção: manifesto do app de produção (código, não credencial)
+!static/producao/manifest.json

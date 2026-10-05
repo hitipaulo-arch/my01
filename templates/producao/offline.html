@@ -1,0 +1,17 @@
+{% extends "producao/_base.html" %}
+{% block title %}Sem conexão · {{ app_nome }}{% endblock %}
+{% block appbar_title %}Sem conexão{% endblock %}
+{% block appbar_sub %}O app volta assim que a internet retornar{% endblock %}
+
+{% block content %}
+<div class="p-card p-vazio">
+    <span class="p-vazio-icon">📴</span>
+    <p>Não foi possível falar com o servidor agora.</p>
+    <p class="text-muted">
+        As telas já visitadas continuam disponíveis, mas as ordens e os status precisam de
+        internet para carregar e gravar. Aproxime-se do wi-fi da fábrica e tente novamente.
+    </p>
+    <button type="button" class="p-btn p-btn-primary" data-p-reload>🔄 Tentar novamente</button>
+    <a class="p-btn p-btn-outline" href="{{ url_for('producao.home') }}">Ir para o início</a>
+</div>
+{% endblock %}
