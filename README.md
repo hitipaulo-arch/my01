@@ -137,7 +137,11 @@ Acesse: http://localhost:5000
 
 ```
 projeto_flask/
-├── app.py                 # Aplicação principal
+├── app.py                 # Entrada (cria a app via appmodules.create_app)
+├── appmodules/            # Factory, blueprints (routes/), serviços e camada mobile
+│   ├── __init__.py       # create_app(): extensões, blueprints, serviços e PWA
+│   ├── routes/           # os, producao, compras, admin, ferramentas, auth, centrais
+│   └── mobile/           # app em /m (middleware, context processors, rotas próprias)
 ├── templates/             # Templates HTML
 │   ├── index.html        # Formulário de abertura
 │   ├── gerenciar.html    # Gerenciamento de OS

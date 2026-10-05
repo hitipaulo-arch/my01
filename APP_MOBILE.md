@@ -70,11 +70,13 @@ O menu respeita o papel do usuário exatamente como o topo da versão web
 ## 🏗️ Arquitetura (por que não há código duplicado)
 
 ```
+appmodules/__init__.py    # create_app(): factory (extensões, blueprints, serviços)
+appmodules/routes/        # blueprints do sistema (os, producao, compras, admin, ...)
 appmodules/mobile/
 ├── middleware.py   # move o prefixo /m para SCRIPT_NAME  → url_for já sai com /m
 ├── context.py      # render_page(): escolhe mobile/<tela> quando está em /m
 ├── routes.py       # rotas exclusivas do app (manifest, SW, offline, instalar, menu)
-└── __init__.py     # instala o middleware, registra o blueprint e os helpers
+└── __init__.py     # expõe o middleware, o blueprint e os helpers
 static/mobile/
 ├── mobile.css          # camada visual do app (usa as variáveis do unified.css)
 ├── app.js              # SW, offline, instalação, máscaras, filtros
@@ -93,6 +95,9 @@ Como funciona o reaproveitamento:
 2. As rotas existentes trocaram `render_template(...)` por `render_page(...)`.
    Esse helper é um drop-in: ele escolhe `templates/mobile/<arquivo>` quando a
    requisição está em `/m` e cai no template original em qualquer outro caso.
+   Vale para os blueprints do sistema (`appmodules/routes/*.py`): qualquer rota
+   nova que use `render_template` aparece em versão desktop mesmo em `/m` — é o
+   erro clássico a evitar.
 3. Nenhuma validação, cálculo, cache ou integração foi reescrita — as telas
    mobile postam nos **mesmos endpoints** (`/enviar`, `/atualizar_chamado`,
    `/producao/atualizar/<id>`, `/centrais/programacao/<id>`, …), usando o
@@ -105,9 +110,16 @@ Como funciona o reaproveitamento:
 ### Como adicionar uma nova tela ao app
 
 1. Crie `templates/mobile/<nome>.html` estendendo `mobile/_base.html`.
-2. Pronto — a rota correspondente já a entregará quando acessada via `/m`.
-   Se preferir um item no menu, acrescente-o em `APP_MENU`/`APP_TABS`
-   (`appmodules/mobile/context.py`).
+2. Pronto — a rota correspondente já a entregará quando acessada via `/m`
+   (basta que ela use `render_page`, o padrão dos blueprints atuais).
+3. Se preferir um item no menu, acrescente-o em `APP_MENU`/`APP_TABS`
+   (`appmodules/mobile/context.py`) — os endpoints vêm qualificados pelo
+   blueprint (`producao.producao`, `compras.itens`, `admin.relatorios`, …).
+
+> **Ao integrar mudanças do `main`:** a factory (`appmodules/__init__.py`) é quem
+> registra `mobile_bp`, instala o middleware e liga os context processors. Se
+> algum módulo novo usar `render_template`, converta para `render_page` — há
+> testes que cobrem as telas principais em `/m` e acusam a diferença.
 
 ---
 
