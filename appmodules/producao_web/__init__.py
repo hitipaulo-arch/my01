@@ -100,6 +100,34 @@ def _montar_app(config: dict[str, Any]) -> Flask:
     return app
 
 
+def register_in_app(app: Flask, url_prefix: str = "/producao-setor") -> None:
+    """Registra o app de produção no servidor principal.
+
+    O app dedicado continua disponível em ``producao_app.py``. Nesta variante,
+    o mesmo blueprint usa a sessão e o CSRF já configurados pelo servidor
+    principal, mas mantém o armazenamento próprio da produção.
+    """
+
+    config = ProducaoConfig.carregar()
+    if (
+        str(config.get("STORAGE") or "").strip().lower() == "sheets"
+        and not str(config.get("SPREADSHEET_ID") or "").strip()
+    ):
+        # O módulo integrado não deve impedir o app principal de iniciar só
+        # porque a planilha dedicada ainda não foi configurada.
+        config["STORAGE"] = "local"
+        logger.warning(
+            "PRODUCAO_SPREADSHEET_ID não configurado; usando armazenamento local "
+            "para /producao-setor."
+        )
+    app.config.setdefault("ADMIN_PIN", config.get("ADMIN_PIN", ""))
+    app.config.setdefault("producao_storage", criar_storage(config))
+    # O app independente registra os filtros durante `_montar_app`, mas o
+    # blueprint integrado é montado diretamente no app principal.
+    _registrar_filtros(app)
+    app.register_blueprint(producao_bp, url_prefix=url_prefix, name="producao_setor")
+
+
 def _banco_temporario() -> str:
     """Caminho de banco local exclusivo para cada app criado em teste."""
 

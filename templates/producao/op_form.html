@@ -6,7 +6,7 @@
 
 {% block content %}
 <form class="p-form" method="POST"
-      action="{{ url_for('producao.editar_op', op_id=op.id) if editando else url_for('producao.nova_op') }}">
+      action="{{ url_for('producao_setor.editar_op', op_id=op.id) if editando else url_for('producao_setor.nova_op') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 
     <div class="p-field p-field-obrigatorio">
@@ -60,6 +60,6 @@
         {{ '💾 Salvar alterações' if editando else '➕ Criar OP com os ' ~ fluxo_setores|length ~ ' setores' }}
     </button>
     <a class="p-btn p-btn-outline p-btn-block"
-       href="{{ url_for('producao.detalhe', op_id=op.id) if editando else url_for('producao.home') }}">Cancelar</a>
+       href="{{ url_for('producao_setor.detalhe', op_id=op.id) if editando else url_for('producao_setor.home') }}">Cancelar</a>
 </form>
 {% endblock %}

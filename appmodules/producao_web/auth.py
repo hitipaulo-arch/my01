@@ -75,6 +75,19 @@ def pode_alterar_setor(nome_setor: str) -> bool:
     return fluxo.por_nome(nome_setor) is not None and setor_do_usuario() == fluxo.por_nome(nome_setor).nome
 
 
+def pode_ver_op(op: dict[str, Any]) -> bool:
+    """A gestão vê todas as OPs; os demais perfis veem apenas as próprias."""
+
+    usuario = usuario_atual()
+    if not usuario:
+        return False
+    if e_gestao():
+        return True
+    criador = str(op.get("criado_por") or "").strip().casefold()
+    nome_usuario = str(usuario.get("nome") or "").strip().casefold()
+    return bool(criador and nome_usuario and criador == nome_usuario)
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Decoradores
 # ──────────────────────────────────────────────────────────────────────────────
@@ -82,7 +95,7 @@ def login_necessario(view: Callable) -> Callable:
     @wraps(view)
     def interno(*args, **kwargs):
         if not usuario_atual():
-            return redirect(url_for("producao.login", proximo=request.path))
+            return redirect(url_for("producao_setor.login", proximo=request.path))
         return view(*args, **kwargs)
 
     return interno
@@ -92,10 +105,10 @@ def gestao_necessaria(view: Callable) -> Callable:
     @wraps(view)
     def interno(*args, **kwargs):
         if not usuario_atual():
-            return redirect(url_for("producao.login", proximo=request.path))
+            return redirect(url_for("producao_setor.login", proximo=request.path))
         if not e_gestao():
             flash("Essa área é da gestão.", "warning")
-            return redirect(url_for("producao.painel"))
+            return redirect(url_for("producao_setor.painel"))
         return view(*args, **kwargs)
 
     return interno

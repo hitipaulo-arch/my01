@@ -192,7 +192,7 @@ class AtalhosNoSiteTests(_IntegracaoTestCase):
     def test_endereco_deduzido_aparece_no_menu(self):
         html = _texto(self.login("admin").get("/"))
         self.assertIn("Produção por Setor", html)
-        self.assertIn(":5001", html)
+        self.assertIn("/producao-setor/", html)
 
 
 class AtalhosNoAppMobileTests(_IntegracaoTestCase):

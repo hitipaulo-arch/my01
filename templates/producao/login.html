@@ -6,7 +6,7 @@
 {% block appbar_sub %}Escolha o seu setor{% endblock %}
 
 {% block content %}
-<form class="p-login" method="POST" action="{{ url_for('producao.login') }}" id="formLogin">
+<form class="p-login" method="POST" action="{{ url_for('producao_setor.login') }}" id="formLogin">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <input type="hidden" name="proximo" value="{{ proximo or '' }}"/>
 

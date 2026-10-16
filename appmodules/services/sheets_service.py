@@ -39,6 +39,7 @@ class SheetsService:
         "Responsável",
         "Informações adicionais",
         "Origem",
+        "Criado por",
     ]
 
     SCOPES = [
@@ -573,10 +574,12 @@ class SheetsService:
                 return
 
             headers = self._retry(self.sheet_producao.row_values, 1)
-            if "Origem" not in headers:
-                self._retry(
-                    self.sheet_producao.update_cell, 1, len(headers) + 1, "Origem"
-                )
+            for header in self.PRODUCAO_HEADERS:
+                if header not in headers:
+                    self._retry(
+                        self.sheet_producao.update_cell, 1, len(headers) + 1, header
+                    )
+                    headers.append(header)
         except Exception as e:
             logger.warning(f"Não foi possível garantir cabeçalhos de produção: {e}")
 

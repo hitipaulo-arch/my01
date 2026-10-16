@@ -17,7 +17,7 @@
     <meta name="apple-mobile-web-app-title" content="Produção">
     <title>{% block title %}{{ app_nome }}{% endblock %}</title>
 
-    <link rel="manifest" href="{{ url_for('producao.manifest') }}">
+    <link rel="manifest" href="{{ url_for('producao_setor.manifest') }}">
     <link rel="icon" type="image/png" sizes="64x64" href="{{ url_for('static', filename='producao/icons/favicon-64.png') }}">
     <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='producao/icons/icon-192.png') }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='producao/icons/apple-touch-icon.png') }}">
@@ -30,7 +30,7 @@
 <body class="p-app {% block body_class %}{% endblock %}">
 
 <header class="p-appbar">
-    {% block appbar_voltar %}<a href="{{ url_for('producao.home') }}" class="p-appbar-icon" aria-label="Início">🏭</a>{% endblock %}
+    {% block appbar_voltar %}<a href="{{ url_for('producao_setor.home') }}" class="p-appbar-icon" aria-label="Início">🏭</a>{% endblock %}
     <div class="p-appbar-titles">
         <p class="p-appbar-title">{% block appbar_title %}{{ app_nome }}{% endblock %}</p>
         <p class="p-appbar-sub">{% block appbar_sub %}{{ app_subtitulo }}{% endblock %}</p>
@@ -40,7 +40,7 @@
         <span class="p-user-chip" title="Perfil conectado">
             {% if e_gestao %}👔{% else %}🔧{% endif %} {{ usuario.nome }}
         </span>
-        <a class="p-appbar-icon" href="{{ url_for('producao.logout') }}" title="Sair" aria-label="Sair">🚪</a>
+        <a class="p-appbar-icon" href="{{ url_for('producao_setor.logout') }}" title="Sair" aria-label="Sair">🚪</a>
         {% endif %}
     </div>
 </header>

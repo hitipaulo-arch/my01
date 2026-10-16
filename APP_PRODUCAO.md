@@ -46,12 +46,16 @@ export PRODUCAO_ADMIN_PIN="123456"        # primeiro acesso da gestão
 gunicorn -w 2 --threads 4 -b 0.0.0.0:5001 producao_app:app
 ```
 
-O app de OS continua no 5000; o de produção fica no **5001** (porta configurável
-em `PRODUCAO_PORT`). São processos distintos: reiniciar um não afeta o outro.
+O app pode ser executado junto com o sistema de OS na mesma porta, em
+`/producao-setor/`. O arquivo `producao_app.py` continua disponível para uma
+implantação separada, normalmente na porta **5001** (configurável em
+`PRODUCAO_PORT`).
 
 ### 3. Entrar e liberar os setores
 
-1. Abra `http://<servidor>:5001`, escolha **Gestão** e use o PIN de primeiro acesso.
+1. No servidor integrado, abra `http://<servidor>/producao-setor/login`;
+   numa implantação separada, abra `http://<servidor>:5001`. Escolha **Gestão**
+   e use o PIN de primeiro acesso.
 2. Cadastre o PIN de cada setor na aba **Acessos** (4 a 8 dígitos).
 3. Mostre o **QR code** (tela *Instalar* → `Instalar agora`) para o pessoal instalar
    o app no celular. Android instala direto; no iPhone, use Safari →
@@ -179,9 +183,9 @@ Em produção normal (domínio próprio, acesso direto) deixe tudo no padrão.
 
 ## 🔗 Atalho no sistema antigo (integração)
 
-O app de produção continua sendo um **programa separado** — login, sessão e
-planilha próprios — e agora aparece como **atalho dentro do sistema de OS**,
-tanto na versão web quanto no app do celular (`/m`):
+O app de produção usa login, sessão e planilha próprios, mas agora é registrado
+no **mesmo servidor** do sistema de OS em `/producao-setor/`. Ele aparece no
+menu tanto na versão web quanto no app do celular (`/m`):
 
 | Onde | O que aparecer |
 |---|---|
@@ -189,10 +193,9 @@ tanto na versão web quanto no app do celular (`/m`):
 | Telas antigas de produção (web e `/m`) | cartão com o endereço e o botão "Abrir app" |
 | Menu **Mais** do app do celular | seção **🏭 App de produção** |
 
-O atalho é só um **link**: abre em outra aba, o usuário faz login lá (PIN do
-setor) e nada de dado, sessão ou regra é compartilhado entre os dois programas.
-Há teste automático que falha se algum arquivo do sistema de OS importar o app
-de produção.
+O botão abre o fluxo por setor em outra aba. O usuário faz login com o PIN do
+setor e os dados continuam isolados do fluxo antigo de produção. Para uma
+implantação realmente separada, use `producao_app.py` e configure a URL externa.
 
 ### De onde vem o endereço
 
@@ -201,11 +204,13 @@ O sistema de OS descobre o endereço do app em camadas:
 1. **`PRODUCAO_APP_URL`** — endereço completo (tem prioridade). Use quando os
    dois estiverem em endereços diferentes, ex.:
    `PRODUCAO_APP_URL=https://producao.minhaempresa.com`
-2. Se não estiver definido, o endereço é **deduzido do próprio acesso**: mesma
+2. Se não estiver definido e o blueprint integrado estiver ativo, o endereço é
+   **`/producao-setor/`** no mesmo servidor.
+3. Em implantação separada, o endereço é **deduzido do próprio acesso**: mesma
    máquina/domínio, na porta `PRODUCAO_APP_PORT` (padrão `5001`). Funciona
    inclusive em publicações com a porta no nome do host
    (`5000-abc.exemplo.com` → `5001-abc.exemplo.com`).
-3. **`PRODUCAO_APP_INTEGRADO=0`** esconde o atalho de todas as telas — útil
+4. **`PRODUCAO_APP_INTEGRADO=0`** esconde o atalho de todas as telas — útil
    enquanto o app ainda não estiver publicado.
 
 | Variável | Para quê | Padrão |

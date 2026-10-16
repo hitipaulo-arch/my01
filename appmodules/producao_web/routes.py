@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 # Os estáticos do app ficam em ``static/producao`` e são servidos pela rota
 # padrão do Flask (``/static/producao/...``), sem registrar uma segunda rota.
-producao_bp = Blueprint("producao", __name__, template_folder="../../templates")
+producao_bp = Blueprint("producao_setor", __name__, template_folder="../../templates")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -74,15 +74,15 @@ def _abas(usuario: dict | None) -> list[dict]:
         return []
     if usuario.get("papel") == fluxo.PAPEL_GESTAO:
         return [
-            {"rotulo": "Painel", "icone": "📊", "endpoint": "producao.home"},
-            {"rotulo": "OPs", "icone": "📋", "endpoint": "producao.lista"},
-            {"rotulo": "Nova", "icone": "➕", "endpoint": "producao.nova_op"},
-            {"rotulo": "Acessos", "icone": "🔑", "endpoint": "producao.acessos"},
+            {"rotulo": "Painel", "icone": "📊", "endpoint": "producao_setor.home"},
+            {"rotulo": "OPs", "icone": "📋", "endpoint": "producao_setor.lista"},
+            {"rotulo": "Nova", "icone": "➕", "endpoint": "producao_setor.nova_op"},
+            {"rotulo": "Acessos", "icone": "🔑", "endpoint": "producao_setor.acessos"},
         ]
     return [
-        {"rotulo": "Minha fila", "icone": "🏭", "endpoint": "producao.home"},
-        {"rotulo": "Todas", "icone": "📋", "endpoint": "producao.lista"},
-        {"rotulo": "Sair", "icone": "🚪", "endpoint": "producao.logout"},
+        {"rotulo": "Minha fila", "icone": "🏭", "endpoint": "producao_setor.home"},
+        {"rotulo": "Todas", "icone": "📋", "endpoint": "producao_setor.lista"},
+        {"rotulo": "Sair", "icone": "🚪", "endpoint": "producao_setor.logout"},
     ]
 
 
@@ -93,7 +93,7 @@ def _render(template: str, **contexto):
 @producao_bp.app_context_processor
 def _injetar_helpers():
     return {
-        "url_do_app": lambda: url_for("producao.home", _external=True),
+        "url_do_app": lambda: url_for("producao_setor.home", _external=True),
         "ano_atual": lambda: datetime.now().year,
     }
 
@@ -104,7 +104,7 @@ def _injetar_helpers():
 @producao_bp.route("/login", methods=["GET", "POST"])
 def login():
     if auth.usuario_atual():
-        return redirect(url_for("producao.home"))
+        return redirect(url_for("producao_setor.home"))
 
     if request.method == "POST":
         chave = str(request.form.get("perfil", "")).strip()
@@ -155,7 +155,7 @@ def login():
 
         if proximo and proximo.startswith("/"):
             return redirect(proximo)
-        return redirect(url_for("producao.home"))
+        return redirect(url_for("producao_setor.home"))
 
     return _render("login.html", proximo=request.args.get("proximo", ""))
 
@@ -164,7 +164,7 @@ def login():
 def logout():
     auth.sair()
     flash("Você saiu do app de produção.", "success")
-    return redirect(url_for("producao.login"))
+    return redirect(url_for("producao_setor.login"))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -184,7 +184,10 @@ def lista():
     """Lista de OPs — para o setor, a fila dele; para a gestão, todas."""
 
     try:
-        ops = storage().ops_com_fluxo()
+        ops = [
+            op for op in storage().ops_com_fluxo()
+            if auth.pode_ver_op(op)
+        ]
     except Exception as erro:
         logger.error("Falha ao listar OPs: %s", erro, exc_info=True)
         return _render("erro.html", mensagem=f"Não foi possível ler a planilha da produção: {erro}"), 503
@@ -224,7 +227,10 @@ def painel():
     """Visão da gestão: o que está em cada setor e o que está atrasado."""
 
     try:
-        ops = storage().ops_com_fluxo()
+        ops = [
+            op for op in storage().ops_com_fluxo()
+            if auth.pode_ver_op(op)
+        ]
     except Exception as erro:
         logger.error("Falha ao carregar o painel: %s", erro, exc_info=True)
         return _render("erro.html", mensagem=f"Não foi possível ler a planilha da produção: {erro}"), 503
@@ -302,7 +308,10 @@ def detalhe(op_id: str):
         op = storage().obter_op(op_id)
         if not op:
             flash("OP não encontrada.", "warning")
-            return redirect(url_for("producao.home"))
+            return redirect(url_for("producao_setor.home"))
+        if not auth.pode_ver_op(op):
+            flash("Você não tem acesso a esta OP.", "danger")
+            return redirect(url_for("producao_setor.home"))
         registros = storage().setores_da_op(op_id)
         historico = storage().listar_historico(op_id)
     except Exception as erro:
@@ -357,6 +366,12 @@ def atualizar_setor(op_id: str, chave_setor: str):
     if not setor:
         return _resposta({"success": False, "message": "Setor inválido."}, 400)
 
+    op = storage().obter_op(op_id)
+    if not op:
+        return _resposta({"success": False, "message": "OP não encontrada."}, 404)
+    if not auth.pode_ver_op(op):
+        return _resposta({"success": False, "message": "Você não tem acesso a esta OP."}, 403)
+
     if not auth.pode_alterar_setor(setor.nome):
         return _resposta(
             {"success": False, "message": "Você só pode atualizar o seu setor."}, 403
@@ -391,7 +406,7 @@ def atualizar_setor(op_id: str, chave_setor: str):
             }
         )
     flash(f"{setor.nome} marcado como “{status}”.", "success")
-    return redirect(url_for("producao.detalhe", op_id=op_id))
+    return redirect(url_for("producao_setor.detalhe", op_id=op_id))
 
 
 def _e_ajax() -> bool:
@@ -402,7 +417,7 @@ def _resposta(dados: dict, codigo: int = 200):
     if _e_ajax():
         return jsonify(dados), codigo
     flash(dados.get("message", ""), "success" if dados.get("success") else "danger")
-    return redirect(request.referrer or url_for("producao.home"))
+    return redirect(request.referrer or url_for("producao_setor.home"))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -454,7 +469,7 @@ def nova_op():
             return _render("op_form.html", op=dados, modo="nova"), 503
 
         flash(f"OP {criada['id']} criada com os {len(fluxo.SETORES)} setores.", "success")
-        return redirect(url_for("producao.detalhe", op_id=criada["id"]))
+        return redirect(url_for("producao_setor.detalhe", op_id=criada["id"]))
 
     return _render("op_form.html", op={}, modo="nova")
 
@@ -470,7 +485,7 @@ def editar_op(op_id: str):
 
     if not op:
         flash("OP não encontrada.", "warning")
-        return redirect(url_for("producao.home"))
+        return redirect(url_for("producao_setor.home"))
 
     if request.method == "POST":
         dados = _dados_formulario()
@@ -485,7 +500,7 @@ def editar_op(op_id: str):
             flash(f"Não foi possível salvar: {falha}", "danger")
             return _render("op_form.html", op={**op, **dados}, modo="editar"), 503
         flash("OP atualizada.", "success")
-        return redirect(url_for("producao.detalhe", op_id=op_id))
+        return redirect(url_for("producao_setor.detalhe", op_id=op_id))
 
     return _render("op_form.html", op=op, modo="editar")
 
@@ -498,10 +513,10 @@ def excluir_op(op_id: str):
     except Exception as erro:
         logger.error("Falha ao excluir a OP %s: %s", op_id, erro, exc_info=True)
         flash(f"Não foi possível excluir: {erro}", "danger")
-        return redirect(url_for("producao.detalhe", op_id=op_id))
+        return redirect(url_for("producao_setor.detalhe", op_id=op_id))
 
     flash(f"OP {op_id} excluída." if ok else "OP não encontrada.", "success" if ok else "warning")
-    return redirect(url_for("producao.lista"))
+    return redirect(url_for("producao_setor.lista"))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -517,16 +532,16 @@ def acessos():
 
         if chave != fluxo.GESTAO and not fluxo.por_chave(chave):
             flash("Perfil inválido.", "danger")
-            return redirect(url_for("producao.acessos"))
+            return redirect(url_for("producao_setor.acessos"))
         if pin and not auth.pin_utilizavel(pin):
             flash("O PIN deve ter de 4 a 8 dígitos.", "danger")
-            return redirect(url_for("producao.acessos"))
+            return redirect(url_for("producao_setor.acessos"))
 
         existente = storage().obter_acesso(chave) or {}
         hash_novo = existente.get("pin_hash", "") if not pin else generate_password_hash(pin)
         if not hash_novo:
             flash("Defina um PIN para este perfil.", "danger")
-            return redirect(url_for("producao.acessos"))
+            return redirect(url_for("producao_setor.acessos"))
 
         papel = fluxo.PAPEL_GESTAO if chave == fluxo.GESTAO else fluxo.PAPEL_SETOR
         nome = fluxo.GESTAO_NOME if chave == fluxo.GESTAO else fluxo.por_chave(chave).nome
@@ -535,10 +550,10 @@ def acessos():
         except Exception as erro:
             logger.error("Falha ao salvar acesso %s: %s", chave, erro, exc_info=True)
             flash(f"Não foi possível salvar o acesso: {erro}", "danger")
-            return redirect(url_for("producao.acessos"))
+            return redirect(url_for("producao_setor.acessos"))
 
         flash(f"Acesso de {nome} salvo." if pin else f"Acesso de {nome} atualizado.", "success")
-        return redirect(url_for("producao.acessos"))
+        return redirect(url_for("producao_setor.acessos"))
 
     try:
         cadastrados = {acesso["chave"]: acesso for acesso in storage().listar_acessos()}
@@ -604,7 +619,7 @@ def qr_app():
 
     import qrcode
 
-    destino = url_for("producao.login", _external=True)
+    destino = url_for("producao_setor.login", _external=True)
     qr = qrcode.QRCode(
         version=1, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=10, border=4
     )
@@ -613,7 +628,7 @@ def qr_app():
     buffer = io.BytesIO()
     qr.make_image(fill_color="black", back_color="white").save(buffer, format="PNG")
     buffer.seek(0)
-    return send_file(buffer, mimetype="image/png", download_name="qr-producao.png")
+    return send_file(buffer, mimetype="image/png", download_name="qr-producao_setor.png")
 
 
 @producao_bp.route("/healthz")

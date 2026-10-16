@@ -65,23 +65,23 @@ def main() -> int:
     ops = storage.listar_ops()
     print(f"Fluxo atual: {len(fluxo.SETORES)} setores")
     for indice, setor in enumerate(fluxo.SETORES, start=1):
-        print(f"  {indice:>2}. {setor.icone} {setor.nome}")
+        print(f"  {indice:>2}. {setor.nome}")
     print(f"\nOPs na base: {len(ops)}")
 
     desconhecidos = fluxo.nomes_desconhecidos(storage.listar_setores())
     if desconhecidos:
         print(
-            "\n⚠ Setores na planilha que não existem mais no fluxo: "
+            "\nAviso: setores na planilha que não existem mais no fluxo: "
             + ", ".join(sorted(desconhecidos))
             + "\n  (nada foi apagado — essas linhas são ignoradas pelo app)"
         )
 
     resultado = storage.garantir_setores()
     if not resultado["linhas_criadas"]:
-        print("\n✓ Todas as OPs já têm os setores do fluxo. Nada a fazer.")
+        print("\nOK: todas as OPs já têm os setores do fluxo. Nada a fazer.")
         return 0
 
-    print(f"\n✓ {resultado['linhas_criadas']} linha(s) criadas em {resultado['ops_afetadas']} OP(s):")
+    print(f"\nOK: {resultado['linhas_criadas']} linha(s) criadas em {resultado['ops_afetadas']} OP(s):")
     por_op: dict[str, list[dict]] = {}
     for linha in resultado["detalhes"]:
         por_op.setdefault(linha["op_id"], []).append(linha)

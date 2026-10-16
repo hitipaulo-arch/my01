@@ -40,6 +40,7 @@ from appmodules.routes.admin_routes import admin_bp
 from appmodules.routes.centrais_routes import centrais_bp
 from appmodules.routes.os_routes import os_bp
 from appmodules.routes.producao_routes import producao_bp
+from appmodules.producao_web import register_in_app as register_producao_setor
 from appmodules.routes.compras_routes import compras_bp
 from appmodules.routes.ferramentas_routes import ferramentas_bp
 from appmodules.routes.webhook_routes import webhook_bp
@@ -129,6 +130,10 @@ def create_app(config_object=None):
 
 	if limiter is not None:
 		try:
+			if Config.CACHE.CACHE_TYPE.lower() == "rediscache":
+				app.config.setdefault(
+					"RATELIMIT_STORAGE_URI", Config.CACHE.CACHE_REDIS_URL
+				)
 			limiter.init_app(app)
 			app.config["limiter"] = limiter
 			logger.info("Flask-Limiter inicializado")
@@ -168,6 +173,7 @@ def create_app(config_object=None):
 			request.endpoint.startswith("static")
 			or request.endpoint == "favicon"
 			or request.endpoint in recursos_pwa
+			or request.endpoint.startswith("producao_setor.")
 		):
 			return None
 
@@ -217,6 +223,7 @@ def create_app(config_object=None):
 	app.register_blueprint(os_bp)
 	app.register_blueprint(centrais_bp)
 	app.register_blueprint(producao_bp)
+	register_producao_setor(app)
 	app.register_blueprint(compras_bp)
 	app.register_blueprint(ferramentas_bp)
 	app.register_blueprint(webhook_bp)

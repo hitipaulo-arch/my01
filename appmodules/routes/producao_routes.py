@@ -52,6 +52,15 @@ def _get_current_user_role():
     return None
 
 
+def _usuario_pode_ver_item(item):
+    """Gestores veem tudo; os demais usuários veem apenas o que cadastraram."""
+    if _get_current_user_role() == Role.ADMIN.value:
+        return True
+    criador = str(item.get("Criado por", "")).strip().casefold()
+    usuario = str(session.get("usuario", "")).strip().casefold()
+    return bool(criador and usuario and criador == usuario)
+
+
 @producao_bp.route("/producao", methods=["GET", "POST"])
 @login_required
 def producao():
@@ -79,6 +88,7 @@ def producao():
                 str(_parse_int_field(request.form.get("meta_producao", 0), 0)),
                 request.form.get("status", "Em andamento").strip() or "Em andamento", observacao,
                 request.form.get("responsavel", "").strip(), request.form.get("informacoes_adicionais", "").strip(), "produção",
+                str(session.get("usuario", "")).strip(),
             ]
             if not dados[1] or not dados[2]:
                 flash("Nome do item e código são obrigatórios.", "danger")
@@ -97,7 +107,10 @@ def producao():
                 flash(f"Erro ao cadastrar item: {exc}", "danger")
             return redirect(url_for("producao.producao"))
     try:
-        itens = sheets_service.get_all_producao(use_cache=True)
+        itens = [
+            item for item in sheets_service.get_all_producao(use_cache=True)
+            if _usuario_pode_ver_item(item)
+        ]
         itens_ordenados = sorted(itens, key=lambda item: item.get("row_id", 0), reverse=True)
         return render_page("producao.html", itens=itens_ordenados, read_only=read_only)
     except (RuntimeError, ValueError, TypeError, OSError) as exc:
@@ -131,6 +144,7 @@ def atualizar_producao(row_id):
             request.form.get("responsavel", original.get("Responsável", "")).strip(),
             _append_producao_info(original.get("Informações adicionais", ""), request.form.get("nova_informacao", "")),
             str(original.get("Origem", "produção")).strip() or "produção",
+            str(original.get("Criado por", "")).strip(),
         ]
         if not row_data[2] or not row_data[3]:
             return jsonify({"success": False, "message": "Nome do item e código são obrigatórios."}), 400
@@ -192,7 +206,10 @@ def producao_abertas():
     if not sheets_service:
         return render_page("producao_abertas.html", itens=[], mensagem="Serviço de planilhas indisponível", tipo_mensagem="danger"), 503
     try:
-        itens = sheets_service.get_all_producao(use_cache=True)
+        itens = [
+            item for item in sheets_service.get_all_producao(use_cache=True)
+            if _usuario_pode_ver_item(item)
+        ]
         status_excluidos = {"concluído", "concluido", "bloqueado", "bloqueada", "cancelado", "cancelada"}
         itens_abertos = [item for item in itens if str(item.get("Status", "")).strip().lower() not in status_excluidos]
         total_itens = len(itens)

@@ -8,7 +8,7 @@
 <div class="p-aviso">
     <strong>⚠️ {{ op_sem_setores|length }} OP(s) sem os setores novos do fluxo:</strong>
     {{ op_sem_setores|join(', ') }}.
-    Rode <code>python scripts/migrar_setores_producao.py</code> para completar a planilha —
+    Rode <code>python scripts/migrar_setores_producao_setor.py</code> para completar a planilha —
     cada OP recebe as etapas que faltam (as já concluídas ficam como “Não se aplica”).
 </div>
 {% endif %}
@@ -67,7 +67,7 @@
 </div>
 <div class="p-list">
     {% for op in atrasadas %}
-    <a class="p-card p-card-atrasada p-card-link" href="{{ url_for('producao.detalhe', op_id=op.id) }}">
+    <a class="p-card p-card-atrasada p-card-link" href="{{ url_for('producao_setor.detalhe', op_id=op.id) }}">
         <div class="p-card-topo">
             <span class="p-op-id">{{ op.id }}</span>
             <span class="p-selo st-atraso">📅 {{ op.prazo }}</span>
@@ -88,7 +88,7 @@
 </div>
 <div class="p-list">
     {% for op in ops %}
-    <a class="p-card p-card-link" href="{{ url_for('producao.detalhe', op_id=op.id) }}">
+    <a class="p-card p-card-link" href="{{ url_for('producao_setor.detalhe', op_id=op.id) }}">
         <div class="p-card-topo">
             <span class="p-op-id">{{ op.id }}</span>
             <span class="p-selo {{ op.status_geral|classe_status }}">{{ op.status_geral }}</span>
@@ -104,7 +104,7 @@
     <div class="p-card p-vazio">
         <span class="p-vazio-icon">🏭</span>
         <p>Nenhuma OP cadastrada ainda.</p>
-        <a class="p-btn p-btn-primary" href="{{ url_for('producao.nova_op') }}">➕ Criar a primeira OP</a>
+        <a class="p-btn p-btn-primary" href="{{ url_for('producao_setor.nova_op') }}">➕ Criar a primeira OP</a>
     </div>
     {% endfor %}
 </div>

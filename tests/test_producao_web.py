@@ -867,26 +867,14 @@ class FormatadoresTests(unittest.TestCase):
 
 
 class IsolamentoTests(unittest.TestCase):
-    """O app de produção não compartilha nada com o sistema de OS."""
+    """O app de produção mantém storage e regras próprios."""
 
-    def test_sistema_de_os_nao_importa_o_app_de_producao(self):
-        """Nenhum *import* do app de produção no sistema de OS.
+    def test_sistema_de_os_monta_a_rota_do_app_de_producao(self):
+        import app
 
-        Menções em comentário/docstring são permitidas (documentam o
-        isolamento); o que não pode existir é dependência de código.
-        """
-
-        for arquivo in sorted((ROOT / "appmodules").rglob("*.py")):
-            if "producao_web" in str(arquivo):
-                continue
-            for linha in arquivo.read_text(encoding="utf-8").splitlines():
-                if "producao_web" not in linha:
-                    continue
-                self.assertFalse(
-                    linha.lstrip().startswith(("import ", "from ")),
-                    f"{arquivo.relative_to(ROOT)}: {linha.strip()}",
-                )
-                self.assertNotIn("import appmodules.producao_web", linha)
+        endpoints = {regra.endpoint for regra in app.app.url_map.iter_rules()}
+        self.assertIn("producao_setor.home", endpoints)
+        self.assertEqual(app.app.test_client().get("/producao-setor/login").status_code, 200)
 
     def test_app_de_producao_nao_usa_o_servico_de_planilha_do_sistema(self):
         for arquivo in sorted((ROOT / "appmodules" / "producao_web").rglob("*.py")):

@@ -24,7 +24,7 @@
     {% for valor, rotulo in opcoes %}
     {% if setor_usuario or valor != "fila" %}
     <a class="p-chip {% if recorte == valor %}p-chip-ativo{% endif %}"
-       href="{{ url_for('producao.lista', recorte=valor) }}">{{ rotulo }}</a>
+       href="{{ url_for('producao_setor.lista', recorte=valor) }}">{{ rotulo }}</a>
     {% endif %}
     {% endfor %}
 </div>
@@ -44,7 +44,7 @@
             <span class="p-selo {{ op.status_geral|classe_status }}">{{ op.status_geral }}</span>
         </div>
 
-        <a class="p-card-titulo" href="{{ url_for('producao.detalhe', op_id=op.id) }}">{{ op.nome_item }}</a>
+        <a class="p-card-titulo" href="{{ url_for('producao_setor.detalhe', op_id=op.id) }}">{{ op.nome_item }}</a>
 
         <div class="p-card-meta">
             <span>🔖 {{ op.codigo }}</span>
@@ -72,43 +72,43 @@
             {% if meu and not meu.resolvido %}
             <div class="p-acoes-rapidas">
                 {% if meu.status != 'Em andamento' %}
-                <form method="POST" action="{{ url_for('producao.atualizar_setor', op_id=op.id, chave_setor=meu.chave) }}"
+                <form method="POST" action="{{ url_for('producao_setor.atualizar_setor', op_id=op.id, chave_setor=meu.chave) }}"
                       data-p-quick data-p-status="Em andamento">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="status" value="Em andamento"/>
                     <button type="submit" class="p-btn p-btn-outline p-btn-sm">▶️ Iniciar</button>
                 </form>
                 {% endif %}
-                <form method="POST" action="{{ url_for('producao.atualizar_setor', op_id=op.id, chave_setor=meu.chave) }}"
+                <form method="POST" action="{{ url_for('producao_setor.atualizar_setor', op_id=op.id, chave_setor=meu.chave) }}"
                       data-p-quick data-p-status="Concluído">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="status" value="Concluído"/>
                     <button type="submit" class="p-btn p-btn-success p-btn-sm">✅ Concluir</button>
                 </form>
-                <form method="POST" action="{{ url_for('producao.atualizar_setor', op_id=op.id, chave_setor=meu.chave) }}"
+                <form method="POST" action="{{ url_for('producao_setor.atualizar_setor', op_id=op.id, chave_setor=meu.chave) }}"
                       data-p-quick data-p-status="Não se aplica">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <input type="hidden" name="status" value="Não se aplica"/>
                     <button type="submit" class="p-btn p-btn-outline p-btn-sm"
                             title="A peça não passa por este setor">∅ N/A</button>
                 </form>
-                <a class="p-btn p-btn-ghost p-btn-sm" href="{{ url_for('producao.detalhe', op_id=op.id) }}">Abrir</a>
+                <a class="p-btn p-btn-ghost p-btn-sm" href="{{ url_for('producao_setor.detalhe', op_id=op.id) }}">Abrir</a>
             </div>
             {% elif meu and meu.nao_aplica %}
             <div class="p-acoes-rapidas">
                 <span class="p-ok-setor">∅ Não se aplica ao seu setor</span>
-                <a class="p-btn p-btn-ghost p-btn-sm" href="{{ url_for('producao.detalhe', op_id=op.id) }}">Abrir</a>
+                <a class="p-btn p-btn-ghost p-btn-sm" href="{{ url_for('producao_setor.detalhe', op_id=op.id) }}">Abrir</a>
             </div>
             {% else %}
             <div class="p-acoes-rapidas">
                 <span class="p-ok-setor">✔️ Seu setor concluiu</span>
-                <a class="p-btn p-btn-ghost p-btn-sm" href="{{ url_for('producao.detalhe', op_id=op.id) }}">Abrir</a>
+                <a class="p-btn p-btn-ghost p-btn-sm" href="{{ url_for('producao_setor.detalhe', op_id=op.id) }}">Abrir</a>
             </div>
             {% endif %}
         {% else %}
         <div class="p-acoes-rapidas">
-            <a class="p-btn p-btn-ghost p-btn-sm" href="{{ url_for('producao.detalhe', op_id=op.id) }}">Abrir ficha</a>
-            <a class="p-btn p-btn-ghost p-btn-sm" href="{{ url_for('producao.editar_op', op_id=op.id) }}">Editar</a>
+            <a class="p-btn p-btn-ghost p-btn-sm" href="{{ url_for('producao_setor.detalhe', op_id=op.id) }}">Abrir ficha</a>
+            <a class="p-btn p-btn-ghost p-btn-sm" href="{{ url_for('producao_setor.editar_op', op_id=op.id) }}">Editar</a>
         </div>
         {% endif %}
     </div>
@@ -117,7 +117,7 @@
         <span class="p-vazio-icon">📭</span>
         <p>Nenhuma OP nesta lista.</p>
         {% if e_gestao %}
-        <a class="p-btn p-btn-primary" href="{{ url_for('producao.nova_op') }}">➕ Criar a primeira OP</a>
+        <a class="p-btn p-btn-primary" href="{{ url_for('producao_setor.nova_op') }}">➕ Criar a primeira OP</a>
         {% else %}
         <p class="text-muted">Quando a gestão liberar uma ordem para o seu setor, ela aparece aqui.</p>
         {% endif %}

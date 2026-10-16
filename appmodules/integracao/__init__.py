@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
-from flask import current_app, request
+from flask import current_app, request, url_for
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +117,8 @@ def url() -> Optional[str]:
     configurada = str(current_app.config.get("PRODUCAO_APP_URL") or "").strip()
     if configurada:
         return configurada.rstrip("/")
+    if "producao_setor.home" in current_app.view_functions:
+        return url_for("producao_setor.home")
     if not ativo():
         return None
     return url_derivada()

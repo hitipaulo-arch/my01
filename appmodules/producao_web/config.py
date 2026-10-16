@@ -9,7 +9,14 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 BASE_DIR = Path(__file__).resolve().parents[2]
+
+# O app dedicado é iniciado por ``producao_app.py`` e não passa pelo módulo
+# principal, que já carregava o .env. Carregue-o aqui para que as configurações
+# PRODUCAO_* funcionem tanto com ``python`` quanto com gunicorn.
+load_dotenv(BASE_DIR / ".env")
 
 
 def _booleano(nome: str, padrao: bool = False) -> bool:

@@ -30,19 +30,22 @@ Limpeza → Embalagem**:
 
 | | Sistema de OS | App de Produção |
 |---|---|---|
-| Endereço | `/` e `/m/` | **porta 5001** (`producao_app.py`) |
+| Endereço | `/` e `/m/` | **`/producao-setor/`** (mesmo servidor) |
 | Login | usuário e senha | **PIN por setor** |
 | Dados | planilha de OS | **planilha própria** (`PRODUCAO_SPREADSHEET_ID`) |
 
 Cada setor entra com o próprio PIN e marca o seu status (Não iniciado / Em
 andamento / Concluído / **Não se aplica**) **com data e hora**, sem mexer no
-trabalho dos outros. A gestão vê o painel com a carga de cada setor e os atrasos.
+trabalho dos outros. As OPs ficam vinculadas ao usuário que as cadastrou:
+somente esse usuário consegue visualizá-las, enquanto a gestão mantém acesso
+administrativo a todas. A gestão vê o painel com a carga de cada setor e os
+atrasos.
 
-**O app está ligado ao sistema antigo por um atalho:** o menu (web e app em
-`/m`) e as telas antigas de produção mostram o botão **🏭 Produção por Setor**,
-que abre o app em outra aba. É só um link — os dois programas seguem separados
-(login e banco próprios). Ajuste com `PRODUCAO_APP_URL` (endereço completo),
-`PRODUCAO_APP_PORT` (padrão `5001`) ou `PRODUCAO_APP_INTEGRADO=0` (esconde).
+**O app está integrado ao sistema principal:** o menu (web e app em `/m`) e as
+telas antigas de produção mostram o botão **🏭 Produção por Setor**, que abre
+`/producao-setor/` no mesmo servidor. O login e o banco continuam próprios do
+fluxo por setor. Para uma implantação separada, ainda é possível usar
+`PRODUCAO_APP_URL`, `PRODUCAO_APP_PORT` ou `PRODUCAO_APP_INTEGRADO=0`.
 
 **📖 Veja [APP_PRODUCAO.md](APP_PRODUCAO.md) para o guia completo (criar a
 planilha, subir o app, cadastrar os PINs e o QR code de instalação).**

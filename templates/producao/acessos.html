@@ -27,7 +27,7 @@
             {% endif %}
         </div>
 
-        <form class="p-form p-form-inline" method="POST" action="{{ url_for('producao.acessos') }}">
+        <form class="p-form p-form-inline" method="POST" action="{{ url_for('producao_setor.acessos') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <input type="hidden" name="perfil" value="{{ perfil.chave }}"/>
             <div class="p-field">
