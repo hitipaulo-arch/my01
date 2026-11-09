@@ -9,7 +9,8 @@ Este documento é um **esboço separado** da documentação funcional. Ele organ
 - A liberação se mantém até a porta abrir e depois fechar novamente.
 - Eletroímã e válvula de enchimento são saídas independentes. O eletroímã liga imediatamente quando a porta está fechada e não está liberada; a válvula liga após 2 segundos contínuos nessa condição. Ao solicitar liberação, ambas desligam imediatamente; o atraso só se aplica ao acionamento da válvula.
 - Um transdutor analógico mede a pressão da linha comum.
-- A sirene liga abaixo de 0,8 bar ou acima de 1,5 bar. A lâmpada indica vermelho/verde conforme a faixa e pisca nas condições de alarme.
+- A sirene liga abaixo de 0,8 bar ou acima de 1,5 bar. A lâmpada de pressão indica vermelho/verde conforme a faixa e pisca nas condições de alarme.
+- Um relé auxiliar separado comanda o LED geral das portas: qualquer porta aberta energiza o relé e seleciona vermelho; todas fechadas deixam o relé desenergizado e selecionam verde.
 
 ## 2. Mapa de I/O e bits (endereços provisórios)
 
@@ -48,9 +49,10 @@ Este documento é um **esboço separado** da documentação funcional. Ele organ
 | Pulso de pisca | M_PISCA | Usar clock especial ou temporizador compatível com a CPU |
 | Sirene | Y20 | Ligada com baixa ou alta pressão |
 | Lâmpada vermelha | Y21 | Pisca abaixo de 0,8 bar; fixa na faixa vermelha intermediária |
-| Lâmpada verde | Y22 | Pisca acima de 1,5 bar; fixa na faixa verde intermediária |
+| Lâmpada verde de pressão | Y22 | Pisca acima de 1,5 bar; fixa na faixa verde intermediária |
+| Relé auxiliar do LED de portas | Y23 | Energizado se qualquer sensor indicar porta aberta; desenergizado quando todas estiverem fechadas |
 
-`D200`, `M_PISCA` e os endereços de saída são referências ilustrativas. A pressão é representada em centibar para facilitar as comparações: 0,8 bar = 80, 1,15 bar = 115 e 1,5 bar = 150. O dado bruto da entrada analógica precisa ser escalado conforme o manual do módulo.
+`D200`, `M_PISCA` e os endereços de saída são referências ilustrativas. A pressão é representada em centibar para facilitar as comparações: 0,8 bar = 80, 1,15 bar = 115 e 1,5 bar = 150. O dado bruto da entrada analógica precisa ser escalado conforme o manual do módulo. Y23 é a bobina de um relé auxiliar com contato reversível: contato NA seleciona o vermelho; contato NF seleciona o verde, com circuito e alimentação do LED adequados.
 
 > Em CPUs FX, endereços de I/O podem usar numeração octal. Confira endereços disponíveis e a configuração de módulos no GX Works2. Os exemplos X10 a X13 não devem ser tratados como endereços garantidos para a instalação.
 
@@ -141,6 +143,28 @@ Repetir para as demais portas com timers independentes:
 
 `TON T0, 2 s` é uma notação conceitual, não sintaxe literal garantida para a CPU FX. No GX Works2, configurar o timer não retentivo e escolher o valor de preset de acordo com a base de tempo e o modelo da CPU; não assumir `K20` sem verificar o manual. O atraso é somente na energização da válvula. Na solicitação de liberação, a condição `/Mxxx` deixa de ser verdadeira e a válvula desenergiza imediatamente, junto com o eletroímã. Confirmar no circuito que a válvula energizada enche a junta.
 
+### 4.4 Relé para LED geral das portas
+
+Assumindo `X10` a `X13` ligados quando cada porta está fechada, energizar `Y23` se qualquer sensor indicar porta aberta. Os contatos negados ficam em paralelo (função OU):
+
+```text
+[/X10] ─┐
+[/X11] ─┤
+[/X12] ─┤──────────────────────── ( Y23 — bobina do relé indicador )
+[/X13] ─┘
+```
+
+Fiação indicativa do relé auxiliar com contato reversível:
+
+```text
+Y23 energizado   → contato NA fecha → seleciona LED vermelho
+Y23 desenergizado → contato NF fecha → seleciona LED verde
+```
+
+Assim, qualquer uma das quatro portas aberta acende vermelho; somente com as quatro fechadas o relé fica desligado e o LED fica verde. Dimensionar a saída, o relé, os contatos e a alimentação do LED conforme as cargas reais. Não ligar o LED diretamente ao PLC sem verificar o tipo de saída e a corrente.
+
+A lógica indica a posição física pelos sensores. Uma porta liberada pelo botão mas ainda fechada continua verde; se for necessário indicar vermelho desde o início da liberação, adicionar os bits `M100` a `M103` à condição de Y23.
+
 ## 5. Escala analógica da pressão
 
 Configurar a entrada do transdutor conforme sua saída elétrica (por exemplo, 4–20 mA ou 0–10 V) e o módulo analógico utilizado. Converter o valor bruto para uma variável escalada em centibar:
@@ -202,10 +226,11 @@ Se o processo só puder operar dentro da faixa de 0,8 a 1,5 bar, criar uma condi
 3. Com uma porta do par aberta, tentar solicitar a parceira e confirmar que a solicitação é recusada.
 4. Confirmar que o ciclo só termina após a sequência abrir e fechar; depois do fechamento, verificar eletroímã imediato e válvula após 2 segundos contínuos.
 5. Abrir novamente a porta antes de completar os 2 segundos e confirmar cancelamento do timer e válvula desligada.
-6. Injetar valores analógicos de teste (ou usar fonte/calibrador apropriado) e verificar as transições em 0,8, 1,15 e 1,5 bar, a sirene e as duas cores.
-7. Verificar a frequência de pisca e se a lâmpada nunca acende vermelho e verde ao mesmo tempo.
-8. Testar falha/desconexão do transdutor, reinicialização do PLC e perda/retorno de energia.
-9. Confirmar o comportamento das válvulas, pressão real e dispositivos de alívio com profissional habilitado.
+6. Abrir cada porta individualmente e confirmar Y23 energizado/LED vermelho; confirmar que com todas fechadas Y23 desenergiza/LED verde.
+7. Injetar valores analógicos de teste (ou usar fonte/calibrador apropriado) e verificar as transições em 0,8, 1,15 e 1,5 bar, a sirene e as duas cores de pressão.
+8. Verificar a frequência de pisca e se a lâmpada de pressão nunca acende vermelho e verde ao mesmo tempo.
+9. Testar falha/desconexão do transdutor, reinicialização do PLC e perda/retorno de energia.
+10. Confirmar o comportamento das válvulas, pressão real e dispositivos de alívio com profissional habilitado.
 
 ## 8. Alertas importantes
 
