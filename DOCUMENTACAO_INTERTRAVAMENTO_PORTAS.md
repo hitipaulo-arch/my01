@@ -28,7 +28,7 @@ Em operação normal, o eletroímã é comandado quando a porta está confirmada
 | 3 | X2 | X12 | Y2 | Y12 | M102 | M112 |
 | 4 | X3 | X13 | Y3 | Y13 | M103 | M113 |
 
-Saída adicional de exemplo: `Y23` comanda a bobina do relé indicador geral de portas. Relé energizado seleciona vermelho; relé desenergizado seleciona verde.
+Saídas adicionais de exemplo: `Y23` a `Y26` comandam um relé indicador individual para cada porta. O relé de cada porta energiza e seleciona vermelho quando o sensor indicar porta aberta; desenergizado, seleciona verde quando a respectiva porta estiver fechada.
 
 `X`, `Y` e `M` são notações ilustrativas para PLC Mitsubishi FX. Em famílias FX, a numeração de I/O pode ser octal; verificar a configuração e o mapa de módulos no projeto GX Works2. O símbolo `/X10` abaixo significa contato lógico negado de X10 no ladder, não afirma que o sensor de campo seja eletricamente NF.
 
@@ -40,7 +40,7 @@ Saída adicional de exemplo: `Y23` comanda a bobina do relé indicador geral de 
 4. Quando o sensor dessa porta deixa de indicar fechada, a lógica grava que a porta abriu.
 5. Quando o sensor volta a indicar fechada, a liberação é removida. O eletroímã é comandado imediatamente; a válvula só energiza depois do atraso de 2 segundos, se a porta continuar fechada.
 6. Enquanto uma porta estiver aberta, o sensor aberto impede que sua parceira seja liberada.
-7. O indicador geral usa os quatro sensores de fechada: se qualquer um indicar porta aberta, Y23 energiza o relé e seleciona o LED vermelho. Somente quando todos os sensores confirmarem portas fechadas, Y23 desenergiza e o contato normalmente fechado do relé seleciona o LED verde.
+7. Cada porta tem seu próprio indicador bicolor: o relé correspondente energiza e seleciona vermelho quando o sensor daquela porta indicar aberta; quando indicar fechada, o relé desenergiza e o contato normalmente fechado seleciona verde.
 
 ## 5. Lógica ladder de referência
 
@@ -120,20 +120,27 @@ X13   /M103   T3  ─────────────── Y13
 
 As linhas `T0 2 s` etc. são indicação conceitual de temporizador TON de 2 segundos; no FX o valor constante depende da base de tempo do timer e da CPU (por exemplo, não assumir `K20` sem confirmar). Use temporizadores não retentivos para que a contagem reinicie se a porta abrir ou a liberação for solicitada. A válvula desenergiza imediatamente quando sua condição de saída deixa de ser verdadeira; o atraso é somente no acionamento/energização.
 
-### 5.4 Indicador LED geral de portas abertas/fechadas
+### 5.4 Indicadores LED individuais por porta
 
-Use `Y23` para comandar a bobina de um relé auxiliar com contato reversível (SPDT), dimensionado para a tensão e a corrente do LED. A lógica assume que `X10` a `X13` ficam ligados quando as respectivas portas estão fechadas:
+Use um relé auxiliar independente com contato reversível (SPDT) para cada LED bicolor. A lógica assume que cada sensor fica ligado quando sua porta está fechada:
 
 ```text
-/X10 ─┐
-/X11 ─┤
-/X12 ─┤────────────────────────── Y23 (bobina do relé indicador)
-/X13 ─┘
+/X10 ─────────────────────────── Y23 (relé/LED da porta 1)
+/X11 ─────────────────────────── Y24 (relé/LED da porta 2)
+/X12 ─────────────────────────── Y25 (relé/LED da porta 3)
+/X13 ─────────────────────────── Y26 (relé/LED da porta 4)
 ```
 
-Os quatro contatos `/X10` a `/X13` são ramos em paralelo (OU). Assim, qualquer porta aberta energiza Y23. Ligue o contato normalmente aberto do relé para selecionar o vermelho e o contato normalmente fechado para selecionar o verde: Y23 ligado = vermelho; Y23 desligado, com todas as portas fechadas = verde. Use alimentação e proteção adequadas para o LED/relé; não passe corrente da lâmpada por um contato sem verificar sua especificação.
+Para cada relé, o contato normalmente aberto seleciona vermelho e o contato normalmente fechado seleciona verde:
 
-Esse indicador usa os sensores físicos de fechada. Se uma porta estiver liberada pelo botão, mas ainda fisicamente fechada, o LED continuará verde até o sensor indicar que ela abriu. Se a intenção for mostrar vermelho já durante a liberação, acrescentar `/M100` a `/M103` como condições paralelas.
+| Saída do relé | Estado da porta | Cor do LED |
+|---|---|---|
+| Energizada | Aberta (sensor de fechada desligado) | Vermelho |
+| Desenergizada | Fechada (sensor de fechada ligado) | Verde |
+
+Assim, cada LED informa somente o estado da sua porta; não é necessário esperar pelas outras três para mudar a cor. Dimensionar as saídas, os relés, os contatos e a alimentação dos LEDs conforme as cargas reais. Não passar corrente da lâmpada por um contato sem verificar sua especificação.
+
+Esses indicadores mostram a posição física pelos sensores. Se uma porta estiver liberada pelo botão, mas ainda fechada, o LED permanecerá verde até o sensor indicar que abriu. Se for necessário mostrar vermelho desde o início da liberação, incluir também o bit `M100`, `M101`, `M102` ou `M103` na condição do indicador correspondente.
 
 ## 6. Verificações e testes de comissionamento
 
@@ -146,7 +153,7 @@ Realizar os testes primeiro em modo seguro, sem pessoas expostas ao risco e, qua
 - [ ] Repetir os dois testes para o par 3–4.
 - [ ] Confirmar que, após abrir e fechar, o eletroímã energiza imediatamente e a válvula só energiza após 2 segundos contínuos com a porta fechada.
 - [ ] Confirmar que a válvula desenergiza imediatamente ao solicitar liberação e que a contagem é cancelada se a porta abrir novamente.
-- [ ] Abrir uma porta por vez e verificar que o relé Y23 energiza e seleciona vermelho; fechar todas e confirmar relé desenergizado e LED verde.
+- [ ] Abrir cada porta individualmente e confirmar que somente seu relé (Y23–Y26) energiza e seu LED fica vermelho; ao fechá-la, confirmar relé desenergizado e LED verde.
 - [ ] Confirmar o comportamento se um botão ficar pressionado, se a porta não abrir e se a porta demorar a fechar.
 - [ ] Validar partida/reinicialização do PLC, falta e retorno de energia, falha/desconexão de sensor, falha de saída e perda de ar comprimido.
 - [ ] Testar o transdutor único da linha comum: verificar leitura analógica, indicações da lâmpada e sirene abaixo de 0,8 bar, entre 0,8 e 1,5 bar e acima de 1,5 bar.
