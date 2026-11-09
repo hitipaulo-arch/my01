@@ -7,7 +7,7 @@ Este documento é um **esboço separado** da documentação funcional. Ele organ
 - Portas 1 e 2 são intertravadas entre si; portas 3 e 4 também.
 - Um botão libera sua porta somente se ela e a porta parceira estiverem fechadas e a parceira não estiver liberada.
 - A liberação se mantém até a porta abrir e depois fechar novamente.
-- Eletroímã e válvula de enchimento da junta são comandados juntos: ligados quando a porta está fechada e não está liberada; desligados durante a liberação.
+- Eletroímã e válvula de enchimento são saídas independentes. O eletroímã liga imediatamente quando a porta está fechada e não está liberada; a válvula liga após 2 segundos contínuos nessa condição. Ao solicitar liberação, ambas desligam imediatamente; o atraso só se aplica ao acionamento da válvula.
 - Um transdutor analógico mede a pressão da linha comum.
 - A sirene liga abaixo de 0,8 bar ou acima de 1,5 bar. A lâmpada indica vermelho/verde conforme a faixa e pisca nas condições de alarme.
 
@@ -30,6 +30,15 @@ Este documento é um **esboço separado** da documentação funcional. Ele organ
 | 2 | M101 | M111 |
 | 3 | M102 | M112 |
 | 4 | M103 | M113 |
+
+### Temporizadores de acionamento das válvulas
+
+| Porta | Temporizador TON não retentivo | Atraso |
+|---|---|---|
+| 1 | T0 (exemplo) | 2 segundos |
+| 2 | T1 (exemplo) | 2 segundos |
+| 3 | T2 (exemplo) | 2 segundos |
+| 4 | T3 (exemplo) | 2 segundos |
 
 ### Pressão e sinalização
 
@@ -102,23 +111,35 @@ Porta 4
 [ M113 ]    [ X13 ] ───────────────────────────── ( RST M113 )
 ```
 
-### 4.3 Saídas de eletroímã e válvula
+### 4.3 Saídas independentes e temporização das válvulas
+
+Para cada porta, a saída do eletroímã liga imediatamente quando a porta está fechada e não está liberada. Um TON não retentivo conta 2 segundos sob a mesma condição; o contato de término desse timer comanda a válvula. Se a porta abrir ou a liberação for solicitada antes de completar o tempo, o TON reseta e a válvula fica desligada.
+
+Exemplo da porta 1:
 
 ```text
 [ X10 ]  [/M100] ──────────────────────────────── ( Y0 )
-[ X10 ]  [/M100] ──────────────────────────────── ( Y10 )
-
-[ X11 ]  [/M101] ──────────────────────────────── ( Y1 )
-[ X11 ]  [/M101] ──────────────────────────────── ( Y11 )
-
-[ X12 ]  [/M102] ──────────────────────────────── ( Y2 )
-[ X12 ]  [/M102] ──────────────────────────────── ( Y12 )
-
-[ X13 ]  [/M103] ──────────────────────────────── ( Y3 )
-[ X13 ]  [/M103] ──────────────────────────────── ( Y13 )
+[ X10 ]  [/M100] ──────────────────────────────── ( TON T0, 2 s )
+[ X10 ]  [/M100]  [ T0 concluído ] ────────────── ( Y10 )
 ```
 
-As condições de cada porta devem comandar o eletroímã e a válvula correspondentes. O circuito real precisa confirmar se a válvula energizada enche a junta.
+Repetir para as demais portas com timers independentes:
+
+```text
+[ X11 ]  [/M101] ──────────────────────────────── ( Y1 )
+[ X11 ]  [/M101] ──────────────────────────────── ( TON T1, 2 s )
+[ X11 ]  [/M101]  [ T1 concluído ] ────────────── ( Y11 )
+
+[ X12 ]  [/M102] ──────────────────────────────── ( Y2 )
+[ X12 ]  [/M102] ──────────────────────────────── ( TON T2, 2 s )
+[ X12 ]  [/M102]  [ T2 concluído ] ────────────── ( Y12 )
+
+[ X13 ]  [/M103] ──────────────────────────────── ( Y3 )
+[ X13 ]  [/M103] ──────────────────────────────── ( TON T3, 2 s )
+[ X13 ]  [/M103]  [ T3 concluído ] ────────────── ( Y13 )
+```
+
+`TON T0, 2 s` é uma notação conceitual, não sintaxe literal garantida para a CPU FX. No GX Works2, configurar o timer não retentivo e escolher o valor de preset de acordo com a base de tempo e o modelo da CPU; não assumir `K20` sem verificar o manual. O atraso é somente na energização da válvula. Na solicitação de liberação, a condição `/Mxxx` deixa de ser verdadeira e a válvula desenergiza imediatamente, junto com o eletroímã. Confirmar no circuito que a válvula energizada enche a junta.
 
 ## 5. Escala analógica da pressão
 
@@ -177,13 +198,14 @@ Se o processo só puder operar dentro da faixa de 0,8 a 1,5 bar, criar uma condi
 ## 7. Testes antes de operar
 
 1. Com as saídas de potência isoladas, monitorar os sensores de porta no GX Works2 e confirmar o estado lógico fechado/aberto.
-2. Solicitar cada porta e confirmar que só a porta selecionada perde eletroímã e válvula.
+2. Solicitar cada porta e confirmar que as saídas do eletroímã e da válvula da porta selecionada desligam imediatamente.
 3. Com uma porta do par aberta, tentar solicitar a parceira e confirmar que a solicitação é recusada.
-4. Confirmar que o ciclo só termina após a sequência abrir e fechar.
-5. Injetar valores analógicos de teste (ou usar fonte/calibrador apropriado) e verificar as transições em 0,8, 1,15 e 1,5 bar, a sirene e as duas cores.
-6. Verificar a frequência de pisca e se a lâmpada nunca acende vermelho e verde ao mesmo tempo.
-7. Testar falha/desconexão do transdutor, reinicialização do PLC e perda/retorno de energia.
-8. Confirmar o comportamento das válvulas, pressão real e dispositivos de alívio com profissional habilitado.
+4. Confirmar que o ciclo só termina após a sequência abrir e fechar; depois do fechamento, verificar eletroímã imediato e válvula após 2 segundos contínuos.
+5. Abrir novamente a porta antes de completar os 2 segundos e confirmar cancelamento do timer e válvula desligada.
+6. Injetar valores analógicos de teste (ou usar fonte/calibrador apropriado) e verificar as transições em 0,8, 1,15 e 1,5 bar, a sirene e as duas cores.
+7. Verificar a frequência de pisca e se a lâmpada nunca acende vermelho e verde ao mesmo tempo.
+8. Testar falha/desconexão do transdutor, reinicialização do PLC e perda/retorno de energia.
+9. Confirmar o comportamento das válvulas, pressão real e dispositivos de alívio com profissional habilitado.
 
 ## 8. Alertas importantes
 

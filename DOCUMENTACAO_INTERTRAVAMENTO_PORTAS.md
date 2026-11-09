@@ -9,7 +9,7 @@ Controlar quatro portas com eletroímã e junta pneumática inflável. As portas
 - **Par A:** porta 1 e porta 2 — somente uma pode ser liberada por vez.
 - **Par B:** porta 3 e porta 4 — somente uma pode ser liberada por vez.
 
-Em operação normal, eletroímã e válvula de enchimento da junta ficam energizados enquanto a respectiva porta estiver confirmada como fechada. Ao pressionar o botão de uma porta, as duas saídas dessa porta são desenergizadas, desde que a porta e sua parceira estejam fechadas. Depois que a porta abrir, as saídas só voltam a energizar quando o sensor confirmar o fechamento.
+Em operação normal, o eletroímã é comandado quando a porta está confirmada como fechada e não está liberada. A válvula da junta é uma saída independente: desenergiza imediatamente ao solicitar a liberação e, após a porta fechar novamente, só energiza depois de um atraso de 2 segundos com o sensor de fechada ativo e o eletroímã comandado. Assim, a junta infla depois do travamento magnético.
 
 ## 2. Premissas a confirmar antes da implementação
 
@@ -32,11 +32,11 @@ Em operação normal, eletroímã e válvula de enchimento da junta ficam energi
 
 ## 4. Sequência de operação
 
-1. Com a porta fechada e sem solicitação de liberação, o eletroímã e a válvula da junta são comandados ligados.
+1. Com a porta fechada e sem solicitação de liberação, o eletroímã é comandado ligado. A válvula só liga após 2 segundos de confirmação contínua de porta fechada e eletroímã comandado.
 2. Um pulso no botão é aceito somente se a própria porta e a porta parceira estiverem fechadas e a parceira não estiver liberada.
-3. A lógica grava a liberação e desenergiza eletroímã e válvula da porta solicitada.
+3. A lógica grava a liberação e desenergiza imediatamente o eletroímã e a válvula da porta solicitada.
 4. Quando o sensor dessa porta deixa de indicar fechada, a lógica grava que a porta abriu.
-5. Quando o sensor volta a indicar fechada, a liberação é removida. Eletroímã e válvula podem então voltar a energizar.
+5. Quando o sensor volta a indicar fechada, a liberação é removida. O eletroímã é comandado imediatamente; a válvula só energiza depois do atraso de 2 segundos, se a porta continuar fechada.
 6. Enquanto uma porta estiver aberta, o sensor aberto impede que sua parceira seja liberada.
 
 ## 5. Lógica ladder de referência
@@ -87,25 +87,35 @@ M113    X13  ──────────────────── RST M1
 M113    X13  ──────────────────── RST M113
 ```
 
-### 5.3 Comandar eletroímãs e válvulas
+### 5.3 Comando independente dos eletroímãs e atraso das válvulas
 
-A condição de saída exige sensor de fechada ativo e ausência de liberação:
+Os eletroímãs energizam assim que a respectiva porta está fechada e não está liberada. Cada válvula tem temporizador próprio: ela só energiza depois de 2 segundos contínuos nessas mesmas condições. Se a porta abrir ou receber solicitação de liberação antes do fim do tempo, o temporizador zera e a válvula permanece desligada.
+
+Exemplo para a porta 1 (temporizador simbólico `T0`; selecionar base/valor conforme CPU FX):
 
 ```text
-X10   /M100  ──────────────────── Y0
-X10   /M100  ──────────────────── Y10
-
-X11   /M101  ──────────────────── Y1
-X11   /M101  ──────────────────── Y11
-
-X12   /M102  ──────────────────── Y2
-X12   /M102  ──────────────────── Y12
-
-X13   /M103  ──────────────────── Y3
-X13   /M103  ──────────────────── Y13
+X10   /M100  ──────────────────── Y0       (eletroímã, imediato)
+X10   /M100  ──────────────────── T0 2 s   (temporização não retentiva)
+X10   /M100   T0  ─────────────── Y10      (válvula após 2 s)
 ```
 
-Neste exemplo, eletroímã e válvula da mesma porta são comandados simultaneamente. Se o processo exigir primeiro o travamento magnético e depois a inflação da junta, implementar uma sequência separada com confirmação/temporização apropriada, em vez de usar essas duas saídas em paralelo.
+Repetir com temporizador independente por porta:
+
+```text
+X11   /M101  ──────────────────── Y1
+X11   /M101  ──────────────────── T1 2 s
+X11   /M101   T1  ─────────────── Y11
+
+X12   /M102  ──────────────────── Y2
+X12   /M102  ──────────────────── T2 2 s
+X12   /M102   T2  ─────────────── Y12
+
+X13   /M103  ──────────────────── Y3
+X13   /M103  ──────────────────── T3 2 s
+X13   /M103   T3  ─────────────── Y13
+```
+
+As linhas `T0 2 s` etc. são indicação conceitual de temporizador TON de 2 segundos; no FX o valor constante depende da base de tempo do timer e da CPU (por exemplo, não assumir `K20` sem confirmar). Use temporizadores não retentivos para que a contagem reinicie se a porta abrir ou a liberação for solicitada. A válvula desenergiza imediatamente quando sua condição de saída deixa de ser verdadeira; o atraso é somente no acionamento/energização.
 
 ## 6. Verificações e testes de comissionamento
 
@@ -116,7 +126,8 @@ Realizar os testes primeiro em modo seguro, sem pessoas expostas ao risco e, qua
 - [ ] Solicitar abertura da porta 1: as saídas Y0 e Y10 devem desligar; porta 2 não deve poder ser liberada.
 - [ ] Repetir o teste em ordem inversa para o par 1–2.
 - [ ] Repetir os dois testes para o par 3–4.
-- [ ] Confirmar que as saídas só voltam depois de observar a sequência abrir e fechar.
+- [ ] Confirmar que, após abrir e fechar, o eletroímã energiza imediatamente e a válvula só energiza após 2 segundos contínuos com a porta fechada.
+- [ ] Confirmar que a válvula desenergiza imediatamente ao solicitar liberação e que a contagem é cancelada se a porta abrir novamente.
 - [ ] Confirmar o comportamento se um botão ficar pressionado, se a porta não abrir e se a porta demorar a fechar.
 - [ ] Validar partida/reinicialização do PLC, falta e retorno de energia, falha/desconexão de sensor, falha de saída e perda de ar comprimido.
 - [ ] Testar o transdutor único da linha comum: verificar leitura analógica, indicações da lâmpada e sirene abaixo de 0,8 bar, entre 0,8 e 1,5 bar e acima de 1,5 bar.
